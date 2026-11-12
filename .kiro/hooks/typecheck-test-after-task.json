@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Typecheck and test after task",
+      "trigger": "PostTaskExec",
+      "description": "Run typecheck and tests after a spec task completes",
+      "action": {
+        "type": "command",
+        "command": "pnpm typecheck && pnpm test",
+        "timeout": 300
+      }
+    }
+  ]
+}

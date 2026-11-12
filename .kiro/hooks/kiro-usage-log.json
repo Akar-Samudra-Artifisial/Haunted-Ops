@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Log task to KIRO_USAGE.md",
+      "trigger": "PostTaskExec",
+      "description": "Append a one-line usage entry after each finished task",
+      "action": {
+        "type": "agent",
+        "prompt": "Append one line to docs/KIRO_USAGE.md in the form: `- YYYY-MM-DD | <spec>/<task> | <what Kiro did>`. Keep it to one line. No secrets or raw logs."
+      }
+    }
+  ]
+}

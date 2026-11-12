@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Refuse destructive shell commands",
+      "trigger": "PreToolUse",
+      "description": "Blocks rm -rf outside repo, force push, reset --hard and reads of ~/.aws, ~/.ssh, kiro-cli data",
+      "matcher": "execute_bash|shell|bash|control_bash_process",
+      "action": {
+        "type": "command",
+        "command": "sh .kiro/hooks/guard-shell.sh",
+        "timeout": 10
+      }
+    }
+  ]
+}

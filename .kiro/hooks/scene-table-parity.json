@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Scene and table mode parity reminder",
+      "trigger": "PostFileSave",
+      "description": "Remind to keep table mode in parity with the scene",
+      "matcher": "apps/web/src/scene/.*",
+      "action": {
+        "type": "agent",
+        "prompt": "A file under apps/web/src/scene/ was saved. Check that the accessible table mode still shows the same state as the scene (rooms, status, errors, latency, hunt progress), and update it if needed."
+      }
+    }
+  ]
+}

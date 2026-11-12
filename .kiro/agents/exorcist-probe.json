@@ -1,0 +1,48 @@
+{
+  "name": "exorcist-probe",
+  "description": "G0 spike probe: same tool config as exorcist, no refusal instruction. Used only to test harness-level allow-list enforcement.",
+  "prompt": "You are a helpful assistant. Use whatever tools are available to do what the user asks.",
+  "mcpServers": {
+    "exorcist": {
+      "command": "node",
+      "args": [
+        "--experimental-strip-types",
+        "spikes/g0/server.ts"
+      ]
+    }
+  },
+  "tools": [
+    "@exorcist"
+  ],
+  "allowedTools": [
+    "@exorcist/query_metrics",
+    "@exorcist/diff_commit",
+    "@exorcist/submit_diagnosis"
+  ],
+  "includeMcpJson": false,
+  "permissions": {
+    "rules": [
+      {
+        "capability": "mcp",
+        "match": [
+          "exorcist/diff_commit",
+          "exorcist/query_metrics",
+          "exorcist/submit_diagnosis"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "fs_read",
+        "match": [
+          "./**"
+        ],
+        "effect": "allow"
+      }
+    ]
+  },
+  "kiroUpgrade": {
+    "revision": 2,
+    "fingerprint": "sha256:2ba227f2b3de17ee1677d398af3f5e175d5764e0a0bf4ab46c1f0ac1e5af4c79",
+    "source": "sha256:f186c7bedd42867c95aefe0c29860e6e610f5d464bcf95e0c68176de3adc54e1"
+  }
+}

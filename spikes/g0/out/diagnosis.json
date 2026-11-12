@@ -1,0 +1,22 @@
+{
+  "summary": "Payments deploy d-102 (commit c0ffee1, 'simplify refund lookup') removed a null guard in refundTarget(). Deleting `if (!order.customer) return null;` makes `order.customer.account.id` throw a TypeError on any order without a customer. http_5xx_ratio rose from 0.002 to 0.31 within minutes of the deploy. Revert or restore the guard.",
+  "evidence": [
+    {
+      "kind": "metric",
+      "ref": "payments http_5xx_ratio",
+      "detail": "Baseline 0.002 at -30m and -10m; jumped to 0.31 at -5m and held at now, directly after d-102 landed at -9m."
+    },
+    {
+      "kind": "deploy",
+      "ref": "d-102",
+      "detail": "Deploy landed at -9m, carrying commit c0ffee1. Timing aligns with the error-rate spike."
+    },
+    {
+      "kind": "commit",
+      "ref": "c0ffee1",
+      "detail": "In payments/refund.ts, removed `if (!order.customer) return null;` before `return order.customer.account.id;`, causing a null dereference TypeError for customerless orders."
+    }
+  ],
+  "culprit_commit": "c0ffee1",
+  "confidence": 0.95
+}
