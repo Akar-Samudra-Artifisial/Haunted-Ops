@@ -9,6 +9,7 @@ apps/
   web/              Vite + React + PixiJS scene, table mode
   api/              NestJS + Prisma + SSE
 packages/
+  shared/           types and plain validators shared by api and web
   exorcist-mcp/     MCP server (stdio) for the Exorcist agent
 tools/
   sanitize-replay/  fixture sanitizer
@@ -18,6 +19,7 @@ tools/
   agents/           exorcist.json
   specs/            feature specs
 docs/
+  DEV.md            local setup (Node, pnpm, Postgres, tests)
   KIRO_USAGE.md     one line per finished task
 spikes/             committed spike work (spikes/g0)
 spike/              local working briefs only, git-ignored
