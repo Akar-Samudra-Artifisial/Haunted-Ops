@@ -1,0 +1,40 @@
+{
+  "name": "@haunted-ops/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "prisma generate",
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "start": "node --env-file-if-exists=.env dist/main.js",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "prisma db seed"
+  },
+  "dependencies": {
+    "@haunted-ops/shared": "workspace:*",
+    "@nestjs/common": "12.5.0",
+    "@nestjs/core": "12.5.0",
+    "@nestjs/platform-express": "12.5.0",
+    "@nestjs/throttler": "6.7.1",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "helmet": "8.3.0",
+    "pg": "8.23.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "12.5.0",
+    "@swc/core": "1.16.22",
+    "@types/express": "5.0.6",
+    "@types/pg": "8.23.1",
+    "prisma": "7.10.1",
+    "tsx": "4.23.15",
+    "unplugin-swc": "2.0.0"
+  }
+}

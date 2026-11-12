@@ -26,6 +26,8 @@ It is a dependency of gate G1 (16 Nov 2026, "chaos changes the score in the tabl
 - **Ring buffer**: the in-memory store of the last 500 Events used for resume.
 - **Stream**: one open SSE connection from a client to `GET /api/events`.
 - **Resync**: an SSE event telling a client to reload state because resume is not possible.
+- **Boot id**: 12 random hex characters chosen once per API process. Event ids are `<bootId>-<n>`, so an id from an earlier process is never mistaken for one of the current process.
+- **Client IP**: `req.ip` as computed by Express with `trust proxy` set to `TRUST_PROXY_HOPS`.
 - **Table mode**: the accessible, text-based view of Service state in Web.
 - **Test database**: the PostgreSQL database named by `TEST_DATABASE_URL`, separate from `DATABASE_URL`.
 
@@ -79,7 +81,9 @@ It is a dependency of gate G1 (16 Nov 2026, "chaos changes the score in the tabl
 2. IF a required variable is missing or invalid, THEN THE API SHALL exit with a non-zero code and print a message that names every offending variable.
 3. THE validation SHALL require `PORT` to be an integer from 1 to 65535, `WEB_ORIGIN` to be an origin made of scheme, host and optional port with no path, and `DATABASE_URL` to use the `postgres` or `postgresql` scheme.
 4. THE API SHALL NOT print or log the value of any configuration variable, including in validation errors.
-5. WHERE the optional variables `SSE_MAX_CLIENTS` or `RATE_LIMIT_MAX` are set, THE API SHALL validate them as positive integers, and WHERE they are unset THE API SHALL use the defaults 100 and 30.
+5. WHERE the optional variables `SSE_MAX_CLIENTS`, `SSE_MAX_CLIENTS_PER_IP` or `RATE_LIMIT_MAX` are set, THE API SHALL validate them as positive integers, and WHERE they are unset THE API SHALL use the defaults 100, 5 and 30.
+6. WHERE `TRUST_PROXY_HOPS` is set, THE API SHALL validate it as an integer from 0 to 3, and WHERE it is unset THE API SHALL use 0; THE API SHALL never trust every proxy.
+7. WHERE `HOST` is set, THE API SHALL validate it as an IP literal or a hostname and listen on it, and WHERE it is unset THE API SHALL listen on `127.0.0.1`.
 
 ### Requirement 5: Health and service state routes
 
@@ -100,14 +104,20 @@ It is a dependency of gate G1 (16 Nov 2026, "chaos changes the score in the tabl
 #### Acceptance Criteria
 
 1. WHEN a client requests `GET /api/events`, THE API SHALL respond with content type `text/event-stream`, `Cache-Control: no-cache` and `X-Accel-Buffering: no`, and keep the connection open.
-2. WHEN an Event is published, THE API SHALL assign it an integer id greater than the id of every earlier Event and send it to every open Stream as `id`, `event` and `data` fields, with the payload as JSON.
+2. WHEN an Event is published, THE API SHALL assign it an integer sequence number greater than that of every earlier Event of the same boot and send it to every open Stream as `id` (`<bootId>-<n>`), `event` and `data` fields, with the payload as JSON.
 3. WHILE a Stream is open, THE API SHALL send an event named `heartbeat` every 15 seconds, without an id, and SHALL NOT store heartbeats in the Ring buffer.
 4. THE API SHALL keep the last 500 Events in the Ring buffer, dropping the oldest first.
 5. WHEN a client connects with a `Last-Event-ID` header, or with a `lastEventId` query parameter when no header is present, and that id is within the Ring buffer range, THE API SHALL send first every Event with a greater id in order, and then live Events, with no Event skipped or repeated.
-6. IF the supplied id is malformed, older than the oldest retained Event minus one, or greater than the latest id, THEN THE API SHALL send a `resync` event, replay nothing, and continue with live Events.
+6. IF the supplied id is not of the form `<bootId>-<n>`, older than the oldest retained Event minus one, or greater than the latest id, THEN THE API SHALL send a `resync` event (reason `malformed`, `too_old` or `ahead`), replay nothing, and continue with live Events.
 7. IF the number of open Streams equals `SSE_MAX_CLIENTS`, THEN THE API SHALL respond 503 with a `Retry-After` header to a new request.
 8. WHEN a client disconnects, THE API SHALL remove its subscription and heartbeat timer.
 9. WHEN the API receives a shutdown signal, THE API SHALL end every Stream and release the Event bus before the process exits.
+10. IF the number of open Streams from one client IP equals `SSE_MAX_CLIENTS_PER_IP`, THEN THE API SHALL respond 503 with a `Retry-After` header to a new request from that IP, and THE API SHALL release the slot on every close path (client disconnect, backpressure, maximum age, shutdown).
+11. IF the unsent output of a Stream exceeds 64 KiB, THEN THE API SHALL destroy that Stream and release its slot.
+12. WHEN a Stream has been open for the maximum stream age (30 minutes by default), THE API SHALL end it cleanly.
+13. THE API SHALL generate a random Boot id per process, SHALL send it first on every Stream in a `connected` event, and SHALL format every Event id as `<bootId>-<n>`.
+14. IF the supplied resume id is well formed but carries a different Boot id, THEN THE API SHALL send a `resync` event with reason `restarted` and replay nothing.
+15. THE API SHALL set the HTTP server `requestTimeout` and `headersTimeout` explicitly, and these timeouts SHALL NOT end an open Stream.
 
 ### Requirement 7: Security baseline
 
@@ -123,6 +133,8 @@ It is a dependency of gate G1 (16 Nov 2026, "chaos changes the score in the tabl
 6. WHEN a log entry contains a field whose name suggests a secret, such as token, key, secret, password, authorization or cookie, THE logger SHALL replace its value with `[redacted]`.
 7. THE API SHALL apply a global rate limit guard to requests with the methods POST, PUT, PATCH and DELETE, and WHEN the limit is exceeded THE API SHALL respond 429 with a `Retry-After` header; GET requests and Streams SHALL NOT count.
 8. IF an unhandled error occurs, THEN THE API SHALL respond 500 with a generic JSON body and SHALL NOT include the stack trace or internal messages.
+9. WHEN any logged string contains a PostgreSQL connection string or a URL with `user:password@` credentials, THE logger SHALL replace the connection string, or the credentials part of the URL, with `[redacted]`.
+10. THE API SHALL derive the client IP used by the rate limit and the per-IP Stream cap from `req.ip`, honouring exactly `TRUST_PROXY_HOPS` proxies.
 
 ### Requirement 8: Web shell and SSE client
 
@@ -139,6 +151,10 @@ It is a dependency of gate G1 (16 Nov 2026, "chaos changes the score in the tabl
 7. WHEN a reconnect happens, THE Web SHALL send the last received Event id as `lastEventId` so that the API can resume.
 8. THE Table mode area SHALL list each Service with its name and Haunt level as text, and THE connection status SHALL be announced in a polite live region and SHALL NOT rely on color alone.
 9. THE Web SHALL call only `GET /api/services` and `GET /api/events`, at a base URL taken from `VITE_API_BASE_URL`.
+10. IF a `service.updated` event is applied while a `GET /api/services` snapshot is in flight, THEN THE Web SHALL merge the snapshot by `updatedAt` so that the snapshot never overwrites a newer event.
+11. WHEN the Web receives a `resync` event, THE Web SHALL clear its stored Event id; WHEN it receives a `connected` event with a Boot id different from the previous one, THE Web SHALL clear its stored Event id and load `GET /api/services`.
+12. IF a Stream request fails with a `Retry-After` header, THEN THE Web SHALL wait at least that long (capped at 5 minutes) before the next attempt.
+13. THE Web SHALL keep the Service list ordered by room position, row (y) first, then column (x), also when a new Service appears.
 
 ### Requirement 9: Dev experience and test databases
 

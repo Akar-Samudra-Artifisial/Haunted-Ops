@@ -4,3 +4,7 @@ dist
 data/
 spike/
 *.log
+apps/api/src/generated/
+.vscode/
+
+!.env.example

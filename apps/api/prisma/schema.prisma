@@ -1,0 +1,120 @@
+// Haunted Ops data model. Migrations live in prisma/migrations and are committed.
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+  generatedFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SignalKind {
+  error_rate
+  p95_ms
+  up
+}
+
+enum HuntStatus {
+  queued
+  running
+  succeeded
+  failed
+  cancelled
+}
+
+enum EvidenceKind {
+  metric
+  error
+  log
+  deploy
+  commit
+}
+
+enum ProposalStatus {
+  draft
+  open
+  approved
+  merged
+  rejected
+}
+
+model Service {
+  id         String     @id @default(cuid())
+  name       String     @unique
+  roomX      Int
+  roomY      Int
+  hauntLevel Int        @default(0)
+  updatedAt  DateTime   @updatedAt
+  signals    Signal[]
+  incidents  Incident[]
+}
+
+model Signal {
+  id        BigInt     @id @default(autoincrement())
+  serviceId String
+  kind      SignalKind
+  value     Float
+  at        DateTime
+  service   Service    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId, kind, at(sort: Desc)], map: "signal_latest_per_service")
+}
+
+/// At most one open Incident per Service: partial unique index
+/// "incident_one_open_per_service" is added by hand in the first migration.
+model Incident {
+  id        String    @id @default(cuid())
+  serviceId String
+  openedAt  DateTime  @default(now())
+  closedAt  DateTime?
+  peakLevel Int       @default(0)
+  service   Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  hunts     Hunt[]
+
+  @@index([serviceId, openedAt(sort: Desc)])
+}
+
+model Hunt {
+  id         String     @id @default(cuid())
+  incidentId String
+  status     HuntStatus @default(queued)
+  credits    Float      @default(0)
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime   @default(now())
+  incident   Incident   @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  evidence   Evidence[]
+  proposals  Proposal[]
+
+  @@index([incidentId])
+}
+
+model Evidence {
+  id     String       @id @default(cuid())
+  huntId String
+  order  Int
+  kind   EvidenceKind
+  ref    String
+  detail String
+  hunt   Hunt         @relation(fields: [huntId], references: [id], onDelete: Cascade)
+
+  @@unique([huntId, order])
+}
+
+model Proposal {
+  id         String         @id @default(cuid())
+  huntId     String
+  prUrl      String?
+  status     ProposalStatus @default(draft)
+  approvedBy String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  hunt       Hunt           @relation(fields: [huntId], references: [id], onDelete: Cascade)
+
+  @@index([huntId])
+}

@@ -1,0 +1,107 @@
+/* Haunted Ops shell. Own palette; text contrast is at least 4.5:1 on the background. */
+:root {
+  --bg: #14121c;
+  --panel: #1f1b2b;
+  --text: #ece8f5;
+  --muted: #b9b2cc;
+  --live: #7fe0a8;
+  --warn: #f2c66d;
+  --down: #ff9a8a;
+  --focus: #ffd866;
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--panel);
+}
+
+.app-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--muted);
+}
+
+.connection-live .status-icon {
+  color: var(--live);
+}
+.connection-reconnecting .status-icon {
+  color: var(--warn);
+}
+.connection-offline .status-icon {
+  color: var(--down);
+}
+
+.app-main {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr);
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+@media (max-width: 48rem) {
+  .app-main {
+    grid-template-columns: 1fr;
+  }
+}
+
+.scene-mount {
+  min-height: 20rem;
+  border-radius: 0.5rem;
+  background: var(--panel);
+}
+
+.table-mode table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table-mode th,
+.table-mode td {
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid #3a3450;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
