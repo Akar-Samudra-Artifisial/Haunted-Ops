@@ -7,12 +7,14 @@ inclusion: always
 ```
 apps/
   web/              Vite + React + PixiJS scene, table mode
-  api/              NestJS + Prisma + SSE
+  api/              NestJS + Prisma + SSE; src/hunts runs the Exorcist (kiro-cli child process)
 packages/
   shared/           types and plain validators shared by api and web
-  exorcist-mcp/     MCP server (stdio) for the Exorcist agent
+  exorcist-mcp/     MCP server (stdio) for the Exorcist agent; bin/haunted-exorcist-mcp launcher
 tools/
-  sanitize-replay/  fixture sanitizer
+  sanitize-replay/  fixture sanitizer (hunt streams first, incidents in `replay`)
+  fake-kiro-cli/    kiro-cli stand-in for tests (script and replay modes) and its fixtures
+scripts/            gate checks (g1-score, g2-hunt) and the scene bundle check
 .kiro/
   steering/         always-on and fileMatch guidance
   hooks/            agent hooks
@@ -43,4 +45,6 @@ Note: `spike/` (singular) is ignored. `spikes/` (plural) is committed. Spike cod
 10. `spatial-audio`
 11. `submission-kit`
 
-Only `exorcist-agent` exists so far, with task 0 (the G0 spike). Write one spec per prompt.
+Written so far: `foundation`, `ingest-haunt-score`, `scene-engine` and `exorcist-agent` in this repo, `haunted-lab` in the lab repo. Write one spec per prompt.
+
+Hunts run outside the repo, in `HUNT_WORKDIR` (default under the OS temp folder), so no project steering or hooks load into the Exorcist.
