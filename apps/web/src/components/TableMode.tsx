@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { IngestStatus, ServiceName, ServiceState } from '@haunted-ops/shared';
 import { LEVEL_MARKER, formatStaleNotice } from '../format.js';
+import { HuntSection, huntSectionService, type LoadHuntDetail } from './HuntSection.js';
 import { tableRowText } from './table-model.js';
 
 /** Accessible text view of the house. The full accessible mode arrives in `accessible-mode`. */
@@ -9,11 +10,14 @@ export function TableMode({
   ingest = null,
   selected = null,
   onSelect,
+  loadHuntDetail,
 }: {
   services: readonly ServiceState[];
   ingest?: IngestStatus | null;
   selected?: ServiceName | null;
   onSelect?: (name: ServiceName | null) => void;
+  /** Loads the detail of a finished Hunt; without it the section shows the summary only. */
+  loadHuntDetail?: LoadHuntDetail;
 }) {
   const selectedRow = useRef<HTMLTableRowElement | null>(null);
   useEffect(() => {
@@ -41,12 +45,13 @@ export function TableMode({
               <th scope="col">p95</th>
               <th scope="col">Up</th>
               <th scope="col">Incident</th>
+              <th scope="col">Hunt</th>
             </tr>
           </thead>
           <tbody>
             {services.length === 0 ? (
               <tr>
-                <td colSpan={7}>No data yet</td>
+                <td colSpan={8}>No data yet</td>
               </tr>
             ) : (
               services.map((s) => {
@@ -81,6 +86,7 @@ export function TableMode({
                     <td>{row.p95}</td>
                     <td>{row.up}</td>
                     <td>{row.incident}</td>
+                    <td>{row.hunt}</td>
                   </tr>
                 );
               })
@@ -88,6 +94,7 @@ export function TableMode({
           </tbody>
         </table>
       </div>
+      <HuntSection service={huntSectionService(services, selected)} loadDetail={loadHuntDetail} />
     </section>
   );
 }

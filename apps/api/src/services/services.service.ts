@@ -4,11 +4,13 @@ import {
   validateServiceName,
   type HauntReason,
   type HauntReasonKind,
+  type HuntSummary,
   type OpenIncident,
   type ServiceMetrics,
   type ServiceName,
   type ServiceState,
 } from '@haunted-ops/shared';
+import type { HuntStore } from '../hunts/hunt-store.js';
 import type { IngestService } from '../ingest/ingest.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 
@@ -31,6 +33,7 @@ export interface ServiceRow {
 export function toServiceStates(
   rows: readonly ServiceRow[],
   metrics: ReadonlyMap<ServiceName, ServiceMetrics> = new Map(),
+  hunts: ReadonlyMap<ServiceName, HuntSummary> = new Map(),
 ): ServiceState[] {
   const order = (n: ServiceName): number => SERVICE_NAMES.indexOf(n);
   const out: ServiceState[] = [];
@@ -55,6 +58,7 @@ export function toServiceStates(
       metrics: metrics.get(name.value) ?? null,
       openIncident,
       updatedAt: row.updatedAt.toISOString(),
+      hunt: hunts.get(name.value) ?? null,
     });
   }
   return out.sort((a, b) => order(a.name) - order(b.name));
@@ -64,6 +68,7 @@ export class ServicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ingest?: Pick<IngestService, 'metrics'>,
+    private readonly hunts?: Pick<HuntStore, 'latestPerService'>,
   ) {}
 
   async list(): Promise<ServiceState[]> {
@@ -80,6 +85,8 @@ export class ServicesService {
       },
     });
     const metrics = this.ingest ? await this.ingest.metrics() : new Map<ServiceName, ServiceMetrics>();
-    return toServiceStates(rows, metrics);
+    // One query per Service for its latest Hunt (indexed); a failure here must not hide the Services.
+    const hunts = this.hunts ? await this.hunts.latestPerService().catch(() => new Map<ServiceName, HuntSummary>()) : new Map<ServiceName, HuntSummary>();
+    return toServiceStates(rows, metrics, hunts);
   }
 }

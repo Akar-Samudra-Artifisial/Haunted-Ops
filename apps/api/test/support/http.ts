@@ -3,6 +3,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { AddressInfo } from 'node:net';
 import { createApp, type HttpTimeouts } from '../../src/app.js';
 import { parseConfig, type Config } from '../../src/config/config.js';
+import type { HuntConfig } from '../../src/hunts/hunt-config.js';
 import { JsonLogger } from '../../src/security/logger.js';
 
 export const TEST_ORIGIN = 'http://localhost:5173';
@@ -53,6 +54,7 @@ export async function startServer(
     imports?: ModuleMetadata['imports'];
     init?: (app: NestExpressApplication) => void;
     timeouts?: HttpTimeouts;
+    huntConfig?: HuntConfig;
   } = {},
 ): Promise<TestServer> {
   const logs: string[] = [];
@@ -61,6 +63,7 @@ export async function startServer(
     logger: new JsonLogger((line) => logs.push(line)),
     imports: [TestRoutesModule, ...(options.imports ?? [])],
     timeouts: options.timeouts,
+    huntConfig: options.huntConfig,
   });
   options.init?.(app);
   await app.listen(0, '127.0.0.1');

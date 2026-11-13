@@ -1,4 +1,11 @@
-import { validateIngestStatus, validateServiceStates, type IngestStatus, type ServiceState } from '@haunted-ops/shared';
+import {
+  validateHuntDetail,
+  validateIngestStatus,
+  validateServiceStates,
+  type HuntDetail,
+  type IngestStatus,
+  type ServiceState,
+} from '@haunted-ops/shared';
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -30,6 +37,15 @@ export async function fetchServices(baseUrl: string, fetchImpl: FetchLike = fetc
   const res = await fetchImpl(`${baseUrl}/api/services`, { headers: { accept: 'application/json' } });
   if (!res.ok) throw new Error(`GET /api/services failed with ${res.status}`);
   const result = validateServiceStates(await res.json());
+  if (!result.ok) throw new InvalidResponseError();
+  return result.value;
+}
+
+/** GET /api/hunts/:id, validated with the shared validator. */
+export async function fetchHuntDetail(baseUrl: string, huntId: string, fetchImpl: FetchLike = fetch): Promise<HuntDetail> {
+  const res = await fetchImpl(`${baseUrl}/api/hunts/${encodeURIComponent(huntId)}`, { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error(`GET /api/hunts/:id failed with ${res.status}`);
+  const result = validateHuntDetail(await res.json());
   if (!result.ok) throw new InvalidResponseError();
   return result.value;
 }

@@ -7,6 +7,7 @@ import {
   type ServiceState,
 } from '@haunted-ops/shared';
 import { LEVEL_TEXT, formatErrorRatio, formatP95, formatReason } from '../format.js';
+import { huntCellText, huntView } from '../components/hunt-text.js';
 import { clamp } from './math.js';
 import {
   FOG_MAX,
@@ -26,12 +27,58 @@ export const TRANSITION_MS = 1000;
 /** A tremble of this many iso units at level 3. */
 export const TREMBLE_AMPLITUDE = 0.012;
 
-/** Filled by `exorcist-agent`; absent in this spec. */
+/** The Exorcist walks in over this long after a Hunt starts. */
+export const ENTER_MS = 1200;
+/** The figure stays this long after a Hunt ends, then leaves; the result mark stays. */
+export const FIGURE_LINGER_MS = 8000;
+/** Marks of the Hunt slot: one per step, at most this many. */
+export const MAX_MARKS = 8;
+
+/** What the scene draws of a Room's latest Hunt. Built from `huntView`, the same helper the table uses. */
 export interface HuntVisual {
-  phase: string;
+  phase: 'queued' | 'entering' | 'working' | 'sealed' | 'fizzled';
+  /** The figure is drawn: while the Hunt runs and for 8 s after it ends (if it ever started). */
+  figure: boolean;
+  /** Lit marks in the Hunt slot, 0 to 8. */
+  marks: number;
+  result: 'none' | 'sealed' | 'failed';
+  /** The table's hunt cell text. */
   label: string;
-  /** 0 to 1. */
-  progress: number;
+  /** Start time of the Hunt in ms (0 when it has not started); an animation restarts when it changes. */
+  enteredAt: number;
+}
+
+const ms = (iso: string | null): number => (iso === null ? 0 : Date.parse(iso));
+
+/** The visual of a Service's latest Hunt at time `now`, or null when it has none. Pure. */
+export function huntVisual(hunt: ServiceState['hunt'], now: number): HuntVisual | null {
+  if (hunt === null) return null;
+  const view = huntView(hunt);
+  const startedAt = ms(hunt.startedAt);
+  const finishedAt = ms(hunt.finishedAt);
+  const marks = Math.min(MAX_MARKS, hunt.stepCount);
+  const label = huntCellText(view);
+  switch (view.phase) {
+    case 'none':
+      return null;
+    case 'queued':
+      return { phase: 'queued', figure: false, marks: 0, result: 'none', label, enteredAt: 0 };
+    case 'running':
+      return { phase: now - startedAt < ENTER_MS ? 'entering' : 'working', figure: true, marks, result: 'none', label, enteredAt: startedAt };
+    case 'sealed':
+    case 'failed':
+    case 'cancelled': {
+      const figure = startedAt > 0 && now - finishedAt < FIGURE_LINGER_MS;
+      return {
+        phase: view.phase === 'sealed' ? 'sealed' : 'fizzled',
+        figure,
+        marks,
+        result: view.phase === 'sealed' ? 'sealed' : 'failed',
+        label,
+        enteredAt: startedAt,
+      };
+    }
+  }
 }
 
 export interface RoomVisual {
@@ -55,7 +102,7 @@ export interface RoomVisual {
   label: string;
   clock: { hour: number; minute: number };
   seed: number;
-  hunt?: HuntVisual | null;
+  hunt: HuntVisual | null;
   summary: string;
 }
 
@@ -107,11 +154,12 @@ function badgeShort(s: ServiceState): string {
   }
 }
 
-function roomSummary(s: ServiceState, dark: boolean, badge: string): string {
+function roomSummary(s: ServiceState, dark: boolean, badge: string, hunt: HuntVisual | null): string {
   let text = `${s.name}: ${levelLabel(s.hauntLevel)}`;
   if (dark && s.hauntLevel < 4) text += ', dark';
   if (badge !== '') text += `, ${badge}`;
   if (s.openIncident !== null) text += ', incident open';
+  if (hunt !== null) text += `, hunt ${hunt.label}`;
   return text;
 }
 
@@ -174,6 +222,7 @@ export function toSceneModel(services: readonly ServiceState[], now: number, opt
     const counts = allocated[i] as RoomCounts;
     const badge = s.reason === null ? '' : formatReason(s.reason, s.metrics);
     const peak = s.openIncident?.peakLevel ?? null;
+    const hunt = huntVisual(s.hunt, now);
     return {
       name: s.name,
       grid: { x: s.room.x, y: s.room.y },
@@ -199,7 +248,8 @@ export function toSceneModel(services: readonly ServiceState[], now: number, opt
       label: s.name,
       clock,
       seed: hashString(s.name),
-      summary: roomSummary(s, dark, badge),
+      hunt,
+      summary: roomSummary(s, dark, badge, hunt),
     };
   });
 

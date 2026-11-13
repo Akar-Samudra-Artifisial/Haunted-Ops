@@ -175,3 +175,14 @@ body {
     transition: none !important;
   }
 }
+
+/* A small label on text that the model wrote; the border keeps it readable without relying on colour. */
+.ai-label {
+  display: inline-block;
+  margin-left: 0.4em;
+  padding: 0 0.4em;
+  border: 1px solid currentColor;
+  border-radius: 0.3em;
+  font-size: 0.75em;
+  white-space: nowrap;
+}

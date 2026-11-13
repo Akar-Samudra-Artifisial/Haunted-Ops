@@ -1,0 +1,128 @@
+{
+  "steps": [
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "sleep",
+      "ms": 60000
+    }
+  ]
+}

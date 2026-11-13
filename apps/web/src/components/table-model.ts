@@ -1,6 +1,7 @@
 import type { ServiceState } from '@haunted-ops/shared';
 import { LEVEL_TEXT, formatErrorRatio, formatIncident, formatP95, formatReason, formatUp } from '../format.js';
 import { isDark } from '../scene/model.js';
+import { huntCellText, huntView } from './hunt-text.js';
 
 /** What one row of Table mode says, as text. The scene model is checked against it. */
 export interface TableRowText {
@@ -11,6 +12,7 @@ export interface TableRowText {
   p95: string;
   up: string;
   incident: string;
+  hunt: string;
   dark: boolean;
 }
 
@@ -32,6 +34,7 @@ export function tableRowText(s: ServiceState): TableRowText {
     p95: formatP95(s.metrics?.p95Ms ?? null),
     up: formatUp(s.metrics?.up ?? null),
     incident: formatIncident(s.openIncident),
+    hunt: huntCellText(huntView(s.hunt)),
     dark: isDark(s),
   };
 }

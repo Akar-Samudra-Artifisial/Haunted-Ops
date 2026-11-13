@@ -6,7 +6,7 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
-const distDirs = ['packages/shared/dist', 'apps/api/dist', 'apps/web/dist'].map((p) => join(root, p));
+const distDirs = ['packages/shared/dist', 'packages/exorcist-mcp/dist', 'apps/api/dist', 'apps/web/dist'].map((p) => join(root, p));
 
 function walk(dir) {
   let entries;

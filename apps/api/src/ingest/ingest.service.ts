@@ -12,6 +12,7 @@ import {
   type ServiceMetrics,
   type ServiceName,
   type ServiceState,
+  type HuntSummary,
 } from '@haunted-ops/shared';
 import type { JsonLogger } from '../security/logger.js';
 import { nextIncident, type IncidentState } from './incident-policy.js';
@@ -66,6 +67,21 @@ export class IngestService {
   private changedAt: Date;
   private lastSuccessAt: Date | null = null;
   private lastPolledAt: number | null = null;
+  /** Latest Hunt of a Service, set by the hunts module; `null` until then. */
+  private huntLookup: (name: ServiceName) => HuntSummary | null = () => null;
+
+  /** The hunts module registers where `service.updated` reads the latest Hunt summary. */
+  setHuntLookup(lookup: (name: ServiceName) => HuntSummary | null): void {
+    this.huntLookup = lookup;
+  }
+
+  private huntOf(name: ServiceName): HuntSummary | null {
+    try {
+      return this.huntLookup(name);
+    } catch {
+      return null;
+    }
+  }
 
   constructor(deps: IngestServiceDeps) {
     this.store = deps.store;
@@ -272,6 +288,7 @@ export class IngestService {
           ? null
           : { id: open.id, openedAt: rec.openedAt.toISOString(), peakLevel: open.peakLevel },
       updatedAt: rec.updatedAt.toISOString(),
+      hunt: this.huntOf(rec.name),
     };
   }
 

@@ -129,6 +129,7 @@ const stateArb = (name: (typeof SERVICE_NAMES)[number]): fc.Arbitrary<ServiceSta
     metrics: fc.constant(null),
     openIncident: fc.constant(null),
     updatedAt: isoArb,
+    hunt: fc.constant(null),
   });
 const servicesArb = fc
   .subarray([...SERVICE_NAMES])

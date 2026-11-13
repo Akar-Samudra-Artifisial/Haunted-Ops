@@ -20,6 +20,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@haunted-ops/shared': fileURLToPath(new URL('../../packages/shared/src/index.ts', import.meta.url)),
+      '@haunted-ops/exorcist-mcp/schemas': fileURLToPath(new URL('../../packages/exorcist-mcp/src/schemas.ts', import.meta.url)),
+      '@haunted-ops/exorcist-mcp/untrusted': fileURLToPath(new URL('../../packages/exorcist-mcp/src/untrusted.ts', import.meta.url)),
+      '@haunted-ops/exorcist-mcp/ledger': fileURLToPath(new URL('../../packages/exorcist-mcp/src/ledger.ts', import.meta.url)),
     },
   },
   test: {

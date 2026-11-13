@@ -11,6 +11,12 @@ const apiRoot = fileURLToPath(new URL('..', import.meta.url));
  * run starts from an empty, fully migrated database.
  */
 export default async function setup(): Promise<void> {
+  // The Hunt tests start the fake kiro-cli, which starts the built Exorcist MCP server (and that
+  // imports the built shared package). Build both once for the whole run.
+  const tsc = fileURLToPath(new URL('../../../node_modules/.bin/tsc', import.meta.url));
+  for (const pkg of ['shared', 'exorcist-mcp']) {
+    execFileSync(tsc, ['-p', fileURLToPath(new URL(`../../../packages/${pkg}/tsconfig.build.json`, import.meta.url))], { stdio: 'ignore' });
+  }
   const guard = dbGuard();
   if (!guard.run) {
     process.stdout.write(`\n[haunted-ops] ${SKIP_MESSAGE}\n\n`);

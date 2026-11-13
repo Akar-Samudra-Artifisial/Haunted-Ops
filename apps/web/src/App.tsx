@@ -4,6 +4,7 @@ import { Header } from './components/Header.js';
 import { LiveAnnouncer } from './components/LiveAnnouncer.js';
 import { SceneMount, type SceneMountProps } from './components/SceneMount.js';
 import { TableMode } from './components/TableMode.js';
+import { fetchHuntDetail } from './net/api.js';
 import { SseClient, type SseClientOptions } from './net/sse-client.js';
 import type { ConnectionStatus } from './net/status.js';
 import type { Quality } from './scene/governor.js';
@@ -48,11 +49,21 @@ export function App({ client, demo = null, scene = {} }: { client: ClientOptions
   const ingest = demo === null ? live.ingest : null;
 
   const reducedMotion = usePrefersReducedMotion();
-  const now = useNow(60_000);
+  // The wall clock needs a minute; a Hunt that runs or ended lately needs seconds (the walk in and the 8 s the figure stays).
+  const minute = useNow(60_000);
+  const huntBusy = services.some((s) => s.hunt !== null && (s.hunt.finishedAt === null || minute - Date.parse(s.hunt.finishedAt) < 60_000));
+  const second = useNow(huntBusy ? 1000 : 60_000);
+  const now = huntBusy ? second : minute;
   const [quality, setQuality] = useState<Quality>('full');
   const [selected, dispatch] = useReducer(selectionReducer, null);
   const model = useMemo(() => toSceneModel(services, now, { reducedMotion, quality }), [services, now, reducedMotion, quality]);
 
+  // The detail of a finished Hunt (its cited evidence) comes from the API; Demo mode has none.
+  const loadHuntDetail = useMemo(
+    () => (demo === null ? (id: string) => fetchHuntDetail(client.baseUrl, id, client.fetchImpl) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [demo],
+  );
   const select = (name: ServiceName | null): void => dispatch(name === null ? { type: 'clear' } : { type: 'select', name });
   useEffect(() => {
     // Escape clears the selection in the scene and in the table.
@@ -77,7 +88,7 @@ export function App({ client, demo = null, scene = {} }: { client: ClientOptions
           publishStats={demo !== null}
           {...scene}
         />
-        <TableMode services={services} ingest={ingest} selected={selected} onSelect={select} />
+        <TableMode services={services} ingest={ingest} selected={selected} onSelect={select} loadHuntDetail={loadHuntDetail} />
         <LiveAnnouncer services={services} />
       </main>
     </div>

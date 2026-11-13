@@ -116,7 +116,7 @@ describe('toSceneModel', () => {
     expect(r.clock.minute).toBeCloseTo((30 / 60) * Math.PI * 2);
     expect(r.clock.hour).toBeCloseTo(((3 + 0.5) / 12) * Math.PI * 2);
     expect(r.seed).toBe(hashString('payments'));
-    expect('hunt' in r).toBe(false);
+    expect(r.hunt).toBeNull();
   });
 
   it('scales ghosts with the error ratio, from 0 at 0 to the cap at 0.5', () => {

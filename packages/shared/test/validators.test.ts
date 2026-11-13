@@ -19,6 +19,7 @@ const valid = {
   metrics: { errorRate: 0.5, p95Ms: null, up: 1, at: '2026-11-12T10:00:00.000Z' },
   openIncident: { id: 'inc1', openedAt: '2026-11-12T10:00:00.000Z', peakLevel: 3 },
   updatedAt: '2026-11-12T10:00:00.000Z',
+  hunt: null,
 };
 const calm = { ...valid, hauntLevel: 0, reason: null, metrics: null, openIncident: null };
 
@@ -114,7 +115,8 @@ describe('validateSseEvent', () => {
   it('validates known events and rejects unknown names', () => {
     expect(validateSseEvent('resync', { reason: 'ahead' }).ok).toBe(true);
     expect(validateSseEvent('resync', { reason: 'later' }).ok).toBe(false);
-    expect(validateSseEvent('hunt.started', {})).toEqual({ ok: false, errors: ['name'] });
+    expect(validateSseEvent('hunt.paused', {})).toEqual({ ok: false, errors: ['name'] });
+    expect(validateSseEvent('hunt.started', {}).ok).toBe(false);
   });
 });
 

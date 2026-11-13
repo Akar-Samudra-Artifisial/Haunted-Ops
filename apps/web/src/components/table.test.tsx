@@ -48,7 +48,7 @@ describe('TableMode', () => {
     });
     render(<TableMode services={[payments]} />);
     const cells = within(rowOf('payments')).getAllByRole('cell').map((c) => c.textContent);
-    expect(cells).toEqual(['◑ 2 (haunted)', 'error rate 22%', '22%', '640 ms', 'up', 'opened 14:02:05 UTC, peak 2 (haunted)']);
+    expect(cells).toEqual(['◑ 2 (haunted)', 'error rate 22%', '22%', '640 ms', 'up', 'opened 14:02:05 UTC, peak 2 (haunted)', 'none']);
   });
 
   it('shows the live value of the cause, not only the value stored at the last level change', () => {
@@ -67,7 +67,7 @@ describe('TableMode', () => {
   it('writes "no data" for null metrics and "none" without reason or incident', () => {
     render(<TableMode services={[svc({ name: 'gate', metrics: { errorRate: null, p95Ms: 120, up: null, at: '2026-11-13T14:00:00.000Z' } })]} />);
     const cells = within(rowOf('gate')).getAllByRole('cell').map((c) => c.textContent);
-    expect(cells).toEqual(['○ 0 (calm)', 'none', 'no data', '120 ms', 'no data', 'none']);
+    expect(cells).toEqual(['○ 0 (calm)', 'none', 'no data', '120 ms', 'no data', 'none', 'none']);
     cleanup();
     render(<TableMode services={[svc({ name: 'gate', metrics: null })]} />);
     const none = within(rowOf('gate')).getAllByRole('cell').map((c) => c.textContent);
@@ -94,6 +94,7 @@ describe('TableMode', () => {
       'p95',
       'Up',
       'Incident',
+      'Hunt',
     ]);
     expect(screen.getByRole('table').querySelector('caption')).not.toBeNull();
     expect(screen.getByRole('group', { name: /scrollable/ }).getAttribute('tabindex')).toBe('0');

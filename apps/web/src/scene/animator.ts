@@ -1,7 +1,7 @@
 import type { ServiceName } from '@haunted-ops/shared';
 import type { Pt, RoomLayout, SceneLayout } from './layout.js';
 import { approach } from './math.js';
-import { corridorLight, type RoomVisual, type SceneModel } from './model.js';
+import { ENTER_MS, corridorLight, type HuntVisual, type RoomVisual, type SceneModel } from './model.js';
 import {
   FOG_BANK_MAX,
   FOG_WISP_MAX,
@@ -18,7 +18,44 @@ import {
 } from './particles.js';
 import { unit } from './rng.js';
 import { CORRIDOR_STYLE } from './shapes.js';
-import type { Frame, ParticleBuffer, RoomFrame } from './surface.js';
+import { emptyHuntFrame, type Frame, type ParticleBuffer, type RoomFrame } from './surface.js';
+
+/** The seal closes in 0.8 s, the lantern fades out in 0.6 s, the sparks fall for 0.9 s. */
+export const SEAL_MS = 800;
+export const FIZZLE_MS = 600;
+export const SPARK_MS = 900;
+/** One lantern pulse per step lasts this long, and pulses are at least this far apart: at most 3 flashes per second. */
+export const PULSE_MS = 400;
+export const PULSE_GAP_MS = 350;
+
+/** What the Animator remembers of one room's Hunt between frames. */
+interface HuntState {
+  initialized: boolean;
+  key: number;
+  phase: HuntVisual['phase'] | null;
+  walkStart: number;
+  lastMarks: number;
+  pulseStart: number;
+  lastPulse: number;
+  /** Start of the seal or the fizzle: null not started, -Infinity already done when first seen. */
+  sealStart: number | null;
+  fizzleStart: number | null;
+}
+
+const newHuntState = (): HuntState => ({
+  initialized: false,
+  key: Number.NaN,
+  phase: null,
+  walkStart: 0,
+  lastMarks: 0,
+  pulseStart: Number.NEGATIVE_INFINITY,
+  lastPulse: Number.NEGATIVE_INFINITY,
+  sealStart: null,
+  fizzleStart: null,
+});
+
+const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
+const progress = (start: number | null, timeMs: number, durationMs: number): number => (start === null ? 0 : clamp01((timeMs - start) / durationMs));
 
 /** Rooms the buffers are sized for (a 3 by 3 house). */
 export const MAX_ROOMS = 9;
@@ -49,6 +86,7 @@ function buffer(capacity: number): ParticleBuffer {
 
 interface RoomState {
   frame: RoomFrame;
+  hunt: HuntState;
   ghostA: Float32Array;
   fogA: Float32Array;
   bankA: Float32Array;
@@ -127,7 +165,9 @@ export function createAnimator(): Animator {
           clock: v.clock,
           incident: v.incident.open,
           dark: v.dark,
+          hunt: emptyHuntFrame(),
         },
+        hunt: newHuntState(),
         ghostA: new Float32Array(GHOST_MAX),
         fogA: new Float32Array(FOG_WISP_MAX),
         bankA: new Float32Array(FOG_BANK_MAX),
@@ -165,6 +205,81 @@ export function createAnimator(): Animator {
 
   const scratch: Pt = { x: 0, y: 0 };
   const flag = { moving: false };
+
+  /**
+   * Moves the Hunt numbers of one room. A step raises the mark count, which starts one lantern pulse
+   * (at most one per 350 ms). The seal and the fizzle start when the phase turns to them, unless the
+   * Hunt was already over when first seen: then they are drawn done. Reduced motion shows final states.
+   */
+  function stepHunt(st: RoomState, h: HuntVisual | null, timeMs: number, dt: number, reduced: boolean): void {
+    const s = st.hunt;
+    const f = st.frame.hunt;
+    const first = !s.initialized;
+    s.initialized = true;
+    if (h === null) {
+      s.key = Number.NaN;
+      s.phase = null;
+      s.lastMarks = 0;
+      f.figure = approach(f.figure, 0, dt, 120);
+      if (f.figure > EPS) flag.moving = true;
+      else f.figure = 0;
+      f.walk = 0;
+      f.lantern = 0;
+      f.marks = 0;
+      f.seal = 0;
+      f.fizzle = 0;
+      f.sparks = 0;
+      f.result = 'none';
+      return;
+    }
+    if (h.enteredAt !== s.key) {
+      s.key = h.enteredAt;
+      s.phase = null;
+      s.walkStart = timeMs;
+      s.lastMarks = first ? h.marks : 0;
+      s.pulseStart = Number.NEGATIVE_INFINITY;
+      s.sealStart = null;
+      s.fizzleStart = null;
+    }
+    if (h.phase !== s.phase) {
+      const seen = s.phase === null && first;
+      if (h.phase === 'sealed') s.sealStart = seen ? Number.NEGATIVE_INFINITY : timeMs;
+      if (h.phase === 'fizzled') s.fizzleStart = seen ? Number.NEGATIVE_INFINITY : timeMs;
+      s.phase = h.phase;
+    }
+    if (h.marks > s.lastMarks && !reduced && timeMs - s.lastPulse >= PULSE_GAP_MS) {
+      s.pulseStart = timeMs;
+      s.lastPulse = timeMs;
+    }
+    s.lastMarks = h.marks;
+
+    const over = h.phase === 'sealed' || h.phase === 'fizzled';
+    const walk = reduced || over ? 1 : progress(s.walkStart, timeMs, ENTER_MS);
+    f.walk = walk * walk * (3 - 2 * walk);
+    const target = h.figure ? 1 : 0;
+    f.figure = reduced ? target : approach(f.figure, target, dt, 120);
+    const seal = reduced ? (h.phase === 'sealed' ? 1 : 0) : progress(s.sealStart, timeMs, SEAL_MS);
+    const fizzle = reduced ? (h.phase === 'fizzled' ? 1 : 0) : progress(s.fizzleStart, timeMs, FIZZLE_MS);
+    const sparks = reduced || s.fizzleStart === null ? 0 : progress(s.fizzleStart, timeMs, SPARK_MS);
+    f.seal = seal;
+    f.fizzle = fizzle;
+    // 1 while the sparks have not run out; a finished (or reduced) fizzle shows none.
+    f.sparks = sparks >= 1 || (s.fizzleStart !== null && sparks === 0) ? 0 : sparks;
+    const pulse = reduced ? 0 : clamp01(1 - (timeMs - s.pulseStart) / PULSE_MS);
+    f.lantern = (1 - fizzle) * (0.6 + 0.4 * pulse);
+    f.marks = h.marks;
+    f.result = h.result;
+
+    if (
+      (!reduced && walk < 1) ||
+      pulse > 0 ||
+      Math.abs(f.figure - target) > EPS ||
+      (s.sealStart !== null && seal < 1 && !reduced) ||
+      (s.fizzleStart !== null && sparks < 1 && !reduced)
+    ) {
+      flag.moving = true;
+    }
+  }
 
   /** Writes the position of a wisp on the floor of a room, with its drift, into `scratch`. */
   function place(spec: WispSpec, room: RoomLayout, timeMs: number, motion: number): void {
@@ -294,6 +409,8 @@ export function createAnimator(): Animator {
         f.shakeY = tremble > 0 ? tremble * (valueNoise(v.seed, timeMs / 80, 22) * 2 - 1) : 0;
         f.lampBreath = reduced ? 0.5 : 0.5 + 0.5 * Math.sin((timeMs / 1000) * Math.PI * 0.4 + v.seed);
         if (!reduced) flag.moving = true; // idle motion: lamp, motes, wisps, pulses
+
+        stepHunt(st, v.hunt, timeMs, dt, reduced);
 
         const hide = v.dark ? 0 : 1;
         // Ghost feet stay above the highest text pill, so ghosts never cover the nameplate or the badges.

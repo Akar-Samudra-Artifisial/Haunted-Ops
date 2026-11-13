@@ -138,7 +138,7 @@ Out of scope: opening pull requests, `propose_fix` and human approval (`fix-prop
 1. THE Hunt runner SHALL start `kiro-cli` with `execFile` and an argument array, never through a shell: `chat --no-interactive --trust-workspace --require-mcp-startup --agent exorcist --model <EXORCIST_MODEL> --output-format stream-json --trust-tools=<the six @exorcist/<tool> names, comma-separated>` followed by one prompt built from a fixed template with only the Incident id, the Service name, the Haunt level, the reason kind and the opening time.
 2. THE executable SHALL be `KIRO_CLI_PATH` (default `kiro-cli`), resolved once at start to an absolute path; `EXORCIST_MODEL` SHALL be a pinned model name (default `claude-sonnet-5.5`) and SHALL NOT be `auto`.
 3. THE environment of the Hunt process SHALL contain only `PATH` (the Exorcist MCP launcher, Node and `kiro-cli` folders and the system folders), `HOME`, `LANG`, `TERM=dumb`, `NO_COLOR=1`, `LAB_URL`, `LAB_READ_TOKEN`, `LAB_ALLOW_REMOTE`, `PROMETHEUS_URL`, `PROMETHEUS_ALLOW_REMOTE`, `HUNT_ID` and `HUNT_LEDGER_PATH`, and SHALL NOT contain `DATABASE_URL`, `HUNT_ADMIN_TOKEN`, `CHAOS_TOKEN` or any GitHub token.
-4. THE Hunt process SHALL run in its own process group; WHEN the wall-clock time of a Hunt reaches `HUNT_TIMEOUT_MS` (default 60 000), THE Hunt runner SHALL send SIGTERM to the group, SIGKILL after 2 s, and record the Hunt as `failed` with the reason `timeout`.
+4. THE Hunt process SHALL run in its own process group; WHEN the wall-clock time of a Hunt reaches `HUNT_TIMEOUT_MS` (default 90 000; a recorded hunt took 59 s), THE Hunt runner SHALL send SIGTERM to the group, SIGKILL after 2 s, and record the Hunt as `failed` with the reason `timeout`.
 5. WHEN the API shuts down, THE Hunt runner SHALL stop a running Hunt the same way and record it as `cancelled` with the reason `shutdown`; WHEN the API starts, THE Hunt runner SHALL record every Hunt left `queued` or `running` as `failed` with the reason `api_restart`.
 6. WHEN `kiro-cli` exits with code 3, THE Hunt runner SHALL record the Hunt as `failed` with the reason `mcp_startup`; any other non-zero exit without a Valid diagnosis SHALL be `failed` with the reason `cli_error`.
 7. THE Hunt runner SHALL limit the output it reads from the Hunt process to 8 MiB and SHALL stop the Hunt with the reason `stream_error` beyond it.
@@ -167,7 +167,7 @@ Out of scope: opening pull requests, `propose_fix` and human approval (`fix-prop
 2. BEFORE a Hunt starts, THE Hunt runner SHALL compute the Credits used by the Hunts of the current UTC day from the database, and WHEN that total plus the Per-hunt cap is above the Daily cap (`HUNT_DAILY_CREDIT_CAP`, default 30) SHALL record the Hunt as `cancelled` with the reason `daily_cap`.
 3. WHILE a Hunt runs, THE Hunt runner SHALL stop it with the reason `daily_cap` as soon as the day's total reaches the Daily cap.
 4. WHEN the stream shows a `tool_call` whose tool is not one of the six `@exorcist/<tool>` names and is not the built-in `Tool Load` loading only those names, THE Hunt runner SHALL stop the Hunt and record it as `failed` with the reason `foreign_tool`, and SHALL NOT publish or store a diagnosis from it.
-5. WHEN a Hunt has more than `HUNT_MAX_TOOL_CALLS` (default 12) tool calls, THE Hunt runner SHALL stop it with the reason `tool_limit`.
+5. WHEN a Hunt has more than `HUNT_MAX_TOOL_CALLS` (default 20; a recorded hunt made 12: six `Tool Load` calls and six tool calls, and the most the MCP server allows is 6 loads, 12 read calls and 1 diagnosis) tool calls, THE Hunt runner SHALL stop it with the reason `tool_limit`.
 6. THE cost of a Hunt SHALL never exceed the Per-hunt cap by more than the Credits of one report of the stream.
 
 ### Requirement 11: Diagnosis validation
@@ -251,3 +251,95 @@ Out of scope: opening pull requests, `propose_fix` and human approval (`fix-prop
 2. `.env.example` SHALL list every new variable with a placeholder and no real value.
 3. `docs/DEV.md` SHALL describe the hunt settings, the Kill switch, the fake and live modes, the opt-in live test, the allow-list probe and the G2 run, and SHALL say that a live run spends Credits.
 4. WHEN `exorcist-agent` is finished, `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build` and `pnpm check:build` SHALL pass at the root with no Lab, no `kiro-cli` and no Credits.
+
+### Requirement 18: Cascading Incidents and downstream causes
+
+**User Story:** As the operator of the demo, I want one fault to get one Hunt, on the Service where the fault is, so that the credits go to the cause and not to its symptoms. The first live G2 run (13 Nov 2026, 9 hunts, 2.88 Credits) failed because the lab is one call chain (`gate` calls `orders`, `orders` calls `payments`, `payments` calls `ledger`): a broken Service makes every caller upstream fail too, 2 or 3 Incidents opened within seconds, the first one to open took the running slot, and the real root was cancelled as `busy`.
+
+#### Acceptance Criteria
+
+1. THE Shared package SHALL define `SERVICE_DEPENDENCIES` (`gate` to `orders`, `orders` to `payments`, `payments` to `ledger`) and a pure `downstreamOf(service)`, and these SHALL be the only place the chain is written.
+2. WHEN an Incident opens at level 2 or higher, THE Hunt runner SHALL wait `HUNT_SETTLE_MS` (default 10 000, from 0 to 60 000) before it chooses; WHEN the wait ends, it SHALL request one `auto` Hunt for the most downstream Service among the Open Incidents, and SHALL link the other Open Incidents to that Hunt, which means they get no Hunt of their own.
+3. WHEN an Incident closes during the wait, THE Hunt runner SHALL request nothing for it.
+4. IF a Hunt is running for a Service and an Incident at level 2 or higher opens downstream of it, THEN THE Hunt runner SHALL queue a Hunt for the downstream Service, and SHALL withdraw a queued `auto` Hunt of a Service upstream of it, recording that Hunt as `cancelled` with the reason `downstream`; the downstream request SHALL NOT be cancelled as `busy` because of the withdrawn one.
+5. THE operator request `POST /api/hunts` SHALL behave as before: it hunts the Service or Incident it names, whatever is open downstream.
+6. THE runner SHALL log one line for each Incident it links, with the Incident ids and Services only.
+
+### Requirement 19: Causes in a Service downstream of the hunted one
+
+**User Story:** As a viewer, I want a Hunt on `gate` to be allowed to say "the culprit is the deploy of `orders`", because that is true, and to see in the table and the scene that the cause is elsewhere.
+
+#### Acceptance Criteria
+
+1. A culprit deploy SHALL be valid when its Service is the hunted Service or any Service downstream of it; a deploy of any other Service SHALL fail the check `deploy_service`.
+2. THE API SHALL store and publish the Service of the culprit deploy as `culpritService` with every Valid diagnosis (the `hunt.diagnosis` payload, the Hunt summary, `GET /api/hunts/:id` and the Hunt row), and a success without it SHALL be refused by the database.
+3. THE hunt prompt SHALL state the call chain and that the cause may be a recent deploy of the hunted Service or of a Service it depends on, using only the fixed chain and the checked Service name.
+4. WHEN the culprit Service differs from the hunted Service, THE Table mode, the Scene label and the announcement SHALL say "caused by <service>".
+
+### Requirement 20: What happened in a failed live Hunt
+
+**User Story:** As a developer, I want to see why a live Hunt stopped and to turn its stream into a fixture, because the first live run showed `foreign_tool` twice and the refused call was never recorded.
+
+#### Acceptance Criteria
+
+1. WHEN the allow-list refuses a tool call, THE runner SHALL record the title (control characters removed, at most 80 characters) and, for a `Tool Load`, its raw ids (at most five, 60 characters each), in one log line and in the nullable Hunt column `stopDetail` (at most 200 characters), shown by `GET /api/hunts/:id`; it SHALL record nothing else of the call.
+2. THE runner SHALL keep the reduced stream of each live Hunt in `HUNT_WORKDIR/<huntId>.stream.jsonl` (mode 0600, the last 20 files): tool calls with title and input, updates without their output, Credits and run ends, with no model text, no tool output and no secret.
+3. THE allow-list SHALL accept exactly the six `@exorcist/<tool>` calls and a `Tool Load` that names only those tools in every shape `kiro-cli` 3.3.0 is known to send (a string under `id` or `tool_id`, a list under `tool_ids`, `ids`, `tools` or `toolIds`; each as `tool::exorcist::<tool>`, `@exorcist/<tool>` or the bare name), and SHALL NOT judge a call again when its id comes back in a repeated `tool_call` or an update that names the same tool (Requirement 25.1 decides what a different tool means); anything else SHALL stay refused.
+
+### Requirement 21: Gate G2 for a cascade
+
+**User Story:** As the team, I want the gate to fail when a fault gets more than one Hunt or the wrong one.
+
+#### Acceptance Criteria
+
+1. THE G2 script SHALL wait, for each scenario, for the Hunt of the scenario's root Service (`payments`, `orders`, `ledger`), SHALL assert `succeeded`, the planted SHA and `culpritService` equal to the root Service, and SHALL report how many Hunts of other Services were queued during the scenario, which SHALL be 0.
+2. BETWEEN scenarios THE G2 script SHALL wait, for at most 120 s, until every Incident is closed.
+
+### Requirement 22: The `Tool Call` wrapper
+
+**User Story:** As the Haunted Ops team, I want a hunt that kiro-cli 3.3.0 runs through its generic tool wrapper to count as the six tools it really called, because the second live G2 run (13 Nov 2026) stopped two of three Hunts with `foreign_tool` (stop detail `Tool Call`) for a call to `tool::exorcist::diff_commit` and `tool::exorcist::tail_logs`.
+
+#### Acceptance Criteria
+
+1. THE allow-list SHALL accept a `tool_call` whose title is exactly `Tool Call` only when its `rawInput` has exactly the keys `tool_id` and `arguments`, `tool_id` is `tool::exorcist::<tool>` for one of the six tools, and `arguments` is an object; it SHALL then treat the call as a step of that tool whose input is `arguments`.
+2. ANY other `tool_id` (another server, a built-in tool, a malformed id), any extra or missing key, and arguments that are not an object SHALL be refused as `foreign_tool`, and the `stopDetail` SHALL name the refused `tool_id` (cleaned, at most 80 characters in all).
+3. A `tool_call_update` SHALL never be judged as a call, and a repeated `tool_call` for an accepted `toolCallId` SHALL NOT be judged or counted again, whatever its title (including none, `null` or `Tool Call`).
+4. THE diagnosis SHALL be read from the `arguments` of a wrapped `submit_diagnosis` exactly as from a direct call.
+
+### Requirement 23: A late Incident after its cause is known
+
+**User Story:** As the operator of the demo, I want no second Hunt on a Service that an upstream Hunt has just named as the cause, because the second live G2 run paid 0.89 Credits for the right answer and then ran a `ledger` Hunt anyway: `ledger` opens its Incident about 25 s after the break, later than the settle window.
+
+#### Acceptance Criteria
+
+1. WHEN a Hunt on Service A succeeds with `culpritService` S other than A, THE Hunt runner SHALL cancel a queued (not running) `auto` Hunt of S whose Incident opened after A's Incident, with the reason `diagnosed_upstream`, and SHALL link it to A's Hunt.
+2. WHEN an Incident of S opened after A's Incident and no later than `HUNT_SETTLE_MS` after that diagnosis, THE Hunt runner SHALL record its automatic request as `cancelled` with the reason `diagnosed_upstream` and the same link, and SHALL start no Hunt for it; a later Incident of S SHALL get a Hunt as usual.
+3. THE Hunt summary SHALL carry `diagnosedBy` (the Service of the Hunt that diagnosed it), non-null exactly when the reason is `diagnosed_upstream`; `hunt.finished` SHALL carry the same field; `GET /api/hunts/:id` SHALL carry `linkedHuntId`; THE database SHALL refuse a row where the two do not match the reason.
+4. THE Table mode, the Scene label and the announcement SHALL say "diagnosed by the <service> hunt" for such a Hunt, from the same helper.
+5. WHILE an upstream `auto` Hunt runs and a downstream Incident opens, THE Hunt runner SHALL keep the downstream Hunt queued as before (Requirement 18.4); Requirement 23.1 decides what happens when the upstream Hunt ends. Operator requests SHALL stay as they are.
+
+### Requirement 24: Gate G2 by outcome
+
+**User Story:** As the team, I want G2 to pass when the cause was found once and nothing failed, whichever Service of the cascade found it.
+
+#### Acceptance Criteria
+
+1. A scenario of the G2 script SHALL PASS when, during the scenario, exactly one Hunt succeeded with the scenario's planted SHA and `culpritService` equal to the scenario's root Service (`payments`, `orders`, `ledger`), whichever Service it hunted, and no Hunt failed.
+2. THE script SHALL report the hunted Service, the Service of the culprit, the other Hunts that started (each as `service:reason`), the Credits of all Hunts and the duration of the successful one, SHALL wait until no Hunt has changed for 25 s before it judges, and SHALL NOT call a scenario passed while a Hunt is still running at the 180 s limit.
+
+### Requirement 25: Review fixes (code and security review of 13 Nov 2026)
+
+**User Story:** As the owner of the demo, I want the holes found in review closed, because a repeated call id let a foreign tool pass the allow-list, a Hunt could be charged nothing for a real cost, and model text and leftover processes were trusted too far.
+
+#### Acceptance Criteria
+
+1. THE Hunt runner SHALL remember, for each accepted tool call id, the tool it was accepted for. A later `tool_call` or `tool_call_update` with that id SHALL be skipped only when its title is `null` or empty or names the same tool (`@exorcist/<tool>`, `Tool Load` for the same load, `Tool Call` for a wrapper of the same tool) and its `rawInput`, when present, names the same tool. Anything else SHALL be judged again, and a different tool SHALL end the Hunt as `foreign_tool`. The kiro-cli 3.3.0 sequences (call, update with `title: null`, update with the same title) SHALL still pass.
+2. THE Hunt runner SHALL read the diagnosis from the latest complete `rawInput` of any update of the `submit_diagnosis` call, not only from the first `tool_call`.
+3. WHEN a Hunt that started ends without any Credits report, THE runner SHALL record `HUNT_CREDIT_CAP` as its Credits, SHALL set `creditsEstimated`, shown by `GET /api/hunts/:id`, and SHALL count it in the day's budget. A Hunt whose process never started SHALL record 0.
+4. THE setting `HUNT_DAILY_MAX` (default 40, 1 to 500) SHALL limit the Hunts that may start per UTC day, automatic and operator together. A request beyond it, and a queued Hunt that would start beyond it, SHALL be recorded `cancelled` with the reason `daily_limit`.
+5. WHEN a Hunt process starts, THE runner SHALL write `<workdir>/<huntId>.pid` with the pid and process group, and SHALL delete it when the process ends. At start, before stale Hunts are marked, THE runner SHALL kill (SIGTERM, SIGKILL after 2 s) the process group of every note whose process still runs a `kiro-cli` command line, and delete the notes. It SHALL NOT kill a process whose command line is not `kiro-cli`, whose group differs from the note, or whose note cannot be read.
+6. WHEN a valid diagnosis was received before a `credit_cap` or `tool_limit` stop, THE runner SHALL validate it and, if it passes, end the Hunt `succeeded` / `diagnosed` with the stop in `stopDetail`.
+7. IF the store throws when a Hunt ends, THE runner SHALL try once more; if that fails too it SHALL still publish `hunt.finished`, drop the Hunt from memory and log the error code only. A diagnosis that was not stored SHALL NOT be published.
+8. THE summary and the fix hint SHALL have control characters, direction overrides, zero-width characters, URLs, markdown links and HTML tags removed and whitespace collapsed, and SHALL be cut to 400 and 300 characters. Web SHALL show both as plain text with an "AI generated" label.
+9. WITH `NODE_ENV=production` and Hunts on, THE settings SHALL require `HUNT_WORKDIR`, and an existing folder SHALL be owned by the current user with mode 0700. The temp-dir default SHALL apply only outside production.
+10. THE recorded live fixtures SHALL hold no `agent_message_chunk` line, and `tools/sanitize-replay` SHALL drop agent messages unless `--keep-messages` is given.

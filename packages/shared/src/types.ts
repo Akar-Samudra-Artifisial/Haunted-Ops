@@ -1,3 +1,5 @@
+import type { HuntSummary } from './hunts.js';
+
 /** The four lab services, in fixed room order. */
 export const SERVICE_NAMES = ['gate', 'orders', 'payments', 'ledger'] as const;
 export type ServiceName = (typeof SERVICE_NAMES)[number];
@@ -52,6 +54,8 @@ export interface ServiceState {
   openIncident: OpenIncident | null;
   /** ISO 8601 timestamp in UTC. */
   updatedAt: string;
+  /** The latest Hunt of the Service, or `null` when it never had one. */
+  hunt: HuntSummary | null;
 }
 
 /** Ingest status as sent on the wire. */

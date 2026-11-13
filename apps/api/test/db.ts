@@ -18,6 +18,6 @@ export function testPrisma(): PrismaClient {
 /** Empties every table, keeping the schema. */
 export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "Proposal", "Evidence", "Hunt", "Incident", "Signal", "Service" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "Proposal", "Evidence", "HuntStep", "Hunt", "Incident", "Signal", "Service" RESTART IDENTITY CASCADE',
   );
 }

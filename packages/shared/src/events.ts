@@ -18,6 +18,7 @@ import {
   makeValidator,
   type Check,
 } from './validators.js';
+import { HUNT_EVENT_NAMES, huntPayloadChecks, type HuntEventPayloads } from './hunts.js';
 
 /** Domain events carry an id and are kept in the ring buffer for resume. */
 export interface DomainEventPayloads {
@@ -36,6 +37,12 @@ export interface DomainEventPayloads {
   /** One event per successful poll, with the Sample of every Service. */
   'ingest.polled': { at: string; samples: Array<Sample & { service: ServiceName }> };
   'ingest.status': IngestStatus;
+  'hunt.queued': HuntEventPayloads['hunt.queued'];
+  'hunt.started': HuntEventPayloads['hunt.started'];
+  'hunt.step': HuntEventPayloads['hunt.step'];
+  'hunt.evidence': HuntEventPayloads['hunt.evidence'];
+  'hunt.diagnosis': HuntEventPayloads['hunt.diagnosis'];
+  'hunt.finished': HuntEventPayloads['hunt.finished'];
 }
 
 /**
@@ -68,6 +75,7 @@ export const DOMAIN_EVENT_NAMES = [
   'incident.closed',
   'ingest.polled',
   'ingest.status',
+  ...HUNT_EVENT_NAMES,
 ] as const satisfies readonly DomainEventName[];
 export const CONTROL_EVENT_NAMES = ['connected', 'heartbeat', 'resync'] as const satisfies readonly ControlEventName[];
 export const SSE_EVENT_NAMES: readonly SseEventName[] = [...DOMAIN_EVENT_NAMES, ...CONTROL_EVENT_NAMES];
@@ -134,6 +142,7 @@ const payloadChecks: { [K in SseEventName]: Check } = {
     samples: checkArrayOf(checkObject({ service: checkServiceName, ...checkSampleShape })),
   }),
   'ingest.status': checkIngestStatus,
+  ...huntPayloadChecks,
   connected: checkObject({ bootId: checkBootId }),
   heartbeat: checkObject({ at: checkIsoTimestamp }),
   resync: checkObject({ reason: checkOneOf(RESYNC_REASONS) }),

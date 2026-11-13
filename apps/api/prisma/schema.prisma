@@ -26,6 +26,34 @@ enum HuntStatus {
   failed
   cancelled
 }
+/// What asked for a Hunt: an opened Incident, or an operator.
+enum HuntTrigger {
+  auto
+  operator
+}
+/// Why a Hunt ended. `diagnosed` is the only reason of a succeeded Hunt (CHECK "hunt_success_is_diagnosed").
+enum HuntEndReason {
+  diagnosed
+  invalid_diagnosis
+  no_diagnosis
+  foreign_tool
+  credit_cap
+  daily_cap
+  tool_limit
+  timeout
+  mcp_startup
+  cli_error
+  stream_error
+  busy
+  cooldown
+  disabled
+  incident_closed
+  shutdown
+  api_restart
+  downstream
+  diagnosed_upstream
+  daily_limit
+}
 
 enum EvidenceKind {
   metric
@@ -63,6 +91,7 @@ model Service {
   updatedAt   DateTime         @updatedAt
   signals     Signal[]
   incidents   Incident[]
+  hunts       Hunt[]
 }
 
 model Signal {
@@ -91,19 +120,63 @@ model Incident {
   @@index([serviceId, openedAt(sort: Desc)])
 }
 
+/// One Exorcist investigation. CHECKs added by hand in the add_hunt_runner migration:
+/// "hunt_success_is_diagnosed" (a succeeded Hunt has the reason `diagnosed` and a full diagnosis, and only
+/// then), "hunt_culprit_sha_format" (40 lowercase hex) and "hunt_credits_not_negative".
 model Hunt {
-  id         String     @id @default(cuid())
-  incidentId String
-  status     HuntStatus @default(queued)
-  credits    Float      @default(0)
-  startedAt  DateTime?
-  finishedAt DateTime?
-  createdAt  DateTime   @default(now())
-  incident   Incident   @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  evidence   Evidence[]
-  proposals  Proposal[]
+  id            String         @id @default(cuid())
+  incidentId    String
+  /// The Service of the Incident, kept here for "latest hunt per service".
+  serviceId     String
+  status        HuntStatus     @default(queued)
+  trigger       HuntTrigger
+  endReason     HuntEndReason?
+  /// The name of the failed diagnosis check (reason `invalid_diagnosis`).
+  invalidCheck  String?
+  model         String
+  credits       Float          @default(0)
+  /// True when `credits` is the per-hunt cap, counted because the Hunt ended before Kiro reported its Credits.
+  creditsEstimated Boolean     @default(false)
+  toolCalls     Int            @default(0)
+  /// The diagnosis, only for a succeeded Hunt. The SHA is the full 40 characters of the Deploy record.
+  culpritDeploy String?
+  culpritSha    String?
+  /// The Service the culprit deploy belongs to: the hunted Service or one it depends on.
+  culpritService String?
+  summary       String?
+  fixHint       String?
+  /// What stopped the Hunt, in a few words (the refused tool title for `foreign_tool`). Max 200 characters.
+  stopDetail    String?
+  /// The Service of the Hunt that diagnosed this one's cause (reason `diagnosed_upstream`).
+  diagnosedBy   String?
+  /// The id of that Hunt.
+  linkedHuntId  String?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  durationMs    Int?
+  createdAt     DateTime       @default(now())
+  incident      Incident       @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  service       Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  steps         HuntStep[]
+  evidence      Evidence[]
+  proposals     Proposal[]
 
   @@index([incidentId])
+  @@index([serviceId, createdAt(sort: Desc)], map: "hunt_latest_per_service")
+  @@index([startedAt], map: "hunt_started_at")
+}
+
+/// One tool call of a Hunt, in order. `summary` is built by the API from validated arguments.
+model HuntStep {
+  id      String   @id @default(cuid())
+  huntId  String
+  index   Int
+  tool    String
+  summary String
+  at      DateTime
+  hunt    Hunt     @relation(fields: [huntId], references: [id], onDelete: Cascade)
+
+  @@unique([huntId, index])
 }
 
 model Evidence {
@@ -111,8 +184,11 @@ model Evidence {
   huntId String
   order  Int
   kind   EvidenceKind
+  /// The Evidence handle issued by the MCP server (`deploy:d-7`), at most 80 characters.
   ref    String
   detail String
+  /// True when the valid diagnosis cites it.
+  cited  Boolean      @default(false)
   hunt   Hunt         @relation(fields: [huntId], references: [id], onDelete: Cascade)
 
   @@unique([huntId, order])

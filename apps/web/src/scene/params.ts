@@ -1,4 +1,14 @@
-export const DEMO_SCENARIOS = ['calm', 'payments-haunted', 'payments-possessed', 'orders-fog', 'ledger-dark', 'all-haunted'] as const;
+export const DEMO_SCENARIOS = [
+  'calm',
+  'payments-haunted',
+  'payments-possessed',
+  'orders-fog',
+  'ledger-dark',
+  'all-haunted',
+  'payments-hunting',
+  'payments-sealed',
+  'payments-fizzled',
+] as const;
 export type DemoScenarioName = (typeof DEMO_SCENARIOS)[number];
 
 export type DemoMode = { kind: 'timeline'; loop: boolean } | { kind: 'scenario'; name: DemoScenarioName } | null;

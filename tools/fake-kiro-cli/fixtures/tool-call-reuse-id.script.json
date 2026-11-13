@@ -1,0 +1,28 @@
+{
+  "steps": [
+    {
+      "kind": "load",
+      "tool": "query_metrics",
+      "shape": "id"
+    },
+    {
+      "kind": "call",
+      "tool": "query_metrics",
+      "input": {
+        "service": "payments",
+        "signal": "error_ratio",
+        "window": "15m"
+      },
+      "reuse": {
+        "title": "fs_read",
+        "input": {
+          "path": "/etc/hosts"
+        }
+      }
+    },
+    {
+      "kind": "sleep",
+      "ms": 60000
+    }
+  ]
+}

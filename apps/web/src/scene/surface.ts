@@ -22,8 +22,32 @@ export interface ParticleBuffer {
   readonly rotation: Float32Array;
 }
 
+/** The Exorcist and the Hunt slot of one room, as numbers the surface only has to draw. */
+export interface HuntFrame {
+  /** Alpha of the figure, the lantern and the seal: 0 when no figure is shown. */
+  figure: number;
+  /** 0 at the door, 1 at the place of the figure. */
+  walk: number;
+  /** Lantern brightness, 0 to 1. */
+  lantern: number;
+  /** Lit marks in the Hunt slot, 0 to 8. */
+  marks: number;
+  /** The seal ring on the floor: 0 not drawn, up to 1 closed. */
+  seal: number;
+  /** The fizzle: 0 not started, up to 1 done (the lantern is out). */
+  fizzle: number;
+  /** The falling sparks of a fizzle: 0 not shown, up to 1 gone. */
+  sparks: number;
+  result: 'none' | 'sealed' | 'failed';
+}
+
+export function emptyHuntFrame(): HuntFrame {
+  return { figure: 0, walk: 0, lantern: 0, marks: 0, seal: 0, fizzle: 0, sparks: 0, result: 'none' };
+}
+
 export interface RoomFrame {
   name: ServiceName;
+  hunt: HuntFrame;
   /** Displayed light, 0 to 1. */
   light: number;
   coolness: number;

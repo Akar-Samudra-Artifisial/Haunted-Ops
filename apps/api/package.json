@@ -10,12 +10,14 @@
     "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "start": "node --env-file-if-exists=.env dist/main.js",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "prisma db seed"
   },
   "dependencies": {
+    "@haunted-ops/exorcist-mcp": "workspace:*",
     "@haunted-ops/shared": "workspace:*",
     "@nestjs/common": "12.5.0",
     "@nestjs/core": "12.5.0",

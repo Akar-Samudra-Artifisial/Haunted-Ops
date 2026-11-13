@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { FULL, house, scene } from '../test/scene-fakes.js';
+import { FULL, NOW, house, scene } from '../test/scene-fakes.js';
+import { huntOf } from '../test/hunt-arbs.js';
 import { createAnimator } from './animator.js';
 import { SceneInitError } from './surface.js';
 import type * as TexturesModule from './textures.js';
@@ -13,6 +14,7 @@ const pixi = vi.hoisted(() => {
   const state = {
     apps: [] as Array<{ destroy: Mock; render: Mock; canvas: HTMLCanvasElement }>,
     texts: 0,
+    created: { graphics: 0, sprites: 0 },
     textures: 0,
     failInit: false,
     gate: null as Promise<void> | null,
@@ -45,6 +47,10 @@ const pixi = vi.hoisted(() => {
   }
   class Graphics extends Container {
     ops = 0;
+    constructor() {
+      super();
+      state.created.graphics += 1;
+    }
     private chain(): this {
       this.ops += 1;
       return this;
@@ -71,8 +77,15 @@ const pixi = vi.hoisted(() => {
     rect(): this {
       return this.chain();
     }
+    arc(): this {
+      return this.chain();
+    }
   }
   class Sprite extends Container {
+    constructor() {
+      super();
+      state.created.sprites += 1;
+    }
     width = 0;
     height = 0;
     tint = 0;
@@ -166,6 +179,7 @@ function setup() {
 beforeEach(() => {
   pixi.state.apps = [];
   pixi.state.texts = 0;
+  pixi.state.created = { graphics: 0, sprites: 0 };
   pixi.state.textures = 0;
   pixi.state.failInit = false;
   pixi.state.gate = null;
@@ -224,6 +238,29 @@ describe('PixiSurface', () => {
     const { init } = setup();
     pixi.state.failInit = true;
     await expect(init()).rejects.toBeInstanceOf(SceneInitError);
+  });
+
+  it('draws a Hunt with objects made once: no new Text, Graphics or Sprite per frame, and no figure without a Hunt', async () => {
+    const { host, surface, init } = setup();
+    await init();
+    const running = huntOf({ status: 'running', startedAt: NOW - 20_000, stepCount: 3 });
+    const s = scene(house({ payments: { hauntLevel: 3, reason: { kind: 'error_rate', value: 0.4 }, metrics, openIncident: incident, hunt: running } }), FULL);
+    surface.applyLayout(s.layout);
+    surface.applyModel(s.model);
+    const a = createAnimator();
+    a.setLayout(s.layout);
+    a.setModel(s.model);
+    const made = (): number => pixi.state.created.graphics + pixi.state.created.sprites + pixi.state.texts;
+    surface.draw(a.step(16, 0));
+    const before = made();
+    for (let t = 1; t <= 120; t++) surface.draw(a.step(16, t * 16));
+    expect(made()).toBe(before);
+    expect(host.querySelector('canvas')).not.toBeNull();
+    // The room without a Hunt has a hidden figure.
+    const frame = a.step(16, 2000);
+    expect(frame.rooms.find((r) => r.name === 'payments')?.hunt.figure).toBeCloseTo(1, 3);
+    expect(frame.rooms.find((r) => r.name === 'gate')?.hunt.figure).toBe(0);
+    surface.destroy();
   });
 
   it('reuses the incident mark texts on every model change', async () => {

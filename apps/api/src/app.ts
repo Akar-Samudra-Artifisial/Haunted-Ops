@@ -47,6 +47,8 @@ export interface CreateAppOptions {
   logger?: JsonLogger;
   imports?: AppModuleOptions['imports'];
   timeouts?: HttpTimeouts;
+  huntConfig?: AppModuleOptions['huntConfig'];
+  huntOverrides?: AppModuleOptions['huntOverrides'];
 }
 
 /**
@@ -57,7 +59,7 @@ export interface CreateAppOptions {
 export async function createApp(config: Config, options: CreateAppOptions = {}): Promise<NestExpressApplication> {
   const logger = options.logger ?? new JsonLogger();
   const app = await NestFactory.create<NestExpressApplication>(
-    AppModule.forRoot({ config, logger, imports: options.imports }),
+    AppModule.forRoot({ config, logger, imports: options.imports, huntConfig: options.huntConfig, huntOverrides: options.huntOverrides }),
     { bodyParser: false, logger: new NestJsonLogger(logger), abortOnError: false },
   );
 

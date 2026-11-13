@@ -37,8 +37,12 @@ async function pixelStats(page: Page, png: Buffer): Promise<PixelStats> {
 }
 
 const cases = [
-  { demo: 'payments-haunted', service: 'payments', level: '2 (haunted)', reason: 'error rate' },
-  { demo: 'ledger-dark', service: 'ledger', level: '4 (dark)', reason: 'service down' },
+  { demo: 'payments-haunted', service: 'payments', level: '2 (haunted)', reason: 'error rate', hunt: 'none' },
+  { demo: 'ledger-dark', service: 'ledger', level: '4 (dark)', reason: 'service down', hunt: 'none' },
+  // The Hunt: the scene draws it and the table cell says the same words.
+  { demo: 'payments-hunting', service: 'payments', level: '3 (possessed)', reason: 'error rate', hunt: 'running: step 3, logs' },
+  { demo: 'payments-sealed', service: 'payments', level: '2 (haunted)', reason: 'error rate', hunt: 'sealed: d-7, 65c0fca' },
+  { demo: 'payments-fizzled', service: 'payments', level: '3 (possessed)', reason: 'error rate', hunt: 'failed: credit cap reached' },
 ] as const;
 
 test.describe('scene smoke test (software WebGL)', () => {
@@ -76,6 +80,7 @@ test.describe('scene smoke test (software WebGL)', () => {
       const row = page.getByRole('row', { name: new RegExp(`^(▶ )?${c.service}`) });
       await expect(row).toContainText(c.level);
       await expect(row).toContainText(c.reason);
+      await expect(row).toContainText(c.hunt);
 
       // Frame statistics are published in Demo mode only: record them, do not assert (software rendering is slow).
       const frame = await page.evaluate(() => (window as unknown as { __hauntedScene?: unknown }).__hauntedScene ?? null);

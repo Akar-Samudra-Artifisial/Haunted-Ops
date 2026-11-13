@@ -1,5 +1,10 @@
 import {
+  HUNT_EVENT_NAMES,
+  HUNT_LIMITS,
   SERVICE_NAMES,
+  type HuntEventName,
+  type HuntEventPayloads,
+  type HuntSummary,
   type IngestStatus,
   type ServiceMetrics,
   type ServiceState,
@@ -12,7 +17,13 @@ export interface LiveState {
 }
 
 /** The domain events the table reacts to. */
-export type LiveEventName = 'service.updated' | 'ingest.polled' | 'ingest.status' | 'incident.opened' | 'incident.closed';
+export type LiveEventName =
+  | 'service.updated'
+  | 'ingest.polled'
+  | 'ingest.status'
+  | 'incident.opened'
+  | 'incident.closed'
+  | HuntEventName;
 
 export const LIVE_EVENT_NAMES: readonly LiveEventName[] = [
   'service.updated',
@@ -20,7 +31,82 @@ export const LIVE_EVENT_NAMES: readonly LiveEventName[] = [
   'ingest.status',
   'incident.opened',
   'incident.closed',
+  ...HUNT_EVENT_NAMES,
 ];
+
+const isHuntEvent = (name: string): name is HuntEventName => (HUNT_EVENT_NAMES as readonly string[]).includes(name);
+
+/**
+ * Applies one `hunt.*` event to the Service's latest Hunt. A Hunt other than the current one is
+ * taken only on `hunt.queued` and only when it is not older than the current one; every other event
+ * of another Hunt is ignored. A step, evidence or end that was already applied changes nothing.
+ */
+export function applyHuntEvent<K extends HuntEventName>(current: HuntSummary | null, name: K, payload: HuntEventPayloads[K]): HuntSummary | null {
+  if (name === 'hunt.queued') {
+    const p = payload as HuntEventPayloads['hunt.queued'];
+    if (current !== null && (current.id === p.huntId || time(current.queuedAt) > time(p.queuedAt))) return current;
+    return {
+      id: p.huntId,
+      incidentId: p.incidentId,
+      service: p.service,
+      trigger: p.trigger,
+      status: 'queued',
+      reason: null,
+      steps: [],
+      stepCount: 0,
+      evidenceCount: 0,
+      diagnosis: null,
+      credits: 0,
+      queuedAt: p.queuedAt,
+      startedAt: null,
+      finishedAt: null,
+      diagnosedBy: null,
+    };
+  }
+  if (current === null || current.id !== (payload as { huntId: string }).huntId) return current;
+  const ended = current.status === 'succeeded' || current.status === 'failed' || current.status === 'cancelled';
+  switch (name) {
+    case 'hunt.started': {
+      const p = payload as HuntEventPayloads['hunt.started'];
+      return ended || current.status === 'running' ? current : { ...current, status: 'running', startedAt: p.startedAt };
+    }
+    case 'hunt.step': {
+      const p = payload as HuntEventPayloads['hunt.step'];
+      if (ended || p.index <= current.stepCount) return current;
+      const step = { index: p.index, tool: p.tool, summary: p.summary, at: p.at };
+      return { ...current, stepCount: p.index, steps: [...current.steps, step].slice(-HUNT_LIMITS.summarySteps) };
+    }
+    case 'hunt.evidence': {
+      const p = payload as HuntEventPayloads['hunt.evidence'];
+      return ended || p.index <= current.evidenceCount ? current : { ...current, evidenceCount: p.index };
+    }
+    case 'hunt.diagnosis': {
+      // A valid diagnosis is the result: the Hunt shows as sealed at once, `hunt.finished` follows.
+      const p = payload as HuntEventPayloads['hunt.diagnosis'];
+      if (ended) return current;
+      return {
+        ...current,
+        status: 'succeeded',
+        reason: 'diagnosed',
+        finishedAt: p.at,
+        diagnosis: { culpritDeploy: p.culpritDeploy, culpritSha: p.culpritSha, culpritService: p.culpritService, summary: p.summary },
+      };
+    }
+    case 'hunt.finished': {
+      const p = payload as HuntEventPayloads['hunt.finished'];
+      return {
+        ...current,
+        status: p.status,
+        reason: p.reason,
+        credits: p.credits,
+        finishedAt: p.finishedAt,
+        diagnosedBy: p.diagnosedBy,
+        diagnosis: p.status === 'succeeded' ? current.diagnosis : null,
+      };
+    }
+  }
+  return current;
+}
 
 /** Room order: row (y), then column (x), then the fixed service order. */
 export function sortByRoom(services: readonly ServiceState[]): ServiceState[] {
@@ -46,6 +132,13 @@ function replaceService(services: readonly ServiceState[], next: ServiceState): 
  * state, and an event older than what is stored never overwrites it.
  */
 export function applyLiveEvent<K extends LiveEventName>(state: LiveState, name: K, payload: SsePayloads[K]): LiveState {
+  if (isHuntEvent(name)) {
+    const service = (payload as { service: string }).service;
+    const current = state.services.find((s) => s.name === service);
+    if (!current) return state;
+    const hunt = applyHuntEvent(current.hunt, name, payload as never);
+    return hunt === current.hunt ? state : { ...state, services: replaceService(state.services, { ...current, hunt }) };
+  }
   switch (name) {
     case 'service.updated': {
       const { service } = payload as SsePayloads['service.updated'];

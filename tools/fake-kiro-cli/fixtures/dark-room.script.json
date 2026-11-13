@@ -1,0 +1,109 @@
+{
+  "steps": [
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "call",
+      "tool": "query_metrics",
+      "input": {
+        "service": "ledger",
+        "signal": "up",
+        "window": "15m"
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "search_errors"
+    },
+    {
+      "kind": "call",
+      "tool": "search_errors",
+      "input": {
+        "service": "ledger",
+        "since": "$NOW-15m",
+        "limit": 5
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "tail_logs"
+    },
+    {
+      "kind": "call",
+      "tool": "tail_logs",
+      "input": {
+        "service": "ledger",
+        "since": "$NOW-15m",
+        "limit": 5
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "recent_deploys"
+    },
+    {
+      "kind": "call",
+      "tool": "recent_deploys",
+      "input": {
+        "since": "$NOW-300m"
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "diff_commit"
+    },
+    {
+      "kind": "call",
+      "tool": "diff_commit",
+      "input": {
+        "sha": "0b8dff146e2ddb3f9a7e5761ea63cfab9eb5e7aa"
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "submit_diagnosis"
+    },
+    {
+      "kind": "call",
+      "tool": "submit_diagnosis",
+      "input": {
+        "service": "ledger",
+        "culprit_deploy": "d-9",
+        "culprit_sha": "0b8dff146e2ddb3f9a7e5761ea63cfab9eb5e7aa",
+        "summary": "Deploy d-9 (commit 0b8dff1, \"tidy config loading\") caused the down on ledger.",
+        "evidence": [
+          {
+            "kind": "metric",
+            "ref": "metric:ledger/up/15m",
+            "detail": "ledger up changed at the deploy"
+          },
+          {
+            "kind": "error",
+            "ref": "error:1",
+            "detail": "exit 1: missing required env: LEDGER_LISTEN_PORT"
+          },
+          {
+            "kind": "log",
+            "ref": "log:1",
+            "detail": "ledger missing required env: LEDGER_LISTEN_PORT"
+          },
+          {
+            "kind": "deploy",
+            "ref": "deploy:d-9",
+            "detail": "ledger deployed scenario/dark-room just before the change"
+          },
+          {
+            "kind": "commit",
+            "ref": "commit:0b8dff146e2ddb3f9a7e5761ea63cfab9eb5e7aa",
+            "detail": "tidy config loading"
+          }
+        ],
+        "fix_hint": "Roll the service back to main, then restore the removed behaviour."
+      }
+    }
+  ],
+  "finalCredits": 0.6,
+  "final": "Culprit: d-9."
+}

@@ -1,13 +1,15 @@
 import { Application, Container, Graphics, Particle, ParticleContainer, Sprite, Text, Texture } from 'pixi.js';
 import type { ServiceName } from '@haunted-ops/shared';
 import { MAX_PULSES, MAX_ROOMS } from './animator.js';
+import { FIGURE_H, FIGURE_W } from './layout.js';
+import { MAX_MARKS } from './model.js';
 import { clamp } from './math.js';
 import type { Pt, RoomLayout, SceneLayout } from './layout.js';
 import type { RoomVisual, SceneModel } from './model.js';
 import { FONT_STACK, PALETTE, PILL_ALPHA, hexToNumber } from './palette.js';
 import { FOG_BANK_MAX, FOG_WISP_MAX, GHOST_MAX, MOTE_MAX } from './particles.js';
 import { CORRIDOR_STYLE, buildHouseArt, buildRoomArt, clockHands, pillRect, plaqueLayout, starField, type RoomArt } from './shapes.js';
-import { SceneInitError, type Frame, type ParticleBuffer, type RoomFrame, type Surface, type SurfaceInit } from './surface.js';
+import { SceneInitError, type Frame, type HuntFrame, type ParticleBuffer, type RoomFrame, type Surface, type SurfaceInit } from './surface.js';
 import { TEXTURE_NAMES, drawTexture, type TextureName } from './textures.js';
 
 const num = hexToNumber;
@@ -79,6 +81,32 @@ interface RoomView {
   incidentBang: Text;
   incidentWord: Text;
   hunt: Container;
+  huntArt: HuntArt;
+}
+
+/** Points of the seal ring; it is drawn as the first `n` segments. */
+const SEAL_STEPS = 48;
+/** A fizzle throws at most this many spark dots (Graphics, not particles). */
+const SPARK_COUNT = 6;
+
+/** The objects of one room's hunt, made once. */
+interface HuntArt {
+  container: Container;
+  marksOn: Graphics;
+  result: Graphics;
+  seal: Graphics;
+  figure: Container;
+  lanternGlow: Sprite;
+  lantern: Graphics;
+  sparks: Graphics[];
+  lanternX: number;
+  lanternY: number;
+  slot: { x: number; y: number; w: number; h: number; midY: number; r: number; markX: (i: number) => number };
+  ringPts: number[];
+  /** What is drawn now, so a frame redraws a Graphics only when it changed. */
+  sealN: number;
+  drawnMarks: number;
+  drawnResult: 'none' | 'sealed' | 'failed' | null;
 }
 
 interface Layers {
@@ -302,14 +330,70 @@ export class PixiSurface implements Surface {
     const incidentWord = new Text({ text: 'incident', style: style(layout.badgePx, PALETTE.alarmText) });
     incidentWord.anchor.set(0, 0.5);
     incident.addChild(incidentTri, incidentBang, incidentWord);
-    // The hunt slot: an empty container at its reserved rectangle, for `exorcist-agent`.
-    const hunt = new Container();
-    hunt.position.set(room.huntRect.x, room.huntRect.y);
+    // The hunt: the slot with its marks, the Exorcist figure with its lantern, and the seal ring on the floor.
+    const huntArt = this.buildHunt(room, layout);
+    const hunt = huntArt.container;
 
-    root.addChild(body, glow, dim, outlineTrim, outlineAlarm);
+    root.addChild(body, glow, dim, outlineTrim, outlineAlarm, huntArt.seal);
     const texts = new Container();
     texts.addChild(badgePill, badge, plate, label, incident, hunt);
-    return { room, art, root, texts, body, glow, dim, outlineTrim, outlineAlarm, clock, plate, label, badge, badgePill, incident, incidentTri, incidentBang, incidentWord, hunt };
+    return { room, art, root, texts, body, glow, dim, outlineTrim, outlineAlarm, clock, plate, label, badge, badgePill, incident, incidentTri, incidentBang, incidentWord, hunt, huntArt };
+  }
+
+  /** Creates every object of the hunt once; `drawHunt` only moves and recolours them. */
+  private buildHunt(room: RoomLayout, layout: SceneLayout): HuntArt {
+    const s = layout.scale;
+    const container = new Container();
+    const slot = room.huntRect;
+    const midY = slot.y + slot.h / 2;
+    const r = Math.max(1.5, Math.min(slot.h * 0.28, slot.w / 20));
+    const step = (slot.w * 0.85) / MAX_MARKS;
+    const markX = (i: number): number => slot.x + step * (i + 0.5);
+
+    const marksOff = new Graphics();
+    for (let i = 0; i < MAX_MARKS; i++) marksOff.circle(markX(i), midY, r).stroke({ color: num(PALETTE.trim), alpha: 0.55, width: Math.max(1, r * 0.35) });
+    const marksOn = new Graphics();
+    const result = new Graphics();
+
+    const seal = new Graphics();
+    const ringPts: number[] = [];
+    const rx = 1.3 * s;
+    const ry = 0.65 * s;
+    for (let i = 0; i <= SEAL_STEPS; i++) {
+      const a = -Math.PI / 2 + (i / SEAL_STEPS) * Math.PI * 2;
+      ringPts.push(room.center.x + rx * Math.cos(a), room.center.y + ry * Math.sin(a));
+    }
+
+    const figure = new Container();
+    const w = FIGURE_W * s;
+    const h = FIGURE_H * s;
+    const body = new Graphics();
+    body.roundRect(-w / 2, -h, w, h, w / 2).fill({ color: num(PALETTE.trim), alpha: 0.95 });
+    body.circle(0, -h * 0.82, w * 0.34).fill({ color: num(PALETTE.nightDeep), alpha: 0.9 });
+    const lanternX = w * 0.75;
+    const lanternY = -h * 0.4;
+    const lanternGlow = new Sprite(this.textures.get('glow') as Texture);
+    lanternGlow.anchor.set(0.5);
+    lanternGlow.position.set(lanternX, lanternY);
+    lanternGlow.width = 0.9 * s;
+    lanternGlow.height = 0.9 * s;
+    lanternGlow.blendMode = 'add';
+    lanternGlow.tint = num(PALETTE.glowWarm);
+    const lantern = new Graphics();
+    lantern.circle(lanternX, lanternY, Math.max(2, 0.06 * s)).fill({ color: num(PALETTE.lampWarm) });
+    const sparks: Graphics[] = [];
+    for (let i = 0; i < SPARK_COUNT; i++) {
+      const spark = new Graphics();
+      spark.circle(0, 0, Math.max(1, 0.025 * s)).fill({ color: num(PALETTE.lampWarm) });
+      spark.visible = false;
+      sparks.push(spark);
+    }
+    figure.addChild(body, lanternGlow, lantern, ...sparks);
+    figure.visible = false;
+    figure.position.set(room.doors.px.x, room.doors.px.y);
+
+    container.addChild(marksOff, marksOn, result, figure);
+    return { container, marksOn, result, seal, figure, lanternGlow, lantern, sparks, lanternX, lanternY, slot: { x: slot.x, y: slot.y, w: slot.w, h: slot.h, midY, r, markX }, ringPts, sealN: 0, drawnMarks: -1, drawnResult: null };
   }
 
   applyModel(model: SceneModel): void {
@@ -410,6 +494,51 @@ export class PixiSurface implements Surface {
     view.outlineTrim.alpha = alarm ? 0 : rf.outlineAlpha;
     view.badge.alpha = rf.badgeAlpha;
     view.badgePill.alpha = rf.badgeAlpha;
+    this.drawHunt(view, rf.hunt, this.layout?.scale ?? 1);
+  }
+
+  /** Moves the figure, recolours the lantern and redraws the marks, the result and the seal only when they change. */
+  private drawHunt(view: RoomView, h: HuntFrame, scale: number): void {
+    const a = view.huntArt;
+    const { slot } = a;
+    if (a.drawnMarks !== h.marks) {
+      a.drawnMarks = h.marks;
+      a.marksOn.clear();
+      for (let i = 0; i < h.marks; i++) a.marksOn.circle(slot.markX(i), slot.midY, slot.r).fill({ color: num(PALETTE.lampWarm) });
+    }
+    if (a.drawnResult !== h.result) {
+      a.drawnResult = h.result;
+      a.result.clear();
+      const cx = slot.x + slot.w * 0.93;
+      const rr = Math.max(2, slot.h * 0.34);
+      const width = Math.max(1.5, rr * 0.35);
+      if (h.result === 'sealed') a.result.circle(cx, slot.midY, rr).stroke({ color: num(PALETTE.lampWarm), width });
+      else if (h.result === 'failed') a.result.arc(cx, slot.midY, rr, 0.6, Math.PI * 2 - 0.6).stroke({ color: num(PALETTE.alarm), width });
+    }
+    const n = Math.ceil(h.seal * SEAL_STEPS);
+    if (a.sealN !== n) {
+      a.sealN = n;
+      a.seal.clear();
+      if (n > 0) a.seal.poly(a.ringPts.slice(0, 2 * (n + 1)), false).stroke({ color: num(PALETTE.lampWarm), width: Math.max(2, 0.07 * scale), cap: 'round', join: 'round' });
+    }
+    a.seal.alpha = h.figure;
+
+    const shown = h.figure > 0.003;
+    a.figure.visible = shown;
+    if (!shown) return;
+    const { doors, exorcistAt } = view.room;
+    a.figure.alpha = h.figure;
+    a.figure.position.set(doors.px.x + (exorcistAt.x - doors.px.x) * h.walk, doors.px.y + (exorcistAt.y - doors.px.y) * h.walk);
+    a.lantern.alpha = h.lantern;
+    a.lanternGlow.alpha = 0.75 * h.lantern;
+    for (let i = 0; i < a.sparks.length; i++) {
+      const spark = a.sparks[i] as Graphics;
+      spark.visible = h.sparks > 0;
+      if (h.sparks > 0) {
+        spark.position.set(a.lanternX + (i - (SPARK_COUNT - 1) / 2) * 0.07 * scale, a.lanternY + h.sparks * (0.35 + 0.05 * i) * scale);
+        spark.alpha = 1 - h.sparks;
+      }
+    }
   }
 
   private drawRing(selected: ServiceName | null, layout: SceneLayout): void {

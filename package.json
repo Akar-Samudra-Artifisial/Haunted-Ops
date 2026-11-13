@@ -10,9 +10,10 @@
   },
   "scripts": {
     "typecheck": "pnpm -r --if-present typecheck",
-    "lint": "pnpm -r --if-present lint",
+    "lint": "pnpm -r --if-present lint && pnpm lint:tools",
+    "lint:tools": "eslint tools scripts",
     "test": "pnpm -r --if-present test && pnpm test:scripts",
-    "test:scripts": "node --test scripts/g1-score.test.mjs scripts/check-scene-bundle.test.mjs",
+    "test:scripts": "node --test scripts/g1-score.test.mjs scripts/g2-hunt.test.mjs scripts/check-scene-bundle.test.mjs tools/sanitize-replay/sanitize-hunt-stream.test.mjs tools/fake-kiro-cli/fake-kiro-cli.test.mjs",
     "build": "pnpm -r --if-present build",
     "check:build": "node tools/check-build-determinism/check.mjs"
   },

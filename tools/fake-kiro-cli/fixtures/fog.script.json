@@ -1,0 +1,104 @@
+{
+  "steps": [
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "call",
+      "tool": "query_metrics",
+      "input": {
+        "service": "orders",
+        "signal": "p95_ms",
+        "window": "15m"
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "search_errors"
+    },
+    {
+      "kind": "call",
+      "tool": "search_errors",
+      "input": {
+        "service": "orders",
+        "since": "$NOW-15m",
+        "limit": 5
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "tail_logs"
+    },
+    {
+      "kind": "call",
+      "tool": "tail_logs",
+      "input": {
+        "service": "orders",
+        "since": "$NOW-15m",
+        "limit": 5
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "recent_deploys"
+    },
+    {
+      "kind": "call",
+      "tool": "recent_deploys",
+      "input": {
+        "since": "$NOW-300m"
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "diff_commit"
+    },
+    {
+      "kind": "call",
+      "tool": "diff_commit",
+      "input": {
+        "sha": "739d1217dc01c07adc69d38d53231d0dfab23b1f"
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "submit_diagnosis"
+    },
+    {
+      "kind": "call",
+      "tool": "submit_diagnosis",
+      "input": {
+        "service": "orders",
+        "culprit_deploy": "d-8",
+        "culprit_sha": "739d1217dc01c07adc69d38d53231d0dfab23b1f",
+        "summary": "Deploy d-8 (commit 739d121, \"add inventory freshness check\") caused the p95 on orders.",
+        "evidence": [
+          {
+            "kind": "metric",
+            "ref": "metric:orders/p95_ms/15m",
+            "detail": "orders p95_ms changed at the deploy"
+          },
+          {
+            "kind": "log",
+            "ref": "log:1",
+            "detail": "orders req POST /orders 200 1650ms"
+          },
+          {
+            "kind": "deploy",
+            "ref": "deploy:d-8",
+            "detail": "orders deployed scenario/fog just before the change"
+          },
+          {
+            "kind": "commit",
+            "ref": "commit:739d1217dc01c07adc69d38d53231d0dfab23b1f",
+            "detail": "add inventory freshness check"
+          }
+        ],
+        "fix_hint": "Roll the service back to main, then restore the removed behaviour."
+      }
+    }
+  ],
+  "finalCredits": 0.6,
+  "final": "Culprit: d-8."
+}

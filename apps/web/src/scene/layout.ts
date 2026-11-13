@@ -73,6 +73,10 @@ export interface RoomLayout {
   hitPolygon: Pt[];
   /** Reserved for the hunt overlay: on the left back wall, clear of the label and the badges. */
   huntRect: Rect;
+  /** The feet of the Exorcist figure, at the right corner of the floor. */
+  exorcistAt: Pt;
+  /** The box of the figure: inside the silhouette, right of every text box, clear of the clock. */
+  exorcistBox: Rect;
   /** Midpoints of the floor edges facing +x, -x, +y, -y neighbours. */
   doors: { px: Pt; mx: Pt; py: Pt; my: Pt };
 }
@@ -336,6 +340,40 @@ function housePoints(h: HouseLayout): Pt[] {
   ];
 }
 
+// --- the Exorcist figure ---
+
+/** Size of the figure in iso units, and its gap to the text boxes. */
+export const FIGURE_W = 0.3;
+export const FIGURE_H = 0.85;
+export const FIGURE_GAP = 0.05;
+/** The clock on the right wall, relative to the floor centre (see `buildRoomArt`). */
+const CLOCK_BOX = { x0: 1.03, x1: 1.47, bottom: -0.78 };
+
+/**
+ * The feet and the box of the figure, relative to the floor centre. It stands right of every text
+ * box (`textRight`, relative to the centre), at a height where its box is inside the floor and the
+ * right wall and below the clock. When the text boxes leave no room there, it stands at the back,
+ * above the highest text box (`textTop`, relative to the centre).
+ */
+export function figurePlace(textRight: number, textTop: number): { feet: Pt; box: Rect } {
+  const make = (cx: number, fy: number): { feet: Pt; box: Rect } => ({
+    feet: { x: cx, y: fy },
+    box: { x: cx - FIGURE_W / 2, y: fy - FIGURE_H, w: FIGURE_W, h: FIGURE_H },
+  });
+  const cx = textRight + FIGURE_GAP + FIGURE_W / 2;
+  const xr = cx + FIGURE_W / 2;
+  if (xr <= ROOM_SIZE - 0.02) {
+    // Lower right edge of the floor, and the top edge of the right wall, at the box's right side.
+    const hi = (ROOM_SIZE - xr) / 2 - 0.01;
+    let lo = -2 + xr / 2 + FIGURE_H + 0.01;
+    if (cx - FIGURE_W / 2 < CLOCK_BOX.x1 && xr > CLOCK_BOX.x0) lo = Math.max(lo, CLOCK_BOX.bottom + FIGURE_H + 0.02);
+    if (lo <= hi) return make(cx, (lo + hi) / 2);
+  }
+  // The text boxes reach the right corner (a narrow screen): stand at the back, above the highest
+  // text box, between the Hunt slot and the clock. Its box is on the floor and the back walls.
+  return make(0, Math.max(textTop - FIGURE_GAP, -2 + FIGURE_W / 4 + FIGURE_H + 0.01));
+}
+
 // --- text boxes ---
 
 const boxSize = (chars: number, px: number, scale: number, wide: number): { w: number; h: number } => ({
@@ -413,6 +451,9 @@ export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport):
     const badgeSize = boxSize(compact ? 9 : 16, badgePx, scale, 0.55);
     const badgeBoxU: Rect = { x: c.x - badgeSize.w / 2, y: c.y + badgeTop, w: badgeSize.w, h: hB };
     const huntU: Rect = { x: c.x - 1.5, y: c.y - 1.15, w: 1.0, h: 0.3 };
+    const textRight = Math.max(labelBoxU.x + labelBoxU.w, incidentBoxU.x + incidentBoxU.w, badgeBoxU.x + badgeBoxU.w) - c.x;
+    const textTop = Math.min(labelBoxU.y, incidentBoxU.y, badgeBoxU.y) - PAD_Y * hB - c.y;
+    const figure = figurePlace(textRight, textTop);
     const toRect = (r: Rect): Rect => ({ x: offset.x + r.x * scale, y: offset.y + r.y * scale, w: r.w * scale, h: r.h * scale });
     const sil = u.silhouette.map(tx);
     const hx = Math.min(...sil.map((p) => p.x));
@@ -435,6 +476,8 @@ export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport):
       hit: { x: hx, y: hy, w: hw, h: hh },
       hitPolygon: sil.map((p) => ({ x: p.x - hx, y: p.y - hy })),
       huntRect: toRect(huntU),
+      exorcistAt: tx({ x: c.x + figure.feet.x, y: c.y + figure.feet.y }),
+      exorcistBox: toRect({ x: c.x + figure.box.x, y: c.y + figure.box.y, w: figure.box.w, h: figure.box.h }),
       doors: { px: tx(u.doors.px), mx: tx(u.doors.mx), py: tx(u.doors.py), my: tx(u.doors.my) },
     };
   });

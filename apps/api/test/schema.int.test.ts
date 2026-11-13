@@ -23,11 +23,11 @@ describeDb('schema and migrations (Test database)', () => {
     await truncateAll(prisma);
   });
 
-  it('migrate deploy on an empty database creates all six tables', async () => {
+  it('migrate deploy on an empty database creates all seven tables', async () => {
     const rows = await prisma.$queryRaw<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public' AND table_name <> '_prisma_migrations' ORDER BY table_name`;
-    expect(rows.map((r) => r.table_name)).toEqual(['Evidence', 'Hunt', 'Incident', 'Proposal', 'Service', 'Signal']);
+    expect(rows.map((r) => r.table_name)).toEqual(['Evidence', 'Hunt', 'HuntStep', 'Incident', 'Proposal', 'Service', 'Signal']);
   });
 
   it('creates the latest-signals index and the one-open-incident partial unique index', async () => {

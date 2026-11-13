@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+// Launcher of the Exorcist MCP server. The agent config starts it by this name; the Hunt runner
+// puts this folder on the PATH of the Hunt process, so the committed agent holds no absolute path.
+import('../dist/main.js').catch(() => {
+  process.stderr.write('exorcist-mcp: not built (run pnpm build)\n');
+  process.exit(1);
+});

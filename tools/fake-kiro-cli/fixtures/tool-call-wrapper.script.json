@@ -1,0 +1,111 @@
+{
+  "steps": [
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "call",
+      "tool": "query_metrics",
+      "input": {
+        "service": "payments",
+        "signal": "error_ratio",
+        "window": "15m"
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "search_errors"
+    },
+    {
+      "kind": "call",
+      "tool": "search_errors",
+      "input": {
+        "service": "payments",
+        "since": "$NOW-15m",
+        "limit": 5
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "tail_logs"
+    },
+    {
+      "kind": "call",
+      "tool": "tail_logs",
+      "input": {
+        "service": "payments",
+        "since": "$NOW-15m",
+        "limit": 5
+      },
+      "wrap": true
+    },
+    {
+      "kind": "load",
+      "tool": "recent_deploys"
+    },
+    {
+      "kind": "call",
+      "tool": "recent_deploys",
+      "input": {
+        "since": "$NOW-300m"
+      }
+    },
+    {
+      "kind": "load",
+      "tool": "diff_commit"
+    },
+    {
+      "kind": "call",
+      "tool": "diff_commit",
+      "input": {
+        "sha": "65c0fca31d0df62c4bab40d2d854c81b1044c650"
+      },
+      "wrap": true
+    },
+    {
+      "kind": "load",
+      "tool": "submit_diagnosis"
+    },
+    {
+      "kind": "call",
+      "tool": "submit_diagnosis",
+      "input": {
+        "service": "payments",
+        "culprit_deploy": "d-7",
+        "culprit_sha": "65c0fca31d0df62c4bab40d2d854c81b1044c650",
+        "summary": "Deploy d-7 (commit 65c0fca, \"simplify refund lookup\") caused the error_rate on payments.",
+        "evidence": [
+          {
+            "kind": "metric",
+            "ref": "metric:payments/error_ratio/15m",
+            "detail": "payments error_ratio changed at the deploy"
+          },
+          {
+            "kind": "error",
+            "ref": "error:1",
+            "detail": "TypeError: Cannot read properties of undefined (reading 'windowDays')"
+          },
+          {
+            "kind": "log",
+            "ref": "log:1",
+            "detail": "payments req POST /payments/charge 500 1ms"
+          },
+          {
+            "kind": "deploy",
+            "ref": "deploy:d-7",
+            "detail": "payments deployed scenario/error-spike just before the change"
+          },
+          {
+            "kind": "commit",
+            "ref": "commit:65c0fca31d0df62c4bab40d2d854c81b1044c650",
+            "detail": "simplify refund lookup"
+          }
+        ],
+        "fix_hint": "Roll the service back to main, then restore the removed behaviour."
+      }
+    }
+  ],
+  "finalCredits": 0.6,
+  "final": "Culprit: d-7."
+}

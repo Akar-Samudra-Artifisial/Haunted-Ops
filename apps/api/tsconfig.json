@@ -5,7 +5,12 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "types": ["node"],
-    "paths": { "@haunted-ops/shared": ["../../packages/shared/src/index.ts"] }
+    "paths": {
+      "@haunted-ops/shared": ["../../packages/shared/src/index.ts"],
+      "@haunted-ops/exorcist-mcp/schemas": ["../../packages/exorcist-mcp/src/schemas.ts"],
+      "@haunted-ops/exorcist-mcp/untrusted": ["../../packages/exorcist-mcp/src/untrusted.ts"],
+      "@haunted-ops/exorcist-mcp/ledger": ["../../packages/exorcist-mcp/src/ledger.ts"]
+    }
   },
-  "include": ["src", "test", "prisma", "prisma.config.ts", "vitest.config.ts"]
+  "include": ["src", "test", "test-live", "prisma", "prisma.config.ts", "vitest.config.ts", "vitest.live.config.ts"]
 }

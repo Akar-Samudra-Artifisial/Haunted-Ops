@@ -58,10 +58,10 @@ export function eventSourceRegistry() {
 }
 
 export const SAMPLE_SERVICES: ServiceState[] = [
-  { name: 'gate', room: { x: 0, y: 0 }, hauntLevel: 0, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z' },
-  { name: 'orders', room: { x: 1, y: 0 }, hauntLevel: 1, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z' },
-  { name: 'payments', room: { x: 0, y: 1 }, hauntLevel: 4, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z' },
-  { name: 'ledger', room: { x: 1, y: 1 }, hauntLevel: 0, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z' },
+  { name: 'gate', room: { x: 0, y: 0 }, hauntLevel: 0, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z', hunt: null },
+  { name: 'orders', room: { x: 1, y: 0 }, hauntLevel: 1, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z', hunt: null },
+  { name: 'payments', room: { x: 0, y: 1 }, hauntLevel: 4, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z', hunt: null },
+  { name: 'ledger', room: { x: 1, y: 1 }, hauntLevel: 0, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z', hunt: null },
 ];
 
 export const OK_STATUS: IngestStatus = {

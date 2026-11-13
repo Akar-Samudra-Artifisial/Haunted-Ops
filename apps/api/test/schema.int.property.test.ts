@@ -87,8 +87,9 @@ describeDb('database properties (Test database)', () => {
       fc.asyncProperty(fc.array(fc.integer({ min: 0, max: 6 }), { minLength: 1, maxLength: 10 }), async (orders) => {
         const ids = await freshSeeded();
         const incident = await prisma.incident.create({ data: { serviceId: ids.get('payments') as string } });
-        const hunt = await prisma.hunt.create({ data: { incidentId: incident.id } });
-        const other = await prisma.hunt.create({ data: { incidentId: incident.id } });
+        const base = { incidentId: incident.id, serviceId: ids.get('payments') as string, trigger: 'auto' as const, model: 'claude-sonnet-5.5' };
+        const hunt = await prisma.hunt.create({ data: base });
+        const other = await prisma.hunt.create({ data: base });
         const seen = new Set<number>();
         for (const order of orders) {
           const attempt = prisma.evidence.create({

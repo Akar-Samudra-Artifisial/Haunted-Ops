@@ -3,7 +3,17 @@ import { expect, test } from '@playwright/test';
 
 // The visual review of task 9: every demo scenario at three widths, and the still version.
 // Not part of the normal run. Start it with:  SCENE_GALLERY=1 pnpm --filter @haunted-ops/web test:e2e gallery
-const SCENARIOS = ['calm', 'payments-haunted', 'payments-possessed', 'orders-fog', 'ledger-dark', 'all-haunted'] as const;
+const SCENARIOS = [
+  'calm',
+  'payments-haunted',
+  'payments-possessed',
+  'orders-fog',
+  'ledger-dark',
+  'all-haunted',
+  'payments-hunting',
+  'payments-sealed',
+  'payments-fizzled',
+] as const;
 const SIZES = [
   { width: 360, height: 800 },
   { width: 1280, height: 720 },

@@ -31,7 +31,7 @@ export const serviceStateArb: fc.Arbitrary<ServiceState> = fc
     metrics: fc.option(fc.record({ errorRate: errorRateArb, p95Ms: p95Arb, up: upArb, at: fc.constant(iso) }), { nil: null }),
     openIncident: fc.option(fc.record({ id: fc.constant('inc'), openedAt: fc.constant(iso), peakLevel: levelArb }), { nil: null }),
   })
-  .map(({ x, y, ...rest }) => ({ ...rest, room: { x, y }, updatedAt: iso }));
+  .map(({ x, y, ...rest }) => ({ ...rest, room: { x, y }, updatedAt: iso, hunt: null }));
 
 export const servicesArb = (max: number): fc.Arbitrary<ServiceState[]> => fc.array(serviceStateArb, { maxLength: max });
 
@@ -47,6 +47,7 @@ export function makeService(name: ServiceState['name'], over: Partial<ServiceSta
     metrics: null,
     openIncident: null,
     updatedAt: iso,
+    hunt: null,
     ...over,
   };
 }

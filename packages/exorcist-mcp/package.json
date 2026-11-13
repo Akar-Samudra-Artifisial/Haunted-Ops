@@ -1,0 +1,39 @@
+{
+  "name": "@haunted-ops/exorcist-mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only stdio MCP server of the Exorcist agent.",
+  "exports": {
+    "./schemas": {
+      "types": "./dist/schemas.d.ts",
+      "default": "./dist/schemas.js"
+    },
+    "./untrusted": {
+      "types": "./dist/untrusted.d.ts",
+      "default": "./dist/untrusted.js"
+    },
+    "./ledger": {
+      "types": "./dist/ledger.d.ts",
+      "default": "./dist/ledger.js"
+    }
+  },
+  "bin": {
+    "haunted-exorcist-mcp": "./bin/haunted-exorcist-mcp"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@haunted-ops/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
+  }
+}

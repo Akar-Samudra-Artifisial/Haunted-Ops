@@ -4,6 +4,8 @@ import {
   stepHaunt,
   type HauntLevel,
   type HauntState,
+  type HuntSummary,
+  type HuntTool,
   type OpenIncident,
   type Sample,
   type ServiceName,
@@ -57,6 +59,73 @@ function scriptedSample(service: ServiceName, s: number): Sample {
   }
 }
 
+// --- the demo Hunt on payments ---
+
+const DEMO_HUNT_ID = 'cmdemohuntpayments000001';
+const DEMO_INCIDENT_ID = 'cmdemoincidentpayments01';
+const DEMO_SHA = '65c0fca31d0df62c4bab40d2d854c81b1044c650';
+/** Queued at 9 s, started at 10 s, one step at each of these seconds, the diagnosis at 26 s. */
+const HUNT_QUEUED_S = 9;
+const HUNT_STARTED_S = 10;
+const HUNT_DIAGNOSIS_S = 26;
+const HUNT_STEPS: ReadonlyArray<{ at: number; tool: HuntTool; summary: string }> = [
+  { at: 12, tool: 'query_metrics', summary: 'metrics payments error_ratio 15m' },
+  { at: 15, tool: 'search_errors', summary: 'errors payments since 09:45:00' },
+  { at: 18, tool: 'tail_logs', summary: 'logs payments since 09:45:00' },
+  { at: 21, tool: 'recent_deploys', summary: 'deploys since 08:00:00' },
+  { at: 24, tool: 'diff_commit', summary: 'diff 65c0fca' },
+];
+
+function huntBase(epoch: number, over: Partial<HuntSummary>): HuntSummary {
+  return {
+    id: DEMO_HUNT_ID,
+    incidentId: DEMO_INCIDENT_ID,
+    service: 'payments',
+    trigger: 'auto',
+    status: 'queued',
+    reason: null,
+    steps: [],
+    stepCount: 0,
+    evidenceCount: 0,
+    diagnosis: null,
+    credits: 0,
+    queuedAt: iso(epoch + HUNT_QUEUED_S * 1000),
+    startedAt: null,
+    finishedAt: null,
+    diagnosedBy: null,
+    ...over,
+  };
+}
+
+/**
+ * The Hunt of the timeline at a second of the script, with its times counted from `epoch`: the
+ * wall-clock start of this run, so the Scene sees the walk in and the 8 s of the figure in real time.
+ */
+export function demoHunt(second: number, epoch: number): HuntSummary | null {
+  if (second < HUNT_QUEUED_S) return null;
+  if (second < HUNT_STARTED_S) return huntBase(epoch, {});
+  const seen = HUNT_STEPS.filter((s) => s.at <= second);
+  const steps = seen.map((s, i) => ({ index: i + 1, tool: s.tool, summary: s.summary, at: iso(epoch + s.at * 1000) }));
+  const running = huntBase(epoch, {
+    status: 'running',
+    startedAt: iso(epoch + HUNT_STARTED_S * 1000),
+    steps,
+    stepCount: steps.length,
+    evidenceCount: steps.length * 2,
+    credits: 0.15 * steps.length,
+  });
+  if (second < HUNT_DIAGNOSIS_S) return running;
+  return {
+    ...running,
+    status: 'succeeded',
+    reason: 'diagnosed',
+    finishedAt: iso(epoch + HUNT_DIAGNOSIS_S * 1000),
+    diagnosis: { culpritDeploy: 'd-7', culpritSha: DEMO_SHA, culpritService: 'payments', summary: 'The refund lookup lost its fallback in the last deploy.' },
+    evidenceCount: 11,
+    credits: 0.92,
+  };
+}
+
 interface Replay {
   haunt: HauntState;
   incident: { id: string; openedAt: number; peak: HauntLevel } | null;
@@ -64,7 +133,7 @@ interface Replay {
   serial: number;
 }
 
-function toState(service: ServiceName, second: number, r: Replay, sample: Sample): ServiceState {
+function toState(service: ServiceName, second: number, r: Replay, sample: Sample, hunt: HuntSummary | null): ServiceState {
   const openIncident: OpenIncident | null = r.incident
     ? { id: r.incident.id, openedAt: iso(r.incident.openedAt), peakLevel: r.incident.peak }
     : null;
@@ -76,6 +145,7 @@ function toState(service: ServiceName, second: number, r: Replay, sample: Sample
     metrics: { ...sample, at: iso(EPOCH + second * 1000) },
     openIncident,
     updatedAt: iso(EPOCH),
+    hunt,
   };
 }
 
@@ -85,9 +155,10 @@ function toState(service: ServiceName, second: number, r: Replay, sample: Sample
  * like the real pipeline.
  *
  * 0-5 calm; 5-11 payments errors to 0.35; 16-20 to 0.6; 20-26 orders p95 to 2.4 s; 30 ledger down;
- * 36-40 everything returns; 44-48 calm.
+ * 36-40 everything returns; 44-48 calm. The Hunt on payments: queued 9, started 10, a step at 12, 15,
+ * 18, 21 and 24, the diagnosis at 26 (see `demoHunt`).
  */
-export function demoServices(tMs: number): ServiceState[] {
+export function demoServices(tMs: number, huntEpoch: number = EPOCH): ServiceState[] {
   const second = Math.max(0, Math.floor(tMs / 1000));
   return SERVICE_NAMES.map((service) => {
     const r: Replay = { haunt: initialHauntState(0, null), incident: null, calm: 0, serial: 0 };
@@ -106,7 +177,7 @@ export function demoServices(tMs: number): ServiceState[] {
         r.calm = 0;
       }
     }
-    return toState(service, second, r, sample);
+    return toState(service, second, r, sample, service === 'payments' ? demoHunt(second, huntEpoch) : null);
   });
 }
 
@@ -125,6 +196,7 @@ function fixed(service: ServiceName, over: Partial<ServiceState>): ServiceState 
     metrics: { ...calmSample(service, 0), at: iso(EPOCH) },
     openIncident: null,
     updatedAt: iso(EPOCH),
+    hunt: null,
     ...over,
   };
 }
@@ -155,6 +227,38 @@ export function scenarioServices(name: DemoScenarioName): ServiceState[] {
       return patch({
         ledger: { hauntLevel: 4, reason: { kind: 'down', value: 0 }, metrics: { errorRate: null, p95Ms: null, up: 0, at: iso(EPOCH) }, openIncident: incident('ledger', 4) },
       });
+    case 'payments-hunting':
+      return patch({
+        payments: {
+          hauntLevel: 3,
+          reason: { kind: 'error_rate', value: 0.6 },
+          metrics: metrics(0.6, 90, 1),
+          openIncident: incident('payments', 3),
+          hunt: demoHunt(18, EPOCH),
+        },
+      });
+    case 'payments-sealed':
+      return patch({
+        payments: {
+          hauntLevel: 2,
+          reason: { kind: 'error_rate', value: 0.25 },
+          metrics: metrics(0.25, 90, 1),
+          openIncident: incident('payments', 3),
+          hunt: demoHunt(30, EPOCH),
+        },
+      });
+    case 'payments-fizzled': {
+      const running = demoHunt(18, EPOCH) as HuntSummary;
+      return patch({
+        payments: {
+          hauntLevel: 3,
+          reason: { kind: 'error_rate', value: 0.6 },
+          metrics: metrics(0.6, 90, 1),
+          openIncident: incident('payments', 3),
+          hunt: { ...running, status: 'failed', reason: 'credit_cap', finishedAt: iso(EPOCH + 20_000), credits: 1.6 },
+        },
+      });
+    }
     case 'all-haunted':
       return patch({
         gate: { hauntLevel: 2, reason: { kind: 'error_rate', value: 0.3 }, metrics: metrics(0.3, 150, 1), openIncident: incident('gate', 2) },

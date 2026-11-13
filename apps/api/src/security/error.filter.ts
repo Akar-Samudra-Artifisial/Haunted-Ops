@@ -5,6 +5,7 @@ import { requestIdOf } from './request-context.js';
 
 const CODES: Readonly<Record<number, string>> = {
   400: 'bad_request',
+  401: 'unauthorized',
   404: 'not_found',
   405: 'method_not_allowed',
   413: 'payload_too_large',
@@ -25,6 +26,21 @@ export function statusOf(err: unknown): number {
 
 export function errorCode(status: number): string {
   return CODES[status] ?? (status >= 500 ? 'internal' : 'error');
+}
+
+const CODE_PATTERN = /^[a-z_]{1,40}$/;
+
+/**
+ * A route may name its error: an HttpException built with `{ code: 'no_open_incident' }` answers
+ * with that code. Only a short lowercase word is taken, never a message.
+ */
+export function codeOf(err: unknown, status: number): string {
+  if (err instanceof HttpException) {
+    const body = err.getResponse();
+    const code = typeof body === 'object' && body !== null ? (body as { code?: unknown }).code : undefined;
+    if (typeof code === 'string' && CODE_PATTERN.test(code)) return code;
+  }
+  return errorCode(status);
 }
 
 /**
@@ -52,6 +68,7 @@ export class ErrorFilter implements ExceptionFilter {
     }
     res.statusCode = status;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ error: errorCode(status), requestId }));
+    if (status === 401) res.setHeader('WWW-Authenticate', 'Bearer');
+    res.end(JSON.stringify({ error: codeOf(err, status), requestId }));
   }
 }
