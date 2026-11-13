@@ -1,7 +1,12 @@
-import type { HauntLevel, Result, ServiceName, ServiceState, SignalKind } from './types.js';
+import type { HauntLevel, HauntReason, IngestStatus, Result, Sample, ServiceName, ServiceState, SignalKind } from './types.js';
 import {
+  checkArrayOf,
   checkFiniteNumber,
   checkHauntLevel,
+  checkHauntReason,
+  checkIngestStatus,
+  checkNullable,
+  checkSampleShape,
   checkIsoTimestamp,
   checkNonEmptyString,
   checkObject,
@@ -16,10 +21,21 @@ import {
 
 /** Domain events carry an id and are kept in the ring buffer for resume. */
 export interface DomainEventPayloads {
-  'service.updated': { service: ServiceState };
+  /** `previousLevel` is the level before this change (equal to the new level when only the reason changed). */
+  'service.updated': { service: ServiceState; previousLevel: HauntLevel };
   'signal.recorded': { service: ServiceName; kind: SignalKind; value: number; at: string };
-  'incident.opened': { incidentId: string; service: ServiceName; openedAt: string };
+  /** `level` and `reason` are what the Service had when the Incident opened. */
+  'incident.opened': {
+    incidentId: string;
+    service: ServiceName;
+    openedAt: string;
+    level: HauntLevel;
+    reason: HauntReason | null;
+  };
   'incident.closed': { incidentId: string; service: ServiceName; closedAt: string; peakLevel: HauntLevel };
+  /** One event per successful poll, with the Sample of every Service. */
+  'ingest.polled': { at: string; samples: Array<Sample & { service: ServiceName }> };
+  'ingest.status': IngestStatus;
 }
 
 /**
@@ -50,6 +66,8 @@ export const DOMAIN_EVENT_NAMES = [
   'signal.recorded',
   'incident.opened',
   'incident.closed',
+  'ingest.polled',
+  'ingest.status',
 ] as const satisfies readonly DomainEventName[];
 export const CONTROL_EVENT_NAMES = ['connected', 'heartbeat', 'resync'] as const satisfies readonly ControlEventName[];
 export const SSE_EVENT_NAMES: readonly SseEventName[] = [...DOMAIN_EVENT_NAMES, ...CONTROL_EVENT_NAMES];
@@ -91,7 +109,7 @@ const checkBootId: Check = (input, path, errors) => {
 };
 
 const payloadChecks: { [K in SseEventName]: Check } = {
-  'service.updated': checkObject({ service: checkServiceState }),
+  'service.updated': checkObject({ service: checkServiceState, previousLevel: checkHauntLevel }),
   'signal.recorded': checkObject({
     service: checkServiceName,
     kind: checkSignalKind,
@@ -102,6 +120,8 @@ const payloadChecks: { [K in SseEventName]: Check } = {
     incidentId: checkNonEmptyString,
     service: checkServiceName,
     openedAt: checkIsoTimestamp,
+    level: checkHauntLevel,
+    reason: checkNullable(checkHauntReason),
   }),
   'incident.closed': checkObject({
     incidentId: checkNonEmptyString,
@@ -109,6 +129,11 @@ const payloadChecks: { [K in SseEventName]: Check } = {
     closedAt: checkIsoTimestamp,
     peakLevel: checkHauntLevel,
   }),
+  'ingest.polled': checkObject({
+    at: checkIsoTimestamp,
+    samples: checkArrayOf(checkObject({ service: checkServiceName, ...checkSampleShape })),
+  }),
+  'ingest.status': checkIngestStatus,
   connected: checkObject({ bootId: checkBootId }),
   heartbeat: checkObject({ at: checkIsoTimestamp }),
   resync: checkObject({ reason: checkOneOf(RESYNC_REASONS) }),

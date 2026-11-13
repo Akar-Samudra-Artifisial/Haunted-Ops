@@ -35,6 +35,7 @@ describe('TableMode', () => {
     expect(rows).toHaveLength(5);
     expect(rows[3]?.textContent).toContain('payments');
     expect(rows[3]?.textContent).toContain('4 (dark)');
+    expect(rows[3]?.textContent).toContain('no data');
   });
 });
 
@@ -52,5 +53,29 @@ describe('App', () => {
     expect(screen.getByRole('status').textContent).toContain('live');
     expect(screen.getAllByRole('row')).toHaveLength(5);
     expect(http.urls).toEqual(['http://api.test/api/services']);
+    expect(http.statusUrls).toEqual(['http://api.test/api/ingest/status']);
+    expect(screen.queryByText(/Metrics are stale/)).toBeNull();
+  });
+
+  it('shows the stale notice from the loaded status and announces a level change from the stream', async () => {
+    const es = eventSourceRegistry();
+    const http = fakeFetch(undefined, () => ({
+      state: 'stale',
+      at: '2026-11-12T10:00:30.000Z',
+      lastSuccessAt: '2026-11-12T10:00:05.000Z',
+    }));
+    render(<App client={{ baseUrl: 'http://api.test', createEventSource: es.factory, fetchImpl: http.impl }} />);
+    await act(async () => {
+      es.latest().connect();
+      await flush();
+    });
+    expect(screen.getByText('Metrics are stale. Last update 10:00:05 UTC.')).toBeTruthy();
+    const gate = { ...SAMPLE_SERVICES[0]!, hauntLevel: 2 as const, updatedAt: '2026-11-12T10:00:40.000Z' };
+    await act(async () => {
+      es.latest().emit('service.updated', { service: gate, previousLevel: 0 }, 'a1b2c3d4e5f6-1');
+      await flush();
+    });
+    expect(screen.getByTestId('level-announcer').textContent).toBe('gate: haunted');
+    expect(within(screen.getByRole('table')).getAllByRole('row')[1]?.textContent).toContain('2 (haunted)');
   });
 });

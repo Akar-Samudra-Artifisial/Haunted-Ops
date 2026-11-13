@@ -1,4 +1,4 @@
-import { validateServiceStates, type ServiceState } from '@haunted-ops/shared';
+import { validateIngestStatus, validateServiceStates, type IngestStatus, type ServiceState } from '@haunted-ops/shared';
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -14,6 +14,15 @@ export class InvalidResponseError extends Error {
     super('invalid response from GET /api/services');
     this.name = 'InvalidResponseError';
   }
+}
+
+/** GET /api/ingest/status, validated with the shared validator. */
+export async function fetchIngestStatus(baseUrl: string, fetchImpl: FetchLike = fetch): Promise<IngestStatus> {
+  const res = await fetchImpl(`${baseUrl}/api/ingest/status`, { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error(`GET /api/ingest/status failed with ${res.status}`);
+  const result = validateIngestStatus(await res.json());
+  if (!result.ok) throw new InvalidResponseError();
+  return result.value;
 }
 
 /** GET /api/services, validated with the shared validator. */

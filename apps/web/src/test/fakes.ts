@@ -1,4 +1,4 @@
-import type { ServiceState } from '@haunted-ops/shared';
+import type { IngestStatus, ServiceState } from '@haunted-ops/shared';
 import type { EventSourceLike, SseErrorDetail } from '../net/fetch-event-source.js';
 
 export const BOOT_A = 'a1b2c3d4e5f6';
@@ -58,35 +58,47 @@ export function eventSourceRegistry() {
 }
 
 export const SAMPLE_SERVICES: ServiceState[] = [
-  { name: 'gate', room: { x: 0, y: 0 }, hauntLevel: 0, updatedAt: '2026-11-12T10:00:00.000Z' },
-  { name: 'orders', room: { x: 1, y: 0 }, hauntLevel: 1, updatedAt: '2026-11-12T10:00:00.000Z' },
-  { name: 'payments', room: { x: 0, y: 1 }, hauntLevel: 4, updatedAt: '2026-11-12T10:00:00.000Z' },
-  { name: 'ledger', room: { x: 1, y: 1 }, hauntLevel: 0, updatedAt: '2026-11-12T10:00:00.000Z' },
+  { name: 'gate', room: { x: 0, y: 0 }, hauntLevel: 0, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z' },
+  { name: 'orders', room: { x: 1, y: 0 }, hauntLevel: 1, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z' },
+  { name: 'payments', room: { x: 0, y: 1 }, hauntLevel: 4, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z' },
+  { name: 'ledger', room: { x: 1, y: 1 }, hauntLevel: 0, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z' },
 ];
 
-/** fetch stand-in that records URLs and answers with the given services. */
-export function fakeFetch(services: () => unknown = () => SAMPLE_SERVICES) {
+export const OK_STATUS: IngestStatus = {
+  state: 'ok',
+  at: '2026-11-12T10:00:00.000Z',
+  lastSuccessAt: '2026-11-12T10:00:00.000Z',
+};
+
+const isStatusUrl = (url: string): boolean => url.endsWith('/api/ingest/status');
+const json = (body: unknown): Response => ({ ok: true, status: 200, json: async () => body }) as Response;
+
+/** fetch stand-in that records URLs and answers with the given services. Status requests are kept apart. */
+export function fakeFetch(services: () => unknown = () => SAMPLE_SERVICES, status: () => unknown = () => OK_STATUS) {
   const urls: string[] = [];
+  const statusUrls: string[] = [];
   const impl = async (url: string): Promise<Response> => {
+    if (isStatusUrl(url)) {
+      statusUrls.push(url);
+      return json(status());
+    }
     urls.push(url);
-    return { ok: true, status: 200, json: async () => services() } as Response;
+    return json(services());
   };
-  return { urls, impl };
+  return { urls, statusUrls, impl };
 }
 
-/** fetch stand-in whose responses are released by the test, to stage races. */
-export function deferredFetch() {
+/** fetch stand-in whose services responses are released by the test, to stage races. */
+export function deferredFetch(status: () => unknown = () => OK_STATUS) {
   const pending: { url: string; resolve: (body: unknown) => void }[] = [];
-  const impl = (url: string): Promise<Response> =>
-    new Promise((resolveResponse) => {
-      pending.push({
-        url,
-        resolve: (body) => resolveResponse({ ok: true, status: 200, json: async () => body } as Response),
-      });
+  const impl = (url: string): Promise<Response> => {
+    if (isStatusUrl(url)) return Promise.resolve(json(status()));
+    return new Promise((resolveResponse) => {
+      pending.push({ url, resolve: (body) => resolveResponse(json(body)) });
     });
+  };
   return { pending, impl };
 }
-
 /** Lets pending promise callbacks run. */
 export async function flush(): Promise<void> {
   for (let i = 0; i < 10; i++) await Promise.resolve();

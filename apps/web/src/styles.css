@@ -61,7 +61,7 @@ body {
 
 .app-main {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   padding: 1rem 1.25rem;
 }
@@ -90,6 +90,21 @@ body {
   border-bottom: 1px solid #3a3450;
 }
 
+.table-scroll {
+  overflow-x: auto;
+}
+.stale-notice {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--warn);
+  border-radius: 0.375rem;
+  color: var(--warn);
+}
+.marker {
+  display: inline-block;
+  min-width: 1.25em;
+  text-align: center;
+}
 .visually-hidden {
   position: absolute;
   width: 1px;

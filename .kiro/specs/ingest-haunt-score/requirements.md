@@ -33,12 +33,13 @@ It does not run hunts or the MCP server (`exorcist-agent`), draw the PixiJS scen
 
 #### Acceptance Criteria
 
-1. WHERE `PROMETHEUS_URL` is set, THE API SHALL validate it as an origin made of scheme `http` or `https`, host and optional port, with no path, query, fragment or credentials, and WHERE it is unset THE API SHALL use `http://127.0.0.1:9090`.
+1. WHERE `PROMETHEUS_URL` is set, THE API SHALL validate it as an origin made of scheme `http` or `https`, host and optional port, with no path, query, fragment or credentials, whose host is `127.0.0.1`, `[::1]` or `localhost` unless `PROMETHEUS_ALLOW_REMOTE` is `true`, and never a link-local host (`169.254.0.0/16`, `fe80::/10`, or an IPv4-mapped address of the first), and WHERE it is unset THE API SHALL use `http://127.0.0.1:9090`.
 2. WHERE `POLL_INTERVAL_MS` is set, THE API SHALL validate it as an integer from 1000 to 60000, and WHERE it is unset THE API SHALL use 5000.
 3. WHERE `POLL_TIMEOUT_MS` is set, THE API SHALL validate it as an integer from 100 to 30000 that is not greater than `POLL_INTERVAL_MS`, and WHERE it is unset THE API SHALL use the smaller of 3000 and `POLL_INTERVAL_MS`.
 4. WHERE `SIGNAL_RETENTION_H` is set, THE API SHALL validate it as an integer from 1 to 720, and WHERE it is unset THE API SHALL use 24.
 5. IF any of these variables is invalid, THEN THE API SHALL exit with a non-zero code before it listens and print a message that names every offending variable and never prints a value.
-6. THE `.env.example` file and `docs/DEV.md` SHALL list `PROMETHEUS_URL`, `POLL_INTERVAL_MS`, `POLL_TIMEOUT_MS` and `SIGNAL_RETENTION_H` with their defaults, and no real value.
+6. THE `.env.example` file and `docs/DEV.md` SHALL list `PROMETHEUS_URL`, `PROMETHEUS_ALLOW_REMOTE`, `POLL_INTERVAL_MS`, `POLL_TIMEOUT_MS` and `SIGNAL_RETENTION_H` with their defaults, and no real value.
+7. WHERE `PROMETHEUS_ALLOW_REMOTE` is set, THE API SHALL validate it as exactly `true` or `false`, and WHERE it is unset THE API SHALL use `false`; a link-local host SHALL stay refused when it is `true`.
 
 ### Requirement 2: Prometheus poller
 
@@ -47,13 +48,14 @@ It does not run hunts or the MCP server (`exorcist-agent`), draw the PixiJS scen
 #### Acceptance Criteria
 
 1. WHEN the API has started, THE Poller SHALL run a Poll immediately and then one Poll every `POLL_INTERVAL_MS`.
-2. EACH Poll SHALL run exactly three instant queries with `GET /api/v1/query` at `PROMETHEUS_URL`: the error ratio over 1 minute, the p95 latency over 1 minute from the `http_request_duration_seconds` histogram, and `avg_over_time(up[30s])`.
+2. EACH Poll SHALL run exactly three instant queries with `GET /api/v1/query` at `PROMETHEUS_URL`: the error ratio over 30 seconds, the p95 latency over 30 seconds from the `http_request_duration_seconds` histogram, and `avg_over_time(up[30s])`, so that a fault shows within about 30 to 35 s.
 3. THE three PromQL strings SHALL be constants in code and SHALL NOT be built from any request, response, environment value or other input.
 4. THE error ratio query SHALL fall back to zero for a Service that has traffic but no 5xx series, and THE p95 query SHALL return milliseconds.
 5. IF a Poll is still running when the next interval elapses, THEN THE Poller SHALL skip that interval, so that never two Polls are in flight.
 6. THE Poller SHALL apply the timeout `POLL_TIMEOUT_MS` to every request, SHALL read at most 1 MiB of a response body, and SHALL NOT follow redirects.
 7. THE Poller SHALL read from a response only the metric label `service` and the sample value, SHALL accept only the four known Service names, and SHALL treat a missing, duplicated, non-numeric or non-finite value as `null`, without throwing for any response body.
 8. WHEN the API shuts down, THE Poller SHALL stop its timer and abort a request in flight, and SHALL NOT start another Poll.
+9. WHEN the API shuts down, THE API SHALL stop the Poller and wait for a Poll that is being applied before it closes the database connection, so that nothing is written after the disconnect; THE database connection SHALL close in the application-shutdown phase, after the module-destroy phase in which the Poller stops.
 
 ### Requirement 3: Prometheus failure handling
 
@@ -77,7 +79,7 @@ It does not run hunts or the MCP server (`exorcist-agent`), draw the PixiJS scen
 
 1. WHEN a Poll succeeds, THE API SHALL store one Signal row for each Service and each kind (`error_rate`, `p95_ms`, `up`) whose value is not `null`, all with the time of that Poll as `at`, and none for a `null` value.
 2. THE stored values SHALL be the error ratio from 0 to 1, the p95 in milliseconds, and the `up` average from 0 to 1.
-3. WHEN the API has started, and then every 10 minutes, THE API SHALL delete the Signals whose `at` is older than `SIGNAL_RETENTION_H` hours, in batches of 5000 rows, until a batch deletes fewer rows than its limit.
+3. WHEN the API has started, and then every 10 minutes, THE API SHALL delete the Signals whose `at` is older than `SIGNAL_RETENTION_H` hours, in batches of 5000 rows, until a batch deletes fewer rows than its limit, taking the oldest rows first by `at` (so the `signal_at` index serves each batch) and pausing briefly between two full batches.
 4. THE retention SHALL delete only Signal rows with `at` strictly before the cut-off, and SHALL NOT touch any other table.
 5. IF a retention run fails, THEN THE API SHALL log it, keep polling, and try again at the next run.
 6. THE schema SHALL have an index on `Signal.at` for the retention delete.
@@ -119,10 +121,11 @@ It does not run hunts or the MCP server (`exorcist-agent`), draw the PixiJS scen
 
 1. WHEN the level or the Haunt reason kind of a Service changes, THE API SHALL write `Service.hauntLevel` and the reason in one transaction with any Incident change, and after the commit SHALL publish `service.updated` with the full Service state.
 2. WHEN neither the level nor the reason kind changes, THE API SHALL NOT publish `service.updated`, even if the reason value or any metric changed.
-3. WHEN a Poll succeeds, THE API SHALL publish one `ingest.polled` event with the Sample of each of the four Services, so that live metrics need one event per Poll and not one per value.
+3. WHEN a Poll succeeds, THE API SHALL publish one `ingest.polled` event with the Sample of each of the four Services, but at most once every 30 s of Poll time, and also on the Poll that changes the ingest status, so that public stream clients get a bounded number of events.
 4. THE payload shapes of `ingest.polled`, `ingest.status`, `service.updated`, `incident.opened` and `incident.closed` SHALL be defined in Shared with total validators, and THE API SHALL publish only payloads that pass them.
-5. IF a database write fails, THEN THE API SHALL keep the previous in-memory state of that Service, publish nothing for it, log the error, and keep polling; a database failure SHALL NOT mark ingest as Stale.
+5. IF a database write fails, THEN THE API SHALL keep the hysteresis state that the Poll produced (so a streak does not start over), keep the stored level as it was, publish nothing for that Service, log the error, write the level again at the next Poll, and keep polling; a database failure SHALL NOT mark ingest as Stale.
 6. THE API SHALL NOT publish `signal.recorded` for polled values.
+7. THE `service.updated` payload SHALL carry `previousLevel`, the level that was stored before the change (equal to the new level when only the reason kind changed).
 
 ### Requirement 8: Incidents
 
@@ -130,13 +133,14 @@ It does not run hunts or the MCP server (`exorcist-agent`), draw the PixiJS scen
 
 #### Acceptance Criteria
 
-1. WHEN a Service reaches level 2 or higher and has no Open Incident, THE API SHALL create an Incident with `peakLevel` set to that level and, after the commit, publish `incident.opened`.
+1. WHEN a Service reaches level 2 or higher and has no Open Incident, THE API SHALL create an Incident with `peakLevel` set to that level and, after the commit, publish `incident.opened` carrying the `level` and the `reason` the Service has at that moment.
 2. THE API SHALL keep at most one Open Incident per Service, and IF the database rejects a second open Incident, THEN THE API SHALL treat the Incident as already open and continue.
 3. WHILE an Incident is open and the level rises above its `peakLevel`, THE API SHALL raise `peakLevel`, so that the peak equals the highest level held while the Incident was open.
-4. WHEN a Service has stayed at level 0 for 30 s of successful Poll time, THE API SHALL close its Open Incident, set `closedAt`, and after the commit publish `incident.closed` with the `peakLevel`.
+4. WHEN 30 s of level-0 time have been counted for a Service, THE API SHALL close its Open Incident, set `closedAt`, and after the commit publish `incident.closed` with the `peakLevel`; the time is the sum of the intervals between consecutive Polls that had data for that Service and were at level 0.
 5. WHEN a successful Poll shows a level above 0, THE API SHALL restart the 30 s count.
 6. A Service at level 1 with no Open Incident SHALL NOT open one, and an Open Incident SHALL stay open at level 1.
 7. WHEN the API starts, THE API SHALL load each Open Incident from the database and start the 30 s count at the first successful Poll that shows level 0.
+8. A failed Poll and a Poll without data for a Service SHALL NOT add to the count: the interval after them is not counted, and the count already reached is kept.
 
 ### Requirement 9: Shared types, schema and service route
 
@@ -149,6 +153,7 @@ It does not run hunts or the MCP server (`exorcist-agent`), draw the PixiJS scen
 3. THE Prisma schema SHALL add the enum `HauntReasonKind` and the nullable columns `Service.reasonKind` and `Service.reasonValue`, with a committed migration that keeps the partial unique index `incident_one_open_per_service`.
 4. THE migration SHALL apply to an empty database and to a database migrated by `foundation`, and the seed SHALL leave `hauntLevel` 0 and the reason `null` for all four Services.
 5. THE API and THE Web SHALL import these types, thresholds and validators from Shared and SHALL NOT redefine them.
+6. THE `reason` of `GET /api/services` and of `service.updated` SHALL be the reason at the last change of level or reason kind; the current value of the cause is in `metrics`, which the Web uses to show it.
 
 ### Requirement 10: Table mode
 
@@ -157,7 +162,7 @@ It does not run hunts or the MCP server (`exorcist-agent`), draw the PixiJS scen
 #### Acceptance Criteria
 
 1. THE Table mode SHALL show for each Service: its name, the Haunt level as a number and a text label, a marker whose shape differs for each level and does not depend on colour, the Haunt reason as text, the error ratio, the p95, the `up` value, and its Open Incident (opened time and peak level) or the text "none".
-2. THE Haunt reason text, built from the kind and value of the reason, SHALL read "error rate 22%" for `error_rate`, "p95 2.2 s" for `p95` (milliseconds below 1000 shown as "p95 640 ms") and "service down" for `down`, and SHALL read "none" when the reason is `null`.
+2. THE Haunt reason text, built from the kind of the reason and the current metric of that kind (or the stored reason value when the metric is `null`), SHALL read "error rate 22%" for `error_rate`, "p95 2.2 s" for `p95` (milliseconds below 1000 shown as "p95 640 ms") and "service down" for `down`, and SHALL read "none" when the reason is `null`.
 3. WHERE a metric value is `null` or `metrics` is `null`, THE Table mode SHALL show the text "no data" for it.
 4. WHEN `service.updated`, `ingest.polled`, `incident.opened` or `incident.closed` arrives, THE Web SHALL update the affected row without a reload, and an event that was already applied SHALL change nothing.
 5. WHEN `ingest.status` has state `stale`, THE Table mode SHALL show a text notice with the time of the last successful Poll and keep the last values, and SHALL remove the notice when the state is `ok`.

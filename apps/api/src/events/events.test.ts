@@ -42,7 +42,7 @@ describe('EventBus', () => {
 
   it('validates payloads before publishing', () => {
     const bus = new EventBus();
-    expect(() => bus.publish('incident.opened', { incidentId: '', service: 'gate', openedAt: 'x' })).toThrow(TypeError);
+    expect(() => bus.publish('incident.opened', { incidentId: '', service: 'gate', openedAt: 'x', level: 2, reason: null })).toThrow(TypeError);
     expect(bus.buffer.latestId()).toBe(0);
   });
 

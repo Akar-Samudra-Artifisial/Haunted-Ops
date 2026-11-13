@@ -1,11 +1,12 @@
 import {
   DOMAIN_EVENT_NAMES,
-  SERVICE_NAMES,
   validateSseEvent,
+  type IngestStatus,
   type ServiceState,
   type SseEventName,
 } from '@haunted-ops/shared';
-import { fetchServices, type FetchLike } from './api.js';
+import { fetchIngestStatus, fetchServices, type FetchLike } from './api.js';
+import { LIVE_EVENT_NAMES, applyLiveEvent, newerMetrics, sortByRoom, type LiveEventName } from './live-state.js';
 import { reconnectDelay } from './backoff.js';
 import { FetchEventSource, type EventSourceLike, type SseErrorDetail } from './fetch-event-source.js';
 import {
@@ -17,6 +18,7 @@ import {
 } from './status.js';
 
 export type { EventSourceLike, SseErrorDetail };
+export { sortByRoom };
 export type EventSourceFactory = (url: string) => EventSourceLike;
 
 export interface Timers {
@@ -36,6 +38,8 @@ export interface SseClientOptions {
   /** Window-like target for `online` / `offline` events. */
   network?: Pick<Window, 'addEventListener' | 'removeEventListener'> & { navigator?: { onLine: boolean } };
   onServices: (services: ServiceState[]) => void;
+  /** Called when the ingest status is loaded or changes. */
+  onIngest?: (status: IngestStatus) => void;
   onConnection: (state: ConnectionState) => void;
 }
 
@@ -49,12 +53,6 @@ const defaultTimers: Timers = {
   clearInterval: (h) => globalThis.clearInterval(h as ReturnType<typeof setInterval>),
 };
 
-/** Room order: row (y), then column (x), then the fixed service order. */
-export function sortByRoom(services: readonly ServiceState[]): ServiceState[] {
-  const rank = (s: ServiceState): number => SERVICE_NAMES.indexOf(s.name);
-  return [...services].sort((a, b) => a.room.y - b.room.y || a.room.x - b.room.x || rank(a) - rank(b));
-}
-
 /**
  * Merges a snapshot with the current state: per service the entry with the
  * later `updatedAt` wins, so a snapshot never overwrites a newer event.
@@ -64,7 +62,11 @@ export function mergeByUpdatedAt(current: readonly ServiceState[], snapshot: rea
   for (const s of snapshot) byName.set(s.name, s);
   for (const s of current) {
     const snap = byName.get(s.name);
-    if (!snap || Date.parse(s.updatedAt) > Date.parse(snap.updatedAt)) byName.set(s.name, s);
+    if (!snap) byName.set(s.name, s);
+    // Events are applied in order, so on a tie the current entry is at least as new as the snapshot.
+    else if (Date.parse(s.updatedAt) >= Date.parse(snap.updatedAt)) {
+      byName.set(s.name, { ...s, metrics: newerMetrics(s.metrics, snap.metrics) });
+    } else byName.set(s.name, { ...snap, metrics: newerMetrics(snap.metrics, s.metrics) });
   }
   return sortByRoom([...byName.values()]);
 }
@@ -84,6 +86,7 @@ export class SseClient {
   private lastEventId: string | null = null;
   private bootId: string | null = null;
   private services: ServiceState[] = [];
+  private ingest: IngestStatus | null = null;
   /** Counts applied `service.updated` events, to detect events that race a snapshot fetch. */
   private eventSeq = 0;
   private loading = false;
@@ -95,6 +98,7 @@ export class SseClient {
     const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
     this.o = {
       createEventSource: (url) => new FetchEventSource(url, fetchImpl),
+      onIngest: () => undefined,
       timers: defaultTimers,
       now: () => Date.now(),
       random: () => Math.random(),
@@ -198,13 +202,30 @@ export class SseClient {
     if (name === 'heartbeat') return;
 
     if (typeof ev.lastEventId === 'string' && ev.lastEventId !== '') this.lastEventId = ev.lastEventId;
-    if (name !== 'service.updated') return;
-    const result = validateSseEvent('service.updated', this.parse(ev));
+    if (!(LIVE_EVENT_NAMES as readonly string[]).includes(name)) return;
+    const live = name as LiveEventName;
+    const result = validateSseEvent(live, this.parse(ev));
     if (!result.ok) return;
-    const updated = result.value.service;
     this.eventSeq++;
-    this.services = sortByRoom([...this.services.filter((s) => s.name !== updated.name), updated]);
-    this.o.onServices(this.services);
+    const before = { services: this.services, ingest: this.ingest };
+    const next = applyLiveEvent(before, live, result.value as never);
+    this.services = next.services;
+    this.ingest = next.ingest;
+    if (next.services !== before.services) this.o.onServices(this.services);
+    if (next.ingest !== before.ingest && next.ingest !== null) this.o.onIngest?.(next.ingest);
+  }
+
+  /** Loads the ingest status. A failure keeps the previous status. */
+  private async loadIngest(): Promise<void> {
+    try {
+      const status = await fetchIngestStatus(this.o.baseUrl, this.o.fetchImpl);
+      if (this.stopped) return;
+      if (this.ingest !== null && Date.parse(this.ingest.at) > Date.parse(status.at)) return;
+      this.ingest = status;
+      this.o.onIngest?.(status);
+    } catch {
+      // Keep the previous status; the next connect or resync retries.
+    }
   }
 
   /** Loads the snapshot. Concurrent calls coalesce into one follow-up load. */
@@ -214,6 +235,7 @@ export class SseClient {
       return;
     }
     this.loading = true;
+    void this.loadIngest();
     const seqAtStart = this.eventSeq;
     try {
       const snapshot = await fetchServices(this.o.baseUrl, this.o.fetchImpl);

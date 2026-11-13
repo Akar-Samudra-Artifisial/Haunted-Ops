@@ -15,10 +15,12 @@ Key decisions:
 
 - **Pure core in Shared.** `scoreSample` (Sample to Raw level and reason) and `stepHaunt` (hysteresis) live in `packages/shared`, have no I/O and no clock, and carry the correctness properties. The incident policy is a second pure function in the API. The poller and the database code are thin shells around them.
 - **All-or-nothing polls.** Three queries per Poll, grouped by the `service` label, not twelve per-service queries. If any one fails, the whole Poll fails and nothing changes. A half-updated house would lie.
-- **One event per Poll for live numbers.** `service.updated` fires only when the level or the reason kind changes. The numbers in the table move every 5 s, so a single `ingest.polled` event carries all four Samples. This costs 12 events a minute in the 500-event ring buffer, not 144 as `signal.recorded` per value would.
+- **Few events for live numbers.** `service.updated` fires only when the level or the reason kind changes. A single `ingest.polled` event carries all four Samples, and it is sent at most every 30 s (and on the Poll that changes the ingest status), because every event goes to every public SSE client and into the 500-event ring buffer. That is 2 events a minute, not 12 (one per Poll) or 144 (`signal.recorded` per value). `GET /api/services` always has the latest Sample, so a reload is never older than the stream.
 - **Prometheus is untrusted.** Only numbers and the four known service names are read from a response. No response text reaches a row, an event or a log line.
 - **Queries are constants.** The three PromQL strings are module constants; the service label values come from the `service` label of the answer, matched against `SERVICE_NAMES`, never interpolated into a query.
-- **In-memory hysteresis, durable level.** The streaks live in memory. The level, reason and open incident are in PostgreSQL. After a restart the level is kept and the streaks start again, which delays a change by at most 2 to 3 Polls.
+- **In-memory hysteresis, durable level.** The streaks live in memory. The level, reason and open incident are in PostgreSQL. After a restart the level is kept and the streaks start again, which delays a change by at most 2 to 3 Polls. If a database write fails, the in-memory state still advances and the next Poll writes the level again (the stored level is compared with the in-memory one), so a failed write does not restart a streak.
+- **Shutdown order.** Nest runs the hooks of one phase in parallel. The runner stops the Poller and waits for a Poll that is being applied in `onModuleDestroy`; `PrismaService` disconnects in `onApplicationShutdown`, which runs later. So nothing writes after the disconnect.
+- **Windows of 30 s.** The error ratio and p95 use `[30s]` (6 scrapes at 5 s), so a fault shows after about 30 to 35 s and clears after about the same time plus 3 falling Polls. A `[1m]` window put the lab error-spike at 48 to 49 s of a 60 s limit.
 - **No new dependency.** Polling uses the built-in `fetch` of Node 26. `fast-check` stays at 4.10.2 (checked against the npm registry on 13 Nov 2026, still the latest).
 
 ### Threshold table
@@ -121,7 +123,8 @@ sequenceDiagram
 
 | Variable | Field | Rule | Default |
 | --- | --- | --- | --- |
-| `PROMETHEUS_URL` | `prometheusUrl` | `isOrigin` (http or https, host, optional port, no path, query, fragment or credentials) | `http://127.0.0.1:9090` |
+| `PROMETHEUS_URL` | `prometheusUrl` | `isOrigin` (http or https, host, optional port, no path, query, fragment or credentials) and `isPrometheusOrigin`: host `127.0.0.1`, `[::1]` or `localhost` unless `PROMETHEUS_ALLOW_REMOTE=true`; never a link-local host (`169.254.0.0/16`, `fe80::/10`, IPv4-mapped `::ffff:a9fe:`) | `http://127.0.0.1:9090` |
+| `PROMETHEUS_ALLOW_REMOTE` | `prometheusAllowRemote` | exactly `true` or `false` | `false` |
 | `POLL_INTERVAL_MS` | `pollIntervalMs` | integer 1000 to 60000 | 5000 |
 | `POLL_TIMEOUT_MS` | `pollTimeoutMs` | integer 100 to 30000 and not above `pollIntervalMs` | `min(3000, pollIntervalMs)` |
 | `SIGNAL_RETENTION_H` | `signalRetentionH` | integer 1 to 720 | 24 |
@@ -132,12 +135,12 @@ sequenceDiagram
 
 ```ts
 export const ERROR_RATIO_QUERY =
-  '(sum by (service) (rate(http_requests_total{code=~"5.."}[1m]))' +
-  ' or on(service) (0 * sum by (service) (rate(http_requests_total[1m]))))' +
-  ' / sum by (service) (rate(http_requests_total[1m]))';
+  '(sum by (service) (rate(http_requests_total{code=~"5.."}[30s]))' +
+  ' or on(service) (0 * sum by (service) (rate(http_requests_total[30s]))))' +
+  ' / sum by (service) (rate(http_requests_total[30s]))';
 
 export const P95_MS_QUERY =
-  '1000 * histogram_quantile(0.95, sum by (service, le) (rate(http_request_duration_seconds_bucket[1m])))';
+  '1000 * histogram_quantile(0.95, sum by (service, le) (rate(http_request_duration_seconds_bucket[30s])))';
 
 export const UP_QUERY = 'avg_over_time(up{job="lab"}[30s])';
 
@@ -224,11 +227,12 @@ export class IngestService {
 2. For each Service in room order:
    1. `next = stepHaunt(state, sample)`. A No-data Sample returns the same state.
    2. `incident = nextIncident(incidentState, next.level, at)` (below).
-   3. If `hauntChanged(prev, next)` or `incident.action.kind !== 'none'`, write one transaction: update `Service` (`hauntLevel`, `reasonKind`, `reasonValue`), and create, update or close the `Incident`. On success replace the in-memory state, then publish. On failure keep the previous state, log the error class and go on with the next Service.
-3. Publish `ingest.polled` with the four Samples.
+   3. If the new level or reason kind differs from what the database holds (`persistedLevel`, `persistedKind`) or `incident.action.kind !== 'none'`, write one transaction: update `Service` (`hauntLevel`, `reasonKind`, `reasonValue`), and create, update or close the `Incident`. On success set the persisted values, then publish. On failure keep the new hysteresis state and the new calm count in memory (so the streak does not start again), leave the persisted values as they are, publish nothing, log the error class and go on with the next Service; the next Poll writes again.
+   4. A Service with a No-data Sample is skipped, and its calm stretch is broken (`lastCalmAt = null`).
+3. Publish `ingest.polled` with the four Samples if none was published in the last 30 s of Poll time, or if the ingest status is not `ok` yet.
 4. If the ingest state was not `ok`, set it to `ok`, store `lastSuccessAt`, and publish `ingest.status`.
 
-`pollFailed` changes nothing about levels or incidents. If the ingest state was not `stale`, it sets `stale` and publishes `ingest.status`.
+`pollFailed` changes nothing about levels or incidents, but it breaks every calm stretch (`lastCalmAt = null`), so the time of a failed Poll is never counted toward closing an Incident. If the ingest state was not `stale`, it sets `stale` and publishes `ingest.status`.
 
 All DB writes for one Poll run in sequence, in the single async function started by the Poller, so there is no interleaving. Events are published only after the transaction of that Service committed.
 
@@ -281,7 +285,8 @@ export const INCIDENT_CLOSE_AFTER_MS = 30_000;
 
 export interface IncidentState {
   open: { id: string; peakLevel: HauntLevel } | null;
-  zeroSince: number | null;                 // epoch ms of the first successful Poll at level 0
+  calmMs: number;                           // level-0 time counted so far
+  lastCalmAt: number | null;                // epoch ms of the previous level-0 Poll with data; null when a failed or empty Poll broke the stretch
 }
 export type IncidentAction =
   | { kind: 'none' }
@@ -289,14 +294,14 @@ export type IncidentAction =
   | { kind: 'raise_peak'; peakLevel: HauntLevel }
   | { kind: 'close'; peakLevel: HauntLevel };
 
-export function nextIncident(state: IncidentState, level: HauntLevel, atMs: number): { zeroSince: number | null; action: IncidentAction };
+export function nextIncident(state: IncidentState, level: HauntLevel, atMs: number): { calmMs: number; lastCalmAt: number | null; action: IncidentAction };
 ```
 
-- No open Incident: `open` if `level >= 2`, otherwise `none`; `zeroSince` is `null`.
-- Open Incident, `level > 0`: `zeroSince = null`; `raise_peak` if `level > peakLevel`, else `none`.
-- Open Incident, `level === 0`: `zeroSince = zeroSince ?? atMs`; `close` if `atMs - zeroSince >= 30_000`, else `none`.
+- No open Incident: `open` if `level >= 2`, otherwise `none`; the count is reset.
+- Open Incident, `level > 0`: `calmMs = 0`, `lastCalmAt = null`; `raise_peak` if `level > peakLevel`, else `none`.
+- Open Incident, `level === 0`: `calmMs += lastCalmAt === null ? 0 : max(0, atMs - lastCalmAt)`, `lastCalmAt = atMs`; `close` if `calmMs >= 30_000`, else `none`.
 
-A failed Poll never calls the policy, so Stale time does not count toward the 30 s. After a restart, `zeroSince` is `null` and an open Incident is loaded from the database.
+Only intervals between two consecutive level-0 Polls that both had data are counted. A failed Poll or a Poll without data for the Service never calls the policy; the service sets `lastCalmAt = null`, so the interval that follows is not counted, and the `calmMs` already reached is kept. After a restart, `calmMs` is 0, `lastCalmAt` is `null` and an open Incident is loaded from the database.
 
 ### Retention (`apps/api/src/ingest/retention.ts`)
 
@@ -306,7 +311,7 @@ export const RETENTION_BATCH = 5000;
 export async function runRetention(prisma, now: Date, retentionH: number): Promise<number>;
 ```
 
-Each batch runs `DELETE FROM "Signal" WHERE id IN (SELECT id FROM "Signal" WHERE "at" < $1 ORDER BY id LIMIT $2)` through `$executeRaw` with bound parameters, until a batch returns fewer than `RETENTION_BATCH`. `$1` is `now - retentionH hours`. The first run is at start, then every 10 minutes; a failure is logged and the next run tries again. The timer is cleared on shutdown.
+Each batch runs `DELETE FROM "Signal" WHERE id IN (SELECT id FROM "Signal" WHERE "at" < $1 ORDER BY "at" LIMIT $2)` through `$executeRaw` with bound parameters (the order by `at` walks the `signal_at` index from the oldest row), until a batch returns fewer than `RETENTION_BATCH`, pausing 50 ms between two full batches. `$1` is `now - retentionH hours`. The first run is at start, then every 10 minutes; a failure is logged and the next run tries again. The timer is cleared on shutdown.
 
 ### HTTP routes (additions)
 
@@ -322,9 +327,14 @@ Each batch runs `DELETE FROM "Signal" WHERE id IN (SELECT id FROM "Signal" WHERE
 New names are added to `DOMAIN_EVENT_NAMES`, with validators in `payloadChecks`:
 
 ```ts
-// existing, unchanged
-'service.updated': { service: ServiceState };
-'incident.opened': { incidentId: string; service: ServiceName; openedAt: string };
+// service.updated and incident.opened gain fields (they prepare scene-engine and exorcist-agent)
+'service.updated': { service: ServiceState; previousLevel: HauntLevel };   // level stored before this change
+'incident.opened': {
+  incidentId: string; service: ServiceName; openedAt: string;
+  level: HauntLevel;                                                      // level at the open, equal to the first peak
+  reason: HauntReason | null;                                             // reason at the open
+};
+// unchanged
 'incident.closed': { incidentId: string; service: ServiceName; closedAt: string; peakLevel: HauntLevel };
 
 // new
@@ -356,12 +366,12 @@ Publish order inside one Service step: `service.updated` (it already carries the
 - `net/live-state.ts`: a pure reducer `applyLiveEvent(state, name, payload)` over `{ services: ServiceState[]; ingest: IngestStatus | null }`.
   - `service.updated`: replace the Service if `updatedAt` is not older than the stored one (foundation rule), keep room order.
   - `ingest.polled`: set `metrics` of each listed Service to the sample and `at`. Ignored if `at` is older than the stored `metrics.at`.
-  - `incident.opened`: set `openIncident` to `{ id, openedAt, peakLevel: hauntLevel }` unless the same id is already set.
+  - `incident.opened`: set `openIncident` to `{ id, openedAt, peakLevel: level }` (the level carried by the event, not the current level of the service) unless the same id is already set.
   - `incident.closed`: clear `openIncident` if its id matches.
   - `ingest.status`: set `ingest`.
   - Applying the same event twice gives the same state.
 - `net/sse-client.ts`: also subscribes to the new events, validates them with `validateSseEvent`, applies `applyLiveEvent`, and loads `GET /api/ingest/status` together with `GET /api/services` on connect and on `resync`. The foundation race rule (an event that arrives during a snapshot fetch is not overwritten) stays.
-- `components/TableMode.tsx`: columns Service, Haunt level, Reason, Error ratio, p95, Up, Incident. The Haunt level cell reads `2 (haunted)` and starts with a marker glyph chosen per level and marked `aria-hidden`, so the text carries the meaning: calm `○`, uneasy `◔`, haunted `◑`, possessed `◕`, dark `●`. When `ingest.state === 'stale'`, a `role="status"` notice above the table reads "Metrics are stale. Last update 14:02:10." with the last success time.
+- `components/TableMode.tsx`: columns Service, Haunt level, Reason, Error ratio, p95, Up, Incident. The Reason cell shows the kind of the reason with the current value from `metrics` (`formatReason(reason, metrics)`), because the stored reason value is the one at the last change of level or reason kind; it falls back to the stored value when the metric is `null`. The Haunt level cell reads `2 (haunted)` and starts with a marker glyph chosen per level and marked `aria-hidden`, so the text carries the meaning: calm `○`, uneasy `◔`, haunted `◑`, possessed `◕`, dark `●`. When `ingest.state === 'stale'`, a `role="status"` notice above the table reads "Metrics are stale. Last update 14:02:10." with the last success time.
 - `components/LiveAnnouncer.tsx`: a visually hidden `aria-live="polite"` region. It keeps the previous level per Service and writes "payments: haunted" once per level change. It writes nothing on the first load.
 - Formatting helpers (`format.ts`): `formatReason`, `formatErrorRatio` (`22%`), `formatP95` (`640 ms` below 1000, `2.2 s` from 1000), `formatUp` (`up` for 0.5 or more, `down` below, `no data` for null).
 
@@ -377,7 +387,7 @@ Plain Node 26 ESM, no dependency. Environment: `API_URL` (default `http://127.0.
 
 Steps: wait up to 120 s for all four Services at level 0 with no Open Incident; for each Scenario, `POST /chaos/scenarios/<name>/apply`, poll `/api/services` every 1 s for up to 60 s until the Service meets the table row and has an Open Incident, then `POST /chaos/reset`, poll until the Service is at level 0 (up to 120 s). A `finally` block and the SIGINT and SIGTERM handlers send one more reset. The script prints a table (Scenario, Service, level, reason, detect s, recover s, result) and exits 0 or 1. The token is never printed.
 
-A scenario with a 1 min rate window needs about 60 s to clear after a reset, plus 3 Polls of falling hysteresis, hence 120 s.
+With the 30 s windows a scenario shows after about 30 to 35 s (the lab runs measured 13 to 30 s for fog and dark-room before; error-spike was 48 to 49 s with `[1m]`) and clears after a similar time plus 3 falling Polls. The limits stay at 60 s to detect and 120 s to recover; the expected times are about 30 to 35 s and 40 to 70 s.
 
 ## Data Models
 
@@ -423,7 +433,8 @@ The migration must not touch the partial unique index `incident_one_open_per_ser
 | State | Where | After restart |
 | --- | --- | --- |
 | `HauntState` per Service | `IngestService` | level and reason from `Service`; streaks empty |
-| `IncidentState` per Service | `IngestService` | open Incident from the database; `zeroSince` null |
+| `IncidentState` per Service | `IngestService` | open Incident from the database; `calmMs` 0, `lastCalmAt` null |
+| persisted level and reason kind per Service | `IngestService` | the stored `Service` row |
 | last Sample per Service | `IngestService` | none; `metrics` from Signals of the last 60 s |
 | ingest state, `lastSuccessAt` | `IngestService` | `unknown`; reported as `stale` until the first Poll |
 
@@ -463,15 +474,15 @@ For any sequence of levels with increasing times, applying `nextIncident` (and m
 
 ### Property 6: An Incident closes only after 30 s at level 0
 
-For any sequence of (level, time) pairs, an Incident closes at time T only if every Poll in the interval from `zeroSince` to T had level 0 and `T - zeroSince >= 30000`; any Poll with a level above 0 clears `zeroSince`; and a close always happens at the first Poll that meets both conditions.
+For any sequence of Polls (level and time) mixed with failed Polls and Polls without data, an Incident closes at a Poll only if the counted calm time reaches 30 s, where calm time is the sum of the intervals between consecutive level-0 Polls with data that no failed or empty Poll separated; a Poll with a level above 0 resets the count; the time of a failed or empty Poll is never counted; and a close happens at the first Poll that reaches 30 s.
 
-**Validates: Requirements 8.4, 8.5, 8.7**
+**Validates: Requirements 8.4, 8.5, 8.7, 8.8**
 
 ### Property 7: Events are published exactly when the level or the reason kind changes
 
-For any sequence of Samples, run through `IngestService` with a fake store and a recording bus, the number of `service.updated` events for a Service equals the number of steps in which `(level, reason kind)` differs from the previous step; no event is published for a step in which only a value changed; and the last published `service.updated` of each Service matches the stored `hauntLevel` and reason kind.
+For any sequence of Samples, run through `IngestService` with a fake store and a recording bus, the number of `service.updated` events for a Service equals the number of steps in which `(level, reason kind)` differs from the previous step; no event is published for a step in which only a value changed; the last published `service.updated` of each Service matches the stored `hauntLevel` and reason kind; and `ingest.polled` is published for the first Poll and then at most once every 30 s.
 
-**Validates: Requirements 7.1, 7.2, 7.3**
+**Validates: Requirements 7.1, 7.2, 7.3, 7.7**
 
 ### Property 8: Never two Polls in flight
 
@@ -481,7 +492,7 @@ For any schedule of ticks and poll durations, driven with fake timers, the Polle
 
 ### Property 9: A Prometheus failure never changes levels
 
-For any interleaving of successful and failed Polls, a failed Poll leaves every Haunt state, reason and Open Incident exactly as it was, stores no Signal, publishes only `ingest.status` and only on a change of state, and the Samples of the successful Polls give the same final levels as the same Samples without the failures in between.
+For any interleaving of successful and failed Polls, a failed Poll leaves every Haunt state, reason and Open Incident exactly as it was, stores no Signal, publishes only `ingest.status` and only on a change of state, and the Samples of the successful Polls give the same final levels and the same `service.updated` events as the same Samples without the failures in between (Incident closes may come later, because a failed Poll breaks the calm count).
 
 **Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 7.5**
 
@@ -499,9 +510,9 @@ For any JSON value as a response body, `parseVector` does not throw; every key o
 
 ### Property 12: Config rejects every bad ingest variable without echoing it
 
-For any environment where `PROMETHEUS_URL`, `POLL_INTERVAL_MS`, `POLL_TIMEOUT_MS` or `SIGNAL_RETENTION_H` is out of its range or malformed, `parseConfig` throws a `ConfigError` that names exactly the bad variables and whose message contains none of their values; and for any valid environment it returns the documented defaults for the unset ones.
+For any environment where `PROMETHEUS_URL` (malformed, a remote host without `PROMETHEUS_ALLOW_REMOTE=true`, or a link-local host in any case), `PROMETHEUS_ALLOW_REMOTE`, `POLL_INTERVAL_MS`, `POLL_TIMEOUT_MS` or `SIGNAL_RETENTION_H` is out of its range or malformed, `parseConfig` throws a `ConfigError` that names exactly the bad variables and whose message contains none of their values; and for any valid environment it returns the documented defaults for the unset ones.
 
-**Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5**
+**Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 1.7**
 
 ### Property 13: The live reducer is idempotent and keeps room order
 

@@ -29,7 +29,13 @@ export function redact(value: unknown, seen: WeakSet<object> = new WeakSet()): u
     if (Array.isArray(value)) return value.map((v) => redact(v, seen));
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
-      out[k] = SECRET_KEY_PATTERN.test(k) ? REDACTED : redact(v, seen);
+      // defineProperty, not assignment: a key named "__proto__" must stay an own property of the copy.
+      Object.defineProperty(out, k, {
+        value: SECRET_KEY_PATTERN.test(k) ? REDACTED : redact(v, seen),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
     }
     return out;
   } finally {

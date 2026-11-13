@@ -6,6 +6,10 @@ import { EventBus } from './events/event-bus.js';
 import { SseController } from './events/sse.controller.js';
 import { SseService } from './events/sse.service.js';
 import { HealthController } from './health/health.controller.js';
+import { IngestController } from './ingest/ingest.controller.js';
+import { IngestRunner } from './ingest/ingest.runner.js';
+import { IngestService } from './ingest/ingest.service.js';
+import { PrismaIngestStore } from './ingest/store.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { JsonLogger } from './security/logger.js';
 import { RATE_LIMIT_WINDOW_MS, RateLimitGuard } from './security/rate-limit.guard.js';
@@ -31,7 +35,7 @@ export class AppModule {
         ThrottlerModule.forRoot([{ name: 'default', ttl: RATE_LIMIT_WINDOW_MS, limit: config.rateLimitMax }]),
         ...(options.imports ?? []),
       ],
-      controllers: [HealthController, ServicesController, SseController],
+      controllers: [HealthController, ServicesController, IngestController, SseController],
       providers: [
         { provide: APP_CONFIG, useValue: config },
         { provide: JsonLogger, useValue: logger },
@@ -45,9 +49,24 @@ export class AppModule {
             new SseService(bus, { maxClients: config.sseMaxClients, maxClientsPerIp: config.sseMaxClientsPerIp }),
           inject: [EventBus],
         },
-        { provide: ServicesService, useFactory: (prisma: PrismaService) => new ServicesService(prisma), inject: [PrismaService] },
+        {
+          provide: IngestService,
+          useFactory: (prisma: PrismaService, bus: EventBus) =>
+            new IngestService({ store: new PrismaIngestStore(prisma.client), bus, logger }),
+          inject: [PrismaService, EventBus],
+        },
+        {
+          provide: IngestRunner,
+          useFactory: (prisma: PrismaService, ingest: IngestService) => new IngestRunner(config, ingest, prisma, logger),
+          inject: [PrismaService, IngestService],
+        },
+        {
+          provide: ServicesService,
+          useFactory: (prisma: PrismaService, ingest: IngestService) => new ServicesService(prisma, ingest),
+          inject: [PrismaService, IngestService],
+        },
       ],
-      exports: [APP_CONFIG, JsonLogger, EventBus, PrismaService],
+      exports: [APP_CONFIG, JsonLogger, EventBus, PrismaService, IngestService, IngestRunner],
     };
   }
 }

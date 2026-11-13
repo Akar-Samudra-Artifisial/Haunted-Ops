@@ -125,6 +125,9 @@ const stateArb = (name: (typeof SERVICE_NAMES)[number]): fc.Arbitrary<ServiceSta
     name: fc.constant(name),
     room: fc.constant(ROOMS[name] as { x: number; y: number }),
     hauntLevel: fc.constantFrom(0, 1, 2, 3, 4),
+    reason: fc.constant(null),
+    metrics: fc.constant(null),
+    openIncident: fc.constant(null),
     updatedAt: isoArb,
   });
 const servicesArb = fc
@@ -143,7 +146,8 @@ describe('Property 17: a snapshot never overwrites a newer event', () => {
           const c = current.find((s) => s.name === m.name);
           const s = snapshot.find((x) => x.name === m.name);
           if (c && s) {
-            if (Date.parse(c.updatedAt) > Date.parse(s.updatedAt)) expect(m).toEqual(c);
+            // On a tie the current entry wins: events are applied in order, so it is at least as new.
+            if (Date.parse(c.updatedAt) >= Date.parse(s.updatedAt)) expect(m).toEqual(c);
             else expect(m).toEqual(s);
           } else {
             expect(m).toEqual(c ?? s);

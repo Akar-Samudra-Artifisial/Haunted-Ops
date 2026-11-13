@@ -1,8 +1,11 @@
 import {
   HAUNT_LEVELS,
+  HAUNT_REASON_KINDS,
   SERVICE_NAMES,
   SIGNAL_KINDS,
   type HauntLevel,
+  type HauntReason,
+  type IngestStatus,
   type Result,
   type ServiceName,
   type ServiceState,
@@ -90,12 +93,61 @@ export const checkServiceName = checkOneOf(SERVICE_NAMES);
 export const checkHauntLevel = checkOneOf(HAUNT_LEVELS);
 export const checkSignalKind = checkOneOf(SIGNAL_KINDS);
 
+export const checkHauntReasonKind = checkOneOf(HAUNT_REASON_KINDS);
+
+/** `null` or the given check. */
+export const checkNullable =
+  (inner: Check): Check =>
+  (input, path, errors) => {
+    if (input !== null) inner(input, path, errors);
+  };
+
+export const checkHauntReason = checkObject({ kind: checkHauntReasonKind, value: checkFiniteNumber });
+export const checkNullableNumber = checkNullable(checkFiniteNumber);
+
+export const checkSampleShape = {
+  errorRate: checkNullableNumber,
+  p95Ms: checkNullableNumber,
+  up: checkNullableNumber,
+};
+
+export const checkServiceMetrics = checkObject({ ...checkSampleShape, at: checkIsoTimestamp });
+
+export const checkOpenIncident = checkObject({
+  id: checkNonEmptyString,
+  openedAt: checkIsoTimestamp,
+  peakLevel: checkHauntLevel,
+});
+
 export const checkServiceState = checkObject({
   name: checkServiceName,
   room: checkObject({ x: checkInteger, y: checkInteger }),
   hauntLevel: checkHauntLevel,
+  reason: checkNullable(checkHauntReason),
+  metrics: checkNullable(checkServiceMetrics),
+  openIncident: checkNullable(checkOpenIncident),
   updatedAt: checkIsoTimestamp,
 });
+
+/** Array whose every element passes `inner`. */
+export const checkArrayOf =
+  (inner: Check): Check =>
+  (input, path, errors) => {
+    if (!Array.isArray(input)) {
+      errors.push(path);
+      return;
+    }
+    input.forEach((item, i) => inner(item, `${path}[${i}]`, errors));
+  };
+
+export const checkIngestStatus = checkObject({
+  state: checkOneOf(['ok', 'stale']),
+  at: checkIsoTimestamp,
+  lastSuccessAt: checkNullable(checkIsoTimestamp),
+});
+
+export const validateIngestStatus = makeValidator<IngestStatus>(checkIngestStatus);
+export const validateHauntReason = makeValidator<HauntReason>(checkHauntReason);
 
 export const validateServiceName = makeValidator<ServiceName>(checkServiceName);
 export const validateHauntLevel = makeValidator<HauntLevel>(checkHauntLevel);

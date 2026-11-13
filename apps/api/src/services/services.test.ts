@@ -16,7 +16,33 @@ describe('toServiceStates', () => {
     const states = toServiceStates(rows);
     expect(states.map((s) => s.name)).toEqual(['gate', 'payments', 'ledger']);
     expect(validateServiceStates(states).ok).toBe(true);
-    expect(states[0]).toEqual({ name: 'gate', room: { x: 0, y: 0 }, hauntLevel: 2, updatedAt: '2026-11-12T10:00:00.000Z' });
+    expect(states[0]).toEqual({ name: 'gate', room: { x: 0, y: 0 }, hauntLevel: 2, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z' });
+  });
+
+  it('maps the stored reason, the open Incident and the metrics', () => {
+    const metrics = new Map([['payments' as const, { errorRate: 0.25, p95Ms: null, up: 1, at: '2026-11-12T10:00:05.000Z' }]]);
+    const rows = [
+      {
+        name: 'payments',
+        roomX: 0,
+        roomY: 1,
+        hauntLevel: 2,
+        reasonKind: 'error_rate' as const,
+        reasonValue: 0.25,
+        incidents: [{ id: 'inc1', openedAt: at, peakLevel: 3 }],
+        updatedAt: at,
+      },
+      { name: 'gate', roomX: 0, roomY: 0, hauntLevel: 0, reasonKind: null, reasonValue: null, incidents: [], updatedAt: at },
+    ];
+    const [gate, payments] = toServiceStates(rows, metrics);
+    expect(gate).toMatchObject({ name: 'gate', reason: null, metrics: null, openIncident: null });
+    expect(payments).toMatchObject({
+      name: 'payments',
+      reason: { kind: 'error_rate', value: 0.25 },
+      metrics: { errorRate: 0.25, p95Ms: null, up: 1, at: '2026-11-12T10:00:05.000Z' },
+      openIncident: { id: 'inc1', openedAt: '2026-11-12T10:00:00.000Z', peakLevel: 3 },
+    });
+    expect(validateServiceStates([gate, payments]).ok).toBe(true);
   });
 
   it('refuses an out-of-range haunt level', () => {

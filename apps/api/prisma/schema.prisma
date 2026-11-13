@@ -43,15 +43,26 @@ enum ProposalStatus {
   rejected
 }
 
+/// Which signal sets the haunt level of a Service.
+enum HauntReasonKind {
+  error_rate
+  p95
+  down
+}
+
+/// `reasonKind` and `reasonValue` are both set or both null: CHECK "service_reason_both_or_none",
+/// added by hand in the add_service_reason migration.
 model Service {
-  id         String     @id @default(cuid())
-  name       String     @unique
-  roomX      Int
-  roomY      Int
-  hauntLevel Int        @default(0)
-  updatedAt  DateTime   @updatedAt
-  signals    Signal[]
-  incidents  Incident[]
+  id          String           @id @default(cuid())
+  name        String           @unique
+  roomX       Int
+  roomY       Int
+  hauntLevel  Int              @default(0)
+  reasonKind  HauntReasonKind?
+  reasonValue Float?
+  updatedAt   DateTime         @updatedAt
+  signals     Signal[]
+  incidents   Incident[]
 }
 
 model Signal {
@@ -63,6 +74,7 @@ model Signal {
   service   Service    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
 
   @@index([serviceId, kind, at(sort: Desc)], map: "signal_latest_per_service")
+  @@index([at], map: "signal_at")
 }
 
 /// At most one open Incident per Service: partial unique index

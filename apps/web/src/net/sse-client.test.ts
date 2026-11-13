@@ -129,8 +129,8 @@ describe('SseClient', () => {
     await flush();
     expect(d.pending).toHaveLength(1);
     // While the snapshot is in flight, payments goes dark.
-    const dark: ServiceState = { name: 'payments', room: { x: 0, y: 1 }, hauntLevel: 4, updatedAt: '2026-11-12T10:00:05.000Z' };
-    t.es.latest().emit('service.updated', { service: dark }, id(BOOT_A, 1));
+    const dark: ServiceState = { name: 'payments', room: { x: 0, y: 1 }, hauntLevel: 4, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:05.000Z' };
+    t.es.latest().emit('service.updated', { service: dark, previousLevel: 0 }, id(BOOT_A, 1));
     // The snapshot was taken earlier and still says calm.
     const stale = SAMPLE_SERVICES.map((s) => (s.name === 'payments' ? { ...s, hauntLevel: 0 } : s));
     d.pending[0]?.resolve(stale);
@@ -164,8 +164,8 @@ describe('SseClient', () => {
     t.es.latest().connect();
     await flush();
     expect(t.services().map((s) => s.name)).toEqual(['gate', 'ledger']);
-    t.es.latest().emit('service.updated', { service: SAMPLE_SERVICES[2] }, id(BOOT_A, 1));
-    t.es.latest().emit('service.updated', { service: SAMPLE_SERVICES[1] }, id(BOOT_A, 2));
+    t.es.latest().emit('service.updated', { service: SAMPLE_SERVICES[2], previousLevel: 0 }, id(BOOT_A, 1));
+    t.es.latest().emit('service.updated', { service: SAMPLE_SERVICES[1], previousLevel: 0 }, id(BOOT_A, 2));
     expect(t.services().map((s) => s.name)).toEqual(['gate', 'orders', 'payments', 'ledger']);
     t.client.stop();
   });
@@ -209,9 +209,9 @@ describe('SseClient', () => {
     t.es.latest().connect();
     await flush();
     const dark = { ...SAMPLE_SERVICES[0], hauntLevel: 4 } as ServiceState;
-    t.es.latest().emit('service.updated', { service: dark }, id(BOOT_A, 7));
+    t.es.latest().emit('service.updated', { service: dark, previousLevel: 0 }, id(BOOT_A, 7));
     expect(t.services().find((s) => s.name === 'gate')?.hauntLevel).toBe(4);
-    t.es.latest().emit('service.updated', { service: { ...dark, hauntLevel: 9 } }, id(BOOT_A, 8));
+    t.es.latest().emit('service.updated', { service: { ...dark, hauntLevel: 9 }, previousLevel: 0 }, id(BOOT_A, 8));
     expect(t.services().find((s) => s.name === 'gate')?.hauntLevel).toBe(4);
     t.client.stop();
   });
@@ -232,7 +232,7 @@ describe('SseClient', () => {
     const t = setup({ random: () => 0 });
     t.client.start();
     t.es.latest().connect();
-    t.es.latest().emit('service.updated', { service: SAMPLE_SERVICES[1] }, id(BOOT_A, 3));
+    t.es.latest().emit('service.updated', { service: SAMPLE_SERVICES[1], previousLevel: 0 }, id(BOOT_A, 3));
     t.es.latest().fail();
     vi.advanceTimersByTime(1_000);
     t.es.latest().connect();

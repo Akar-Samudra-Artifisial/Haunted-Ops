@@ -5,16 +5,39 @@ import {
   parseEventId,
   parseSseFrame,
   validateHauntLevel,
+  validateIngestStatus,
   validateServiceState,
   validateServiceStates,
   validateSseEvent,
 } from '../src/index.js';
 
-const valid = { name: 'payments', room: { x: 0, y: 1 }, hauntLevel: 3, updatedAt: '2026-11-12T10:00:00.000Z' };
+const valid = {
+  name: 'payments',
+  room: { x: 0, y: 1 },
+  hauntLevel: 3,
+  reason: { kind: 'error_rate', value: 0.5 },
+  metrics: { errorRate: 0.5, p95Ms: null, up: 1, at: '2026-11-12T10:00:00.000Z' },
+  openIncident: { id: 'inc1', openedAt: '2026-11-12T10:00:00.000Z', peakLevel: 3 },
+  updatedAt: '2026-11-12T10:00:00.000Z',
+};
+const calm = { ...valid, hauntLevel: 0, reason: null, metrics: null, openIncident: null };
 
 describe('validateServiceState', () => {
   it('accepts a valid state', () => {
     expect(validateServiceState(valid)).toEqual({ ok: true, value: valid });
+  });
+
+  it('accepts null reason, metrics and incident', () => {
+    expect(validateServiceState(calm).ok).toBe(true);
+  });
+
+  it('rejects a bad reason, metrics and incident', () => {
+    expect(validateServiceState({ ...valid, reason: { kind: 'fog', value: 1 } }).ok).toBe(false);
+    expect(validateServiceState({ ...valid, reason: { kind: 'down', value: Number.NaN } }).ok).toBe(false);
+    expect(validateServiceState({ ...valid, metrics: { errorRate: 'x', p95Ms: null, up: null, at: valid.updatedAt } }).ok).toBe(false);
+    expect(validateServiceState({ ...valid, openIncident: { id: '', openedAt: valid.updatedAt, peakLevel: 9 } }).ok).toBe(false);
+    const { reason: _r, ...missing } = valid;
+    expect(validateServiceState(missing)).toEqual({ ok: false, errors: ['$.reason'] });
   });
 
   it('reports each failing path', () => {
@@ -44,6 +67,39 @@ describe('validateServiceState', () => {
     const r = validateServiceStates([valid, { ...valid, hauntLevel: -1 }]);
     expect(r).toEqual({ ok: false, errors: ['$[1].hauntLevel'] });
     expect(validateServiceStates('nope')).toEqual({ ok: false, errors: ['$'] });
+  });
+});
+
+describe('event payloads added for the scene', () => {
+  const at = '2026-11-12T10:00:00.000Z';
+  it('service.updated carries previousLevel', () => {
+    expect(validateSseEvent('service.updated', { service: valid, previousLevel: 1 }).ok).toBe(true);
+    expect(validateSseEvent('service.updated', { service: valid }).ok).toBe(false);
+    expect(validateSseEvent('service.updated', { service: valid, previousLevel: 5 }).ok).toBe(false);
+  });
+  it('incident.opened carries level and reason', () => {
+    const opened = { incidentId: 'i1', service: 'payments', openedAt: at, level: 2, reason: { kind: 'error_rate', value: 0.25 } };
+    expect(validateSseEvent('incident.opened', opened).ok).toBe(true);
+    expect(validateSseEvent('incident.opened', { ...opened, reason: null }).ok).toBe(true);
+    expect(validateSseEvent('incident.opened', { incidentId: 'i1', service: 'payments', openedAt: at }).ok).toBe(false);
+    expect(validateSseEvent('incident.opened', { ...opened, level: 7 }).ok).toBe(false);
+    expect(validateSseEvent('incident.opened', { ...opened, reason: { kind: 'fog', value: 1 } }).ok).toBe(false);
+  });
+});
+
+describe('ingest events', () => {
+  const sample = { service: 'gate', errorRate: 0, p95Ms: null, up: 1 };
+  it('validates ingest.polled', () => {
+    expect(validateSseEvent('ingest.polled', { at: valid.updatedAt, samples: [sample] }).ok).toBe(true);
+    expect(validateSseEvent('ingest.polled', { at: valid.updatedAt, samples: [{ ...sample, service: 'cellar' }] }).ok).toBe(false);
+    expect(validateSseEvent('ingest.polled', { at: valid.updatedAt, samples: 'x' }).ok).toBe(false);
+    expect(validateSseEvent('ingest.polled', { at: valid.updatedAt, samples: [{ ...sample, up: Number.NaN }] }).ok).toBe(false);
+  });
+  it('validates ingest.status and the status object', () => {
+    expect(validateSseEvent('ingest.status', { state: 'stale', at: valid.updatedAt, lastSuccessAt: null }).ok).toBe(true);
+    expect(validateSseEvent('ingest.status', { state: 'unknown', at: valid.updatedAt, lastSuccessAt: null }).ok).toBe(false);
+    expect(validateIngestStatus({ state: 'ok', at: valid.updatedAt, lastSuccessAt: valid.updatedAt }).ok).toBe(true);
+    expect(validateIngestStatus({ state: 'ok', at: valid.updatedAt }).ok).toBe(false);
   });
 });
 

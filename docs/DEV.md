@@ -41,6 +41,14 @@ Copy the API block of `.env.example` to `apps/api/.env` and the web block to `ap
 | `SSE_MAX_CLIENTS_PER_IP` | API | no | open streams per client IP, default 5 |
 | `RATE_LIMIT_MAX` | API | no | mutating requests per minute per client IP, default 30 |
 | `TRUST_PROXY_HOPS` | API | no | integer 0 to 3, default 0. Number of reverse proxies in front of the API whose `X-Forwarded-For` is trusted. 0 trusts none, so the socket address is the client IP. Never set it higher than the real number of proxies: a client could then pick its own IP and dodge the per-IP limits |
+| `PROMETHEUS_URL` | API | no | origin of the lab Prometheus: scheme, host, optional port, no path or credentials. Default `http://127.0.0.1:9090`; loopback hosts only unless `PROMETHEUS_ALLOW_REMOTE=true` |
+| `PROMETHEUS_ALLOW_REMOTE` | API | no | `true` or `false`, default `false`. Without `true`, `PROMETHEUS_URL` must name a loopback host (`127.0.0.1`, `[::1]` or `localhost`). Link-local hosts (`169.254.0.0/16`, `fe80::/10`) are refused even with `true`, because cloud metadata endpoints live there. Startup fails naming `PROMETHEUS_URL`, never its value |
+| `POLL_INTERVAL_MS` | API | no | integer 1000 to 60000, default 5000 |
+| `POLL_TIMEOUT_MS` | API | no | integer 100 to 30000 and not above the interval, default `min(3000, interval)` |
+| `SIGNAL_RETENTION_H` | API | no | Signals older than this many hours are deleted, 1 to 720, default 24 |
+| `API_URL` | `scripts/g1-score.mjs` | no | API base URL, default `http://127.0.0.1:3000` |
+| `CHAOS_URL` | `scripts/g1-score.mjs` | no | lab supervisor, default `http://127.0.0.1:4100` |
+| `CHAOS_TOKEN` | `scripts/g1-score.mjs` | for the G1 script | bearer token of the lab chaos API (the same value the lab supervisor uses). Only the G1 script reads it; the API never does |
 | `TEST_DATABASE_URL` | integration tests | no | separate test database; tests refuse to run if it equals `DATABASE_URL` |
 | `VITE_API_BASE_URL` | web | no | API base URL, default `http://localhost:3000` |
 
@@ -70,12 +78,24 @@ pnpm --filter @haunted-ops/web dev                   # web on http://localhost:5
 
 Check the API with `curl -s http://localhost:3000/healthz` and `curl -s http://localhost:3000/api/services`. Watch the stream with `curl -N http://localhost:3000/api/events`: a `heartbeat` event arrives every 15 seconds.
 
+## Ingest and the haunt score
+The API polls Prometheus every `POLL_INTERVAL_MS`, stores the values as Signals, turns them into a haunt level from 0 to 4 for each service (hysteresis: up after 2 polls, down after 3), opens an Incident at level 2 and closes it after 30 s at level 0, and publishes `service.updated` (with `previousLevel`), `incident.opened` (with `level` and `reason`), `incident.closed`, `ingest.polled` (at most every 30 s, and on a change of ingest status) and `ingest.status` on `GET /api/events`.
+- `GET /api/services` returns each service with `reason`, `metrics` and `openIncident`. `reason` is the cause at the last change of level or reason kind (the value in it can be older); `metrics` hold the current numbers, and the web table shows the current value of the cause from them. `GET /api/ingest/status` returns `ok` or `stale`: stale means the last poll failed, and levels and incidents stay as they were.
+- Run it against the lab: start the lab (see `haunted-lab/docs/DEV.md`: the supervisor and Prometheus on `127.0.0.1:9090`), apply the migrations (`db:migrate`), seed, then start the API. With the defaults no extra variable is needed.
+- Thresholds are constants in `packages/shared/src/haunt.ts`: error ratio 0.05, 0.2, 0.5; p95 500, 1000, 3000 ms; `up` below 0.5 is level 4.
+- Gate G1 (score): with the lab, the API and the web running, put `CHAOS_URL` and `CHAOS_TOKEN` in `apps/api/.env` (the token is the lab's, never committed) and run
+  ```sh
+  node --env-file=apps/api/.env scripts/g1-score.mjs
+  ```
+  `API_URL` (default `http://127.0.0.1:3000`) is the API the script reads: set it in `apps/api/.env` or the environment when port 3000 is busy and the API runs on another port (for example `PORT=3010` and `API_URL=http://127.0.0.1:3010`).
+  It waits for a calm baseline, then for `error-spike`, `fog` and `dark-room` it applies the scenario, asserts within 60 s that payments, orders or ledger is at level 2 or higher (ledger 4) with the reason `error_rate`, `p95` or `down` and an open incident, resets, asserts level 0 within 120 s, prints a table and exits 0 or 1. It resets the lab again on failure or Ctrl-C and never prints the token.
+
 ## Checks and tests
 
 ```sh
 pnpm typecheck     # all packages
 pnpm lint          # all packages
-pnpm test          # unit and property tests, plus integration tests when TEST_DATABASE_URL is set
+pnpm test          # unit and property tests (and the G1 script tests), plus integration tests when TEST_DATABASE_URL is set
 pnpm build         # deterministic build
 pnpm check:build   # builds twice from clean and compares output hashes
 ```
