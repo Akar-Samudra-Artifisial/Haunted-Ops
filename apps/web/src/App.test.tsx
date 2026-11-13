@@ -2,7 +2,6 @@ import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { App } from './App.js';
 import { Header } from './components/Header.js';
-import { SceneMount } from './components/SceneMount.js';
 import { TableMode } from './components/TableMode.js';
 import { SAMPLE_SERVICES, eventSourceRegistry, fakeFetch, flush } from './test/fakes.js';
 
@@ -17,14 +16,6 @@ describe('Header', () => {
     expect(region.getAttribute('aria-live')).toBe('polite');
     expect(region.textContent).toContain('Connection: offline');
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Haunted Ops');
-  });
-});
-
-describe('SceneMount', () => {
-  it('is an empty, labelled region', () => {
-    render(<SceneMount />);
-    const region = screen.getByRole('region', { name: 'House scene' });
-    expect(region.childElementCount).toBe(0);
   });
 });
 

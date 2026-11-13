@@ -36,14 +36,18 @@ Checked against the npm registry on 13 Nov 2026.
 
 ### Bundle budget
 
-The entry chunk of the Web was 73,258 bytes gzip (about 71.5 KiB) on 13 Nov 2026 (`apps/web/dist`, one JS file). The scene chunk size is not measured yet: a tree-shaken PixiJS 8 build is expected in the order of 150 to 250 KiB gzip, which is a guess, not a result.
+The entry chunk of the Web was 73,258 bytes gzip (about 71.5 KiB) on 13 Nov 2026 before this spec (`apps/web/dist`, one JS file). After the build of task 8.3 it is 79.5 KiB (the model, layout, selection, demo, room buttons and the dynamic import), and the scene chunk (the renderer, the animator, the surface and the parts of PixiJS 8 they use, in 6 files) is 155.5 KiB gzip.
 
 | Chunk | Budget in `scripts/check-scene-bundle.mjs` | Measured |
 | --- | --- | --- |
-| entry (React, app, model, layout, demo, buttons) | 100 KiB gzip, and no PixiJS code | 71.5 KiB before this spec |
-| scene (renderer, PixiJS) | 300 KiB gzip | recorded by task 8.3 in this table and in the Notes of `tasks.md` |
+| entry (React, app, model, layout, demo, buttons) | 92 KiB gzip, and no PixiJS code | 80.2 KiB after task 10 (79.5 KiB after task 8.3, 71.5 KiB before this spec) |
+| scene file (the `SceneCanvas` chunk alone; the number Vite prints, 98 kB) | 119 KiB gzip (task 10: measured plus 25 percent) | 95.2 KiB |
+| scene (the `SceneCanvas` chunk and every file it imports statically that the entry does not have) | 180 KiB gzip | 156.5 KiB (6 files) |
+| loaded on demand by PixiJS (renderer selection, browser setup) | reported, not budgeted | 15.8 KiB (6 small files); 172.3 KiB for the whole scene |
 
-Task 8.3 builds the Web, writes the measured values here, and lowers each budget to the measured value plus 15 percent. The script reads Vite's manifest to find the chunk behind the dynamic import and checks that the entry chunk has no `pixi` string.
+Task 10 found that the "scene chunk" of the earlier notes and the "about 96 KB" that Vite prints were two different measures: Vite prints one file, the script sums the 6 files the scene needs. The script now reports and budgets both, and lists the parts PixiJS loads on demand.
+
+Task 8.3 built the Web, wrote the measured values here, and set each budget to the measured value plus 15 percent. The script reads Vite's manifest to find the chunk behind the dynamic import and checks that the entry chunk has no `pixi` string.
 
 ## Architecture
 
@@ -128,7 +132,8 @@ export function approach(current: number, target: number, dtMs: number, tauMs: n
 ### Scene model (`scene/model.ts`)
 
 ```ts
-export const GHOST_MAX = 12, FOG_MAX = 14, MOTE_MAX = 6, PULSE_MAX = 12, PARTICLE_CAP = 200;
+export const GHOST_MAX = 12, FOG_MAX = 20, MOTE_MAX = 6, PULSE_MAX = 12, PARTICLE_CAP = 200;
+// FOG_MAX = FOG_BANK_MAX (10, low bank on the floor) + FOG_WISP_MAX (10, drifting wisps); splitFog fills the bank first.
 export const LIGHT_BY_LEVEL = [1, 0.85, 0.65, 0.5, 0] as const;
 
 export interface HuntVisual { phase: string; label: string; progress: number }   // filled by exorcist-agent
@@ -180,9 +185,9 @@ Formulas (all clamped, `null` counts as 0):
 | --- | --- |
 | error intensity `e` | `clamp(errorRate / 0.5, 0, 1)`; errorRate is `metrics.errorRate`, or the reason value when the reason is `error_rate` and the metric is `null` |
 | latency intensity `f` | `clamp((p95Ms - 200) / 2800, 0, 1)`; same fallback for the `p95` reason |
-| `ghostCount` | `min(GHOST_MAX, max(ceil(e * GHOST_MAX), reason is error_rate ? level : 0))` |
+| `ghostCount` | `min(GHOST_MAX, max(round(e * GHOST_MAX), reason is error_rate ? level : 0))`; rounding, not a ceiling, so the background error ratio of a calm service (about 0.3 percent) draws no ghost |
 | `ghostOpacity` | `ghostCount > 0 ? 0.25 + 0.6 * e : 0` |
-| `fogDensity` | `min(1, max(f, reason is p95 ? 0.15 * level : 0))`; `fogCount = ceil(fogDensity * FOG_MAX)` |
+| `fogDensity` | `min(1, max(f, reason is p95 ? 0.3 * level : 0))` (task 10: 0.15 made level 2 fog nearly invisible); `fogCount = ceil(fogDensity * FOG_MAX)`, split into bank and wisps by `splitFog` |
 | `light` | `dark ? 0 : LIGHT_BY_LEVEL[level] * (1 - 0.2 * e) * (1 - 0.3 * f)` |
 | `coolness` | `dark ? 0 : min(1, 0.2 * level + 0.1 * max(e, f))` |
 | `moteCount` | `dark ? 0 : level 0: 6, level 1: 3, otherwise 0` |
@@ -192,9 +197,11 @@ Formulas (all clamped, `null` counts as 0):
 | `transitionMs` | `reduced ? 0 : 1000` |
 | `quality: 'low'` | wanted counts are halved (rounded up) before the total cap |
 
-The allocator `allocateParticles(wanted, cap)` in `scene/particles.ts` is pure: it keeps `PULSE_MAX` for the corridors, so rooms share 188; when the wanted total is larger it removes ambient motes first, then fog puffs, then ghosts, one at a time, taking from the Room with the lowest level first (ties by room order). With the 2 by 2 house the wanted maximum is 4 * 32 = 128 and nothing is trimmed; trimming only happens above 5 rooms.
+The allocator `allocateParticles(wanted, cap)` in `scene/particles.ts` is pure: it keeps `PULSE_MAX` for the corridors, so rooms share 188; when the wanted total is larger it removes ambient motes first, then fog puffs, then ghosts, one at a time, taking from the Room with the lowest level first (ties by room order). With the 2 by 2 house the wanted maximum is 4 * 35 = 140 (12 ghosts, 20 fog puffs and at most 3 motes per room since task 10) and nothing is trimmed; trimming only happens above 5 rooms.
 
-`ghostSpec(seed, i)` and `fogSpec(seed, i)` are pure and return the normalised parameters of one wisp (position in the floor diamond, size, phase, speed, path), derived from `unit(seed, i, salt)`. They are used by the Animator and by tests; the model itself holds only counts and the seed.
+`ghostSpec(seed, i)`, `fogSpec(seed, i)` and `fogBankSpec(seed, i)` are pure and return the normalised parameters of one wisp (position in the floor diamond, size, phase, speed, path), derived from `unit(seed, i, salt)`. They are used by the Animator and by tests; the model itself holds only counts and the seed. The Animator computes them once per Room seed (not per frame).
+
+Ghosts haunt the back of the room, away from the nameplate: with `s = u + v`, a ghost centre has `s` in `[0.35, 0.6]` and the drift adds at most 0.16, so `s` stays under `GHOST_BACK_LIMIT = 0.8`; the Animator also clamps the ghost feet to `room.textTop - 0.04 * scale`, so no ghost covers a text pill at any size. Fog is two layers: the bank (wide flat `fogBank` texture, alpha `0.3 + 0.4 * density`, no lift, slow) hugs the floor, the wisps (round `fog` texture, alpha `0.25 + 0.35 * density`, lifted by 0.35 of their size) drift above it. With reduced motion both stay at their seed positions and keep their alpha.
 
 ### Layout (`scene/layout.ts`)
 
@@ -211,11 +218,15 @@ export interface RoomLayout {
   floor: [Pt, Pt, Pt, Pt];            // top, right, bottom, left
   silhouette: Pt[];                   // hexagon: floor plus the two back walls
   center: Pt;
-  labelAt: Pt; badgeAt: Pt;           // anchors inside the floor
+  labelAt: Pt; badgeAt: Pt; incidentAt: Pt;
+  labelBox: Rect;                     // the name on the nameplate, just inside the front corner of the floor
+  incidentBox: Rect;                  // the incident row on the nameplate above the name (compact: a square left of it)
+  badgeBox: Rect;                     // the reason badge, the row behind the nameplate
+  textTop: number;                    // top of the highest text pill: ghost feet stay above it
   hit: Rect;                          // bounding box of the silhouette, for the button
   hitPolygon: Pt[];                   // silhouette relative to `hit`, for CSS clip-path
-  huntRect: Rect;                     // reserved, inside the floor, clear of label and badge
-  doors: { n: Pt; e: Pt; s: Pt; w: Pt };   // midpoints of the floor edges
+  huntRect: Rect;                     // reserved, on the left back wall, clear of every text box
+  doors: { px: Pt; mx: Pt; py: Pt; my: Pt };   // midpoints of the floor edges facing +x, -x, +y, -y
 }
 export interface CorridorLayout { from: ServiceName; to: ServiceName; points: Pt[]; width: number }
 
@@ -241,6 +252,10 @@ Corridors run along the "streets", the bands of width 1.2 iso units between cell
 
 The mount height is `clamp(width / aspect, 220, 0.7 * window.innerHeight)`.
 
+**Text rows (task 10).** In iso units from the floor centre (the front corner is at +1), with `hL`, `hB` the label and badge heights and pill padding `0.2 * h`: the nameplate pill ends at `PLAQUE_FRONT = 0.97`; above it, after a gap of `ROW_GAP = 0.06`, the incident row (`INCIDENT_ROW_W = 2.2` wide; in compact mode the mark is a square left of the name instead); behind that the reason badge. The hunt slot moved to the left back wall (`x - 1.5 .. x - 0.5`, `y - 1.15 .. y - 0.85`), inside the silhouette. For the four-room house from 360 to 3840 px wide every text box stays inside the screen bounds of its floor and clear of the other rooms (Property 15).
+
+**House (task 10).** `layout.house` is drawn behind the rooms with no text: the floor slab around all cells with a margin of `HOUSE_MARGIN = 0.3`, two back walls of `HOUSE_WALL = 1.2`, a pitched roof from the two eaves to a peak `ROOF_RISE = 0.9` above the back corner, a chimney on the right slope, a lit attic window in the gable, and a plinth (`PLINTH = 0.15`) with the ground line under the front edges. All its points are part of the fit, so it stays inside the canvas; the rooms are about 10 to 25 percent smaller than before at the same viewport.
+
 ### Selection and keyboard (`scene/selection.ts`)
 
 ```ts
@@ -251,7 +266,7 @@ export function selectionReducer(state: ServiceName | null, action:
   { type: 'select'; name: ServiceName } | { type: 'toggle'; name: ServiceName } | { type: 'clear' }): ServiceName | null;
 ```
 
-An arrow key looks at the Rooms whose centre lies in the half plane of that screen direction and picks the one with the smallest `along + 2 * across` distance; with none it returns the current Room. Home and End return the first and last Room of the reading order.
+An arrow key looks at the Rooms whose centre lies in the half plane of that screen direction and picks the one with the smallest `along + 3 * across` distance; with none it returns the current Room. Home and End return the first and last Room of the reading order.
 
 ### Animator (`scene/animator.ts`, lazy chunk, no PixiJS)
 
@@ -310,22 +325,26 @@ export interface Surface {
 }
 ```
 
-`PixiSurface` creates the `Application` with `autoStart: false`, `sharedTicker: false`, `preference: 'webgl'`, `antialias: true`, `autoDensity: true`, `resolution = min(dpr, 2)`. Scene graph, back to front:
+`PixiSurface` creates the `Application` with `autoStart: false`, `sharedTicker: false`, `preference: ['webgl', 'webgpu']` (no 2D canvas renderer, so a missing GPU context shows the fallback), `antialias: true`, `autoDensity: true`, `resolution = min(dpr, 2)`. Scene graph, back to front:
 
 ```
 stage
-  background        night gradient, a few fixed stars (Graphics)
-  corridors         one Graphics per corridor, redrawn on layout or lit change
-  rooms             sorted by (x + y): floor + walls + furniture (Graphics, cached as texture per layout)
-                    glow sprite (additive), dim overlay, outline, label + badge (Text), incident mark, hunt slot (empty Container)
-  fogLayer          ParticleContainer (fog texture)
-  ghostLayer        ParticleContainer (ghost texture)
+  background        night sky, a few fixed stars (Graphics)
+  house             roof, chimney, attic window, outer back walls, floor slab, plinth, ground line (Graphics, no text)
+  corridors         one Graphics per corridor: idle trim line (alpha 0.6) and the warm lit line (alpha 0.9 * lit)
+  rooms             sorted by (x + y): floor + walls + furniture, glow sprite (additive), dim overlay, outline
+  fogBankLayer      ParticleContainer (fogBank texture): the low bank on the floor
+  fogLayer          ParticleContainer (fog texture): the drifting wisps
   moteLayer         ParticleContainer (mote texture)
-  pulseLayer        ParticleContainer (mote texture, tinted)
-  ui                selection ring
+  pulseLayer        ParticleContainer (mote texture, warm, alpha 1 * lit)
+  ui                selection ring (below the texts: it runs through the front corner where the nameplate is)
+  texts             per room: reason badge pill, the lit nameplate (pill with a warm rim) with the name and the
+                    incident mark (Graphics triangle, "!" and "incident" Texts made once and reused), hunt slot;
+                    above the fog so it never washes out the text
+  ghostLayer        ParticleContainer (ghost texture): ghosts float in front of the text, but their feet stay above it
 ```
 
-Textures (5, generated once with `renderer.generateTexture`): `ghost` (rounded wisp with a wavy hem and two dark eye cuts), `fog` (radial gradient puff), `mote` (small soft dot), `glow` (large warm radial gradient) and `ring` (not used for particles). `Particle` objects are created once per pool slot; the Surface copies `x, y, scale, alpha, rotation` for `count` slots and hides the rest.
+Textures (5, drawn once as canvas-2D recipes and turned into textures with `Texture.from(canvas)`): `ghost` (rounded wisp with a wavy hem and two dark eye cuts), `fog` (radial gradient puff), `fogBank` (a wide, flat elliptical puff), `mote` (small soft dot) and `glow` (large warm radial gradient). The ring is a `Graphics` stroke, not a texture. The pools are sized from the constants (`MAX_ROOMS * GHOST_MAX` and so on). `Particle` objects are created once per pool slot; the Surface copies `x, y, scale, alpha, rotation` for `count` slots and hides the rest.
 
 ### Frame loop, governor and renderer (`scene/frame-loop.ts`, `governor.ts`, `renderer.ts`)
 
@@ -388,7 +407,7 @@ export const DEMO_DURATION_MS = 48_000;
 | 16 to 20 | payments error ratio rises to 0.6 (level 3: flicker and tremble) |
 | 20 to 26 | orders p95 rises from 100 ms to 2400 ms (fog, level 2) |
 | 30 | ledger `up` drops to 0 (level 4, dark room) |
-| 38 to 44 | everything returns to normal (levels fall after 3 polls, incidents close after 30 s of calm) |
+| 36 to 40 | everything returns to normal (ledger back up 36 to 38; levels fall after 3 polls; in the demo an incident closes after 2 s of calm, `DEMO_INCIDENT_CLOSE_S`, instead of the real 30 s, so the 48 s loop ends calm) |
 | 44 to 48 | calm hold; with `loop=1` the timeline restarts at 48 s |
 
 `parseDemoParam` returns `null` when `PROD` is true and `VITE_DEMO_MODE` is not `"true"`, and for any value other than `1` or a known scenario name. In Demo mode the App makes no request to the API, shows `Demo data, not live` in the header, and publishes `window.__hauntedScene = renderer.stats` for measurement.
@@ -463,13 +482,13 @@ Ghosts are rounded wisps with a wavy hem and two dark eye cuts, drawn semi-trans
 
 ### Property 1: The model is monotonic
 
-For any Room and any inputs, with the other inputs unchanged, a higher Haunt level, a higher error ratio or a higher p95 never gives a smaller `ghostCount`, a lower `ghostOpacity`, a smaller `fogDensity` or `fogCount`, or a larger `light`. The property is checked on houses of up to 6 Rooms, where the total cap of 200 is never reached.
+For any Room and any inputs, with the other inputs unchanged, a higher Haunt level, a higher error ratio or a higher p95 never gives a smaller `ghostCount`, a lower `ghostOpacity`, a smaller `fogDensity` or `fogCount`, or a larger `light`. The property is checked on houses of up to 5 Rooms (at most 32 particles each), where the cap for rooms is never reached.
 
 **Validates: Requirements 3.4, 3.5, 4.2, 4.3**
 
 ### Property 2: Caps hold for any input
 
-For any array of up to 9 valid `ServiceState`, any quality and any reduced-motion flag, each Room has at most 12 ghosts, 14 fog puffs and 6 motes, the total of all particle classes plus the corridor pulses is at most 200, no count is negative or larger than the wanted count, and when the wanted total is within the cap nothing is trimmed. When trimming happens, motes go before fog and fog before ghosts, from the lowest level up.
+For any array of up to 9 valid `ServiceState`, any quality and any reduced-motion flag, each Room has at most 12 ghosts, 20 fog puffs (10 bank, 10 wisps) and 6 motes, the total of all particle classes plus the corridor pulses is at most 200, no count is negative or larger than the wanted count, and when the wanted total is within the cap nothing is trimmed. When trimming happens, motes go before fog and fog before ghosts, from the lowest level up.
 
 **Validates: Requirements 3.6, 6.1**
 
@@ -545,9 +564,15 @@ For any array of valid `ServiceState` (including none, `null` metrics, any level
 
 **Validates: Requirements 3.2, 3.8**
 
+### Property 15: The nameplate and the badges stay inside their room
+
+For the four-room house and any viewport of the gallery range (360 to 3840 px wide, at the mount height or any height from 360 to 2160, dpr 1 or 2), the label, incident and badge boxes of every Room lie inside the screen bounds of its floor diamond and are clear of every other Room silhouette, and the incident row is never wider than the floor. Property 7 also checks, for every grid up to 3 by 3, that the hunt slot is inside the silhouette and clear of all three text boxes, and that the house stays inside the canvas.
+
+**Validates: Requirements 15.1, 15.3, 11.2**
+
 ## Error Handling
 
-- **PixiJS fails to start** (no WebGL, blocked, out of memory): `PixiSurface.init` rejects with `SceneInitError`; `SceneCanvas` reports it; `SceneMount` shows `SceneFallback`, removes the canvas and the room buttons, and the table stays the full view. The error text is not shown to the user, only the fixed message.
+- **PixiJS fails to start** (no WebGL, blocked, out of memory): `PixiSurface.init` rejects with `SceneInitError`; `SceneCanvas` reports it unless it was unmounted first (a `disposed` flag set in the effect cleanup, and the renderer resolves quietly when it was destroyed during the setup, so a StrictMode double mount never reports); `SceneMount` shows `SceneFallback`, removes the canvas and the room buttons, and the table stays the full view. The error text is not shown to the user, only the fixed message.
 - **The chunk does not load** (offline, deploy in between): the `import()` promise rejects; an error boundary around the lazy component shows the same fallback. A reload retries.
 - **Context lost**: the Surface reports `lost`; the message appears at once; on `restored` the renderer is set up again once; a second loss keeps the message.
 - **Invalid or empty data**: the model is total. An empty `services` array gives an empty house and the placeholder text "No data yet". A Service with `null` metrics draws as calm or from its reason value.
@@ -565,4 +590,5 @@ For any array of valid `ServiceState` (including none, `null` metrics, any level
 - **Playwright smoke** (`pnpm --filter @haunted-ops/web test:e2e`, not part of `pnpm test`): the two demo URLs, screenshots in `apps/web/test-results/`, canvas not blank, table text matches. It records average frame time and particle count from `window.__hauntedScene` in the report; frame time is informational because headless software rendering is slow.
 - **Bundle check** (`scripts/check-scene-bundle.mjs` after `pnpm build`): scene chunk and entry chunk sizes, no PixiJS in the entry chunk.
 - **Manual visual review**: a short checklist in `docs/DEV.md` (all six demo scenarios at 360, 1280 and 3840 px, reduced motion on, keyboard only) run in task 9.
+- **PixiJS Surface unit test** (task 10, `scene/pixi-surface.test.ts`): the real `PixiSurface` against a small stand-in for `pixi.js` (and a sized stand-in for the 2D canvas textures): init adds the canvas, draw renders, destroy releases the application with its children and textures exactly once and removes the context listeners, destroy during init releases the application and never adds the canvas, a failed init rejects with `SceneInitError`, and the incident texts are reused across model changes. The real WebGL drawing is covered only by the Playwright smoke and gallery tests.
 - **Not covered here**: real GPU frame times on a 2020 laptop (recorded by hand in the Notes of `tasks.md`), sound, and hunt drawing.

@@ -51,6 +51,7 @@ Copy the API block of `.env.example` to `apps/api/.env` and the web block to `ap
 | `CHAOS_TOKEN` | `scripts/g1-score.mjs` | for the G1 script | bearer token of the lab chaos API (the same value the lab supervisor uses). Only the G1 script reads it; the API never does |
 | `TEST_DATABASE_URL` | integration tests | no | separate test database; tests refuse to run if it equals `DATABASE_URL` |
 | `VITE_API_BASE_URL` | web | no | API base URL, default `http://localhost:3000` |
+| `VITE_DEMO_MODE` | web | no | `true` allows `?demo=` in a production build; in development it always works. Default `false` |
 
 The API checks `DATABASE_URL`, `PORT`, `WEB_ORIGIN` and the optional variables at startup. If any is missing or invalid it prints `Invalid configuration: <NAMES>` (names only, never values) and exits with code 1 before listening.
 
@@ -89,6 +90,22 @@ The API polls Prometheus every `POLL_INTERVAL_MS`, stores the values as Signals,
   ```
   `API_URL` (default `http://127.0.0.1:3000`) is the API the script reads: set it in `apps/api/.env` or the environment when port 3000 is busy and the API runs on another port (for example `PORT=3010` and `API_URL=http://127.0.0.1:3010`).
   It waits for a calm baseline, then for `error-spike`, `fog` and `dark-room` it applies the scenario, asserts within 60 s that payments, orders or ledger is at level 2 or higher (ledger 4) with the reason `error_rate`, `p95` or `down` and an open incident, resets, asserts level 0 within 120 s, prints a table and exits 0 or 1. It resets the lab again on failure or Ctrl-C and never prints the token.
+
+## The house scene and the demo
+The house (a 2.5D cutaway, one room per service) is drawn with PixiJS 8 in a chunk that loads after the header and the table. All of it lives in `apps/web/src/scene/`. If neither WebGL nor WebGPU can start, the scene shows a short message and the table stays the full view (PixiJS's 2D canvas renderer is not used).
+- Demo mode drives the scene and the table from a script, with no API: `http://localhost:5173/?demo=1` (add `&loop=1` to repeat), or a frozen state `?demo=calm`, `payments-haunted`, `payments-possessed`, `orders-fog`, `ledger-dark`, `all-haunted`. The header says "Demo data, not live". It works in development; a production build needs `VITE_DEMO_MODE=true`.
+- Keyboard: Tab goes through the rooms in reading order, the arrow keys jump to the nearest room, Home and End to the first and last, Escape clears. A focused room selects its row in the table, and the name button of a row selects the room.
+- Reduced motion (`prefers-reduced-motion`) stops drifting, flicker and trembling and applies changes at once. Counts and densities stay the same.
+- Smoke test with a real browser (software WebGL, no GPU): install Chromium inside the workspace once, then run it.
+  ```sh
+  PLAYWRIGHT_BROWSERS_PATH=0 pnpm --filter @haunted-ops/web exec playwright install chromium
+  pnpm --filter @haunted-ops/web test:e2e     # opens ?demo=payments-haunted and ?demo=ledger-dark
+  ```
+  Screenshots go to `apps/web/test-results/screenshots/` (git-ignored). `SCENE_GALLERY=1` also captures every scenario at 360, 1280 and 3840 px in `test-results/gallery/`. Playwright empties `test-results/` at the start of each run, so a run of a single spec file removes the earlier shots. `e2e/no-webgl.spec.ts` checks the fallback by refusing WebGL contexts in the page.
+- Bundle check, after `pnpm build`: `node scripts/check-scene-bundle.mjs`. It fails if PixiJS code reaches the entry chunk or a chunk is over its budget (entry 92 KiB, scene 180 KiB, gzip).
+- Build manifest: `apps/web/vite.config.ts` sets `build.manifest: true` only so the bundle check can find the scene chunk. The manifest (`apps/web/dist/.vite/`) lists every chunk and source path and is not needed at run time, so the deploy step removes `dist/.vite/` from the published artifact (the `deploy-demo` spec does this).
+- The judge deploy sets `VITE_DEMO_MODE=true` on purpose. It is read at build time (`apps/web/src/scene/params.ts`) and only lets a production build accept `?demo=1`, `?demo=1&loop=1` and `?demo=<scenario>`: the page then draws scripted or frozen demo data in the browser, makes no API request, says "Demo data, not live" in the header, and publishes `window.__hauntedScene` (frame time, particle count, quality) for measurement. It turns on nothing else: no admin action, no hunt, no extra endpoint, and without a `demo` parameter the page shows live data as usual. Any other deploy leaves it `false`.
+- Visual checklist: all six scenarios at 360, 1280 and 3840 px; reduced motion on (two shots a moment apart must be equal); keyboard only; WebGL off (the message appears and the table works).
 
 ## Checks and tests
 

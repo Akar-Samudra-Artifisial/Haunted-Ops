@@ -55,6 +55,10 @@ body {
 .connection-reconnecting .status-icon {
   color: var(--warn);
 }
+.connection-demo {
+  color: var(--warn);
+  font-weight: 600;
+}
 .connection-offline .status-icon {
   color: var(--down);
 }
@@ -73,9 +77,60 @@ body {
 }
 
 .scene-mount {
-  min-height: 20rem;
+  position: relative;
+  min-height: 220px;
+  overflow: hidden;
   border-radius: 0.5rem;
-  background: var(--panel);
+  background: var(--bg);
+}
+.room-buttons {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.room-button {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.room-button:focus-visible {
+  outline: none;
+  background: rgba(255, 216, 102, 0.2);
+}
+.room-button[aria-pressed='true'] {
+  background: rgba(255, 216, 102, 0.1);
+}
+.row-select {
+  padding: 0.1rem 0.25rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.table-mode tr[aria-current='true'] th,
+.table-mode tr[aria-current='true'] td {
+  background: rgba(255, 216, 102, 0.12);
+  border-bottom-color: var(--focus);
+}
+.table-mode tr[aria-current='true'] th {
+  border-left: 4px solid var(--focus);
+}
+.scene-stage,
+.scene-canvas {
+  position: absolute;
+  inset: 0;
+}
+.scene-placeholder,
+.scene-fallback {
+  margin: 0;
+  padding: 1rem;
+  color: var(--muted);
 }
 
 .table-mode table {

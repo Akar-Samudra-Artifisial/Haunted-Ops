@@ -1,23 +1,26 @@
-import type { IngestStatus, ServiceState } from '@haunted-ops/shared';
-import {
-  LEVEL_MARKER,
-  LEVEL_TEXT,
-  formatErrorRatio,
-  formatIncident,
-  formatP95,
-  formatReason,
-  formatStaleNotice,
-  formatUp,
-} from '../format.js';
+import { useEffect, useRef } from 'react';
+import type { IngestStatus, ServiceName, ServiceState } from '@haunted-ops/shared';
+import { LEVEL_MARKER, formatStaleNotice } from '../format.js';
+import { tableRowText } from './table-model.js';
 
 /** Accessible text view of the house. The full accessible mode arrives in `accessible-mode`. */
 export function TableMode({
   services,
   ingest = null,
+  selected = null,
+  onSelect,
 }: {
   services: readonly ServiceState[];
   ingest?: IngestStatus | null;
+  selected?: ServiceName | null;
+  onSelect?: (name: ServiceName | null) => void;
 }) {
+  const selectedRow = useRef<HTMLTableRowElement | null>(null);
+  useEffect(() => {
+    // The scene can select a room; bring its row into view.
+    selectedRow.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [selected]);
+
   return (
     <section className="table-mode" aria-labelledby="table-mode-title">
       <h2 id="table-mode-title">Services</h2>
@@ -46,22 +49,41 @@ export function TableMode({
                 <td colSpan={7}>No data yet</td>
               </tr>
             ) : (
-              services.map((s) => (
-                <tr key={s.name}>
-                  <th scope="row">{s.name}</th>
-                  <td>
-                    <span className="marker" aria-hidden="true">
-                      {LEVEL_MARKER[s.hauntLevel]}
-                    </span>{' '}
-                    {s.hauntLevel} ({LEVEL_TEXT[s.hauntLevel]})
-                  </td>
-                  <td>{formatReason(s.reason, s.metrics)}</td>
-                  <td>{formatErrorRatio(s.metrics?.errorRate ?? null)}</td>
-                  <td>{formatP95(s.metrics?.p95Ms ?? null)}</td>
-                  <td>{formatUp(s.metrics?.up ?? null)}</td>
-                  <td>{formatIncident(s.openIncident)}</td>
-                </tr>
-              ))
+              services.map((s) => {
+                const row = tableRowText(s);
+                const isSelected = selected === s.name;
+                return (
+                  <tr
+                    key={s.name}
+                    ref={isSelected ? selectedRow : undefined}
+                    aria-current={isSelected ? 'true' : undefined}
+                    data-selected={isSelected ? 'true' : undefined}
+                    data-room-state={row.dark ? 'dark' : 'lit'}
+                  >
+                    <th scope="row">
+                      {isSelected ? (
+                        <span className="row-marker" aria-hidden="true">
+                          ▶{' '}
+                        </span>
+                      ) : null}
+                      <button type="button" className="row-select" aria-pressed={isSelected} onClick={() => onSelect?.(isSelected ? null : s.name)}>
+                        {s.name}
+                      </button>
+                    </th>
+                    <td>
+                      <span className="marker" aria-hidden="true">
+                        {LEVEL_MARKER[s.hauntLevel]}
+                      </span>{' '}
+                      {row.level}
+                    </td>
+                    <td>{row.reason}</td>
+                    <td>{row.errorRatio}</td>
+                    <td>{row.p95}</td>
+                    <td>{row.up}</td>
+                    <td>{row.incident}</td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

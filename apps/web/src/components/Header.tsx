@@ -31,7 +31,17 @@ function StatusIcon({ status }: { status: ConnectionStatus }) {
   );
 }
 
-export function Header({ status }: { status: ConnectionStatus }) {
+export function Header({ status, demo = false }: { status: ConnectionStatus; demo?: boolean }) {
+  if (demo) {
+    return (
+      <header className="app-header">
+        <h1 className="app-title">Haunted Ops</h1>
+        <p className="connection connection-demo" role="status" aria-live="polite" aria-atomic="true">
+          Demo data, not live
+        </p>
+      </header>
+    );
+  }
   return (
     <header className="app-header">
       <h1 className="app-title">Haunted Ops</h1>

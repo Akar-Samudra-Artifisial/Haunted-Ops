@@ -43,7 +43,7 @@ It does not draw hunts or evidence (`exorcist-agent`), fix pull requests (`fix-p
 2. THE renderer and `pixi.js` SHALL load through a dynamic import, so that the entry chunk of the Web does not contain PixiJS code and the header and the table render without waiting for it.
 3. WHILE the scene chunk loads, THE `SceneMount` SHALL show a static placeholder with the text summary of the Scene, and SHALL keep its place so that the page does not jump when the canvas appears.
 4. THE Web SHALL add `pixi.js` pinned to an exact version checked against the npm registry (8.23.0 on 13 Nov 2026) and `@playwright/test` pinned to an exact version as a dev dependency, and SHALL add no other runtime dependency.
-5. THE gzip size of the scene chunk SHALL be recorded in `design.md` and checked by `scripts/check-scene-bundle.mjs` against a budget, and the same script SHALL fail if the entry chunk contains PixiJS code or exceeds its own budget.
+5. THE gzip size of the scene chunk SHALL be recorded in `design.md` and checked by `scripts/check-scene-bundle.mjs` against a budget, both for the SceneCanvas file itself and for the files it imports statically, and the same script SHALL fail if the entry chunk contains PixiJS code or exceeds its own budget; the small chunks that PixiJS loads on demand SHALL be reported.
 
 ### Requirement 2: House layout
 
@@ -70,7 +70,7 @@ It does not draw hunts or evidence (`exorcist-agent`), fix pull requests (`fix-p
 3. THE Scene model SHALL be deterministic: the same arguments give a deeply equal result.
 4. THE error intensity SHALL be the error ratio from the metrics (or from the reason when the reason is `error_rate` and the metric is `null`) scaled from 0 at 0 to 1 at 0.5, and THE latency intensity SHALL be the p95 scaled from 0 at 200 ms to 1 at 3000 ms, both clamped, and a `null` value SHALL count as 0.
 5. THE Scene model SHALL be monotonic: with the other inputs unchanged, a higher Haunt level, error ratio or p95 SHALL NOT give fewer ghosts, a lower ghost opacity, less fog or more light.
-6. THE Scene model SHALL cap ghosts at 12, fog puffs at 14 and ambient motes at 6 per Room, SHALL cap all Particles including 12 corridor pulses at 200 in total, and WHEN the wanted total is larger THE Scene model SHALL trim ambient motes first, then fog, then ghosts, from the Rooms with the lowest Haunt level upward.
+6. THE Scene model SHALL cap ghosts at 12, fog puffs at 20 (10 in the floor bank and 10 drifting wisps) and ambient motes at 6 per Room, SHALL cap all Particles including 12 corridor pulses at 200 in total, and WHEN the wanted total is larger THE Scene model SHALL trim ambient motes first, then fog, then ghosts, from the Rooms with the lowest Haunt level upward.
 7. THE Scene model SHALL set `dark` to true and `light` to 0 for every Service whose Haunt level is 4 or whose `up` metric is below 0.5, and for no other.
 8. THE Scene model SHALL accept any array of valid `ServiceState`, including an empty array and an array with a Service that has `null` metrics, and SHALL NOT throw.
 9. THE Room visual SHALL have an optional `hunt` field that is absent today, so that `exorcist-agent` only has to fill it.
@@ -82,11 +82,11 @@ It does not draw hunts or evidence (`exorcist-agent`), fix pull requests (`fix-p
 #### Acceptance Criteria
 
 1. WHEN a Room is at Haunt level 0, THE Scene SHALL show warm steady light with idle details: a lamp whose glow breathes slightly and a clock whose hand follows `now`.
-2. WHEN the error ratio of a Room rises, THE Scene SHALL show more ghosts and a higher ghost opacity, up to the caps, drifting along seeded paths inside the floor of that Room.
-3. WHEN the p95 of a Room rises, THE Scene SHALL show denser fog in slowly drifting layers, up to the caps.
+2. WHEN the error ratio of a Room rises, THE Scene SHALL show more ghosts and a higher ghost opacity, up to the caps, drifting along seeded paths in the back part of the floor of that Room, with their feet always above the highest text pill of the Room.
+3. WHEN the p95 of a Room rises, THE Scene SHALL show denser fog in two layers, a low bank that hugs the floor and slower drifting wisps above it, up to the caps; when the reason is `p95` the density SHALL be at least 0.3 times the Haunt level, so that fog at level 2 is clearly visible on a 1280 px wide screen.
 4. WHEN a Room is at Haunt level 3, THE Scene SHALL flicker its light and make its objects tremble slightly, with no more than 3 changes of brightness per second.
 5. WHEN a Room is dark, THE Scene SHALL turn its light off, hide its ghosts, fog and ambient motes, and keep only a faint outline, the label and the badge visible.
-6. THE Scene SHALL show the Haunt reason of every Room that has one as a Badge with text, so that neither colour nor motion is the only cue, and SHALL mark a Room that has an Open Incident with a small shape and the text "incident".
+6. THE Scene SHALL show the name of every Room on a lit nameplate at the front corner of its floor, SHALL show the Haunt reason of every Room that has one as a Badge with text behind the nameplate, so that neither colour nor motion is the only cue, and SHALL mark a Room that has an Open Incident with a small shape and the text "incident" on the nameplate above the name; WHEN the measured width of "⚠ incident" exceeds the width the Room allows, or the Layout is compact, THE Scene SHALL show the short form, the shape with "!", instead.
 7. THE positions, sizes and phases of ghosts and fog puffs SHALL come from the seed of the Room and the index of the particle, so that the same Room always draws the same wisps.
 
 ### Requirement 5: Renderer lifecycle and transitions
@@ -111,7 +111,7 @@ It does not draw hunts or evidence (`exorcist-agent`), fix pull requests (`fix-p
 1. THE renderer SHALL cap its frame rate at 60 fps, SHALL keep the total number of Particles at 200 or fewer, and SHALL aim at a frame time under 16.7 ms on a 2020 laptop.
 2. WHILE the tab is hidden, THE renderer SHALL stop its frame loop, and WHEN the tab is visible again THE renderer SHALL resume it without a jump in time (a frame step is limited to 100 ms).
 3. WHEN the average frame time stays above 20 ms for 2 s, THE renderer SHALL switch to low power Quality (half the Particles, no filters, resolution 1), and SHALL switch back only after the average stays under 14 ms for 10 s.
-4. THE renderer SHALL generate its textures procedurally once at start, no more than 6 textures, and SHALL draw ghosts, fog, ambient motes and corridor pulses from four particle containers.
+4. THE renderer SHALL generate its textures procedurally once at start, no more than 6 textures, and SHALL draw ghosts, the fog bank, the fog wisps, ambient motes and corridor pulses from five particle containers.
 5. THE renderer SHALL expose frame statistics (average frame time, particle count, quality) and SHALL publish them on `window` only in Demo mode, for measurement.
 
 ### Requirement 7: Reduced motion
@@ -167,7 +167,7 @@ It does not draw hunts or evidence (`exorcist-agent`), fix pull requests (`fix-p
 #### Acceptance Criteria
 
 1. THE Room visual SHALL have an optional `hunt` field of the type `HuntVisual` (phase, label and progress from 0 to 1), absent in this spec.
-2. THE Layout SHALL reserve for each Room a rectangle for the hunt overlay inside the silhouette of the Room and clear of the label and the badge.
+2. THE Layout SHALL reserve for each Room a rectangle for the hunt overlay inside the silhouette of the Room (on its left back wall) and clear of the nameplate, the incident row and the badge.
 3. THE renderer SHALL draw nothing in the Hunt slot in this spec, and SHALL give the Surface the rectangle and the `hunt` value so that no change of the interfaces is needed later.
 
 ### Requirement 12: Demo mode
@@ -204,3 +204,18 @@ It does not draw hunts or evidence (`exorcist-agent`), fix pull requests (`fix-p
 2. THE Web SHALL have a Playwright smoke test that opens `?demo=payments-haunted` and `?demo=ledger-dark`, saves screenshots under `apps/web/test-results/` (git-ignored), and asserts that the canvas is not blank and that the table shows the matching state; it SHALL run with `pnpm --filter @haunted-ops/web test:e2e` and not as part of `pnpm test`.
 3. `docs/DEV.md` SHALL describe the demo URLs, `VITE_DEMO_MODE`, how to install the Playwright browser, how to run the smoke test and the bundle check, and `.env.example` SHALL list `VITE_DEMO_MODE` with no real value.
 4. WHEN `scene-engine` is finished, `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build` and `pnpm check:build` SHALL pass at the root with no GPU, and the bundle check SHALL pass after a build.
+
+### Requirement 15: Review and visual fixes
+
+**User Story:** As the owner, I want the review findings fixed before the first commit, so that the house reads well in the video and the code has no known gap.
+
+#### Acceptance Criteria
+
+1. THE Layout SHALL place the name on a nameplate just inside the front corner of the floor, the incident row above it and the reason Badge behind it, and FOR EVERY viewport of the gallery range (the four-room house from 360 to 3840 px wide) THE label, incident and badge boxes SHALL lie inside the screen bounds of their Room floor and SHALL NOT overlap another Room.
+2. THE Scene SHALL draw the texts above the fog and below the ghosts, and the ghosts SHALL keep their feet above the highest text pill of their Room.
+3. THE Scene SHALL draw a house around the Rooms, behind them, in the existing Palette and with no text: an outer floor slab, two tall back walls, a pitched roof with a chimney and an attic window, and a plinth with a ground line; the house SHALL scale with the Layout and stay inside the canvas at every size from 360 by 360 to 3840 by 2160.
+4. THE idle corridor line SHALL have an alpha of at least 0.5, and its lit line and pulses SHALL be brighter than the idle line.
+5. THE Animator SHALL compute the wisp specs once per Room seed and SHALL enforce the Particle cap without allocating; THE Surface SHALL create the incident mark texts once per Room and reuse them on every model change.
+6. WHEN the renderer, or the canvas that owns it, is destroyed, a later failure of the setup or a later callback SHALL NOT be reported to the app.
+7. A unit test SHALL drive the real PixiJS Surface (init, layout, model, draw, destroy, destroy during init) against a stand-in for `pixi.js`.
+8. `docs/DEV.md` SHALL say that the deploy step removes `dist/.vite/` (the build manifest) from the published artifact, and that the judge deploy sets `VITE_DEMO_MODE=true` on purpose and what it enables.

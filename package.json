@@ -12,7 +12,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm -r --if-present test && pnpm test:scripts",
-    "test:scripts": "node --test scripts/g1-score.test.mjs",
+    "test:scripts": "node --test scripts/g1-score.test.mjs scripts/check-scene-bundle.test.mjs",
     "build": "pnpm -r --if-present build",
     "check:build": "node tools/check-build-determinism/check.mjs"
   },
