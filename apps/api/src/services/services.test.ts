@@ -16,7 +16,7 @@ describe('toServiceStates', () => {
     const states = toServiceStates(rows);
     expect(states.map((s) => s.name)).toEqual(['gate', 'payments', 'ledger']);
     expect(validateServiceStates(states).ok).toBe(true);
-    expect(states[0]).toEqual({ name: 'gate', room: { x: 0, y: 0 }, hauntLevel: 2, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z', hunt: null });
+    expect(states[0]).toEqual({ name: 'gate', room: { x: 0, y: 0 }, hauntLevel: 2, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:00.000Z', hunt: null, proposal: null });
   });
 
   it('maps the stored reason, the open Incident and the metrics', () => {

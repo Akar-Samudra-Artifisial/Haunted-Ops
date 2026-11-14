@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {
+      "kind": "read",
+      "path": "services/payments/src/charge.js"
+    },
+    {
+      "kind": "write",
+      "path": "services/payments/src/charge.js",
+      "content": "export function chargeAmount(order) {\n  if (!order || typeof order.amount !== 'number') return 0;\n  return Math.round(order.amount * 100);\n}\n"
+    }
+  ],
+  "endCredits": false
+}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { HauntLevel, HuntSummary, ServiceName, ServiceState } from '@haunted-ops/shared';
+import type { HauntLevel, HuntSummary, ProposalSummary, ServiceName, ServiceState } from '@haunted-ops/shared';
+import { proposalView } from './proposal-text.js';
 import { LEVEL_TEXT } from '../format.js';
 import { TOOL_TEXT, huntView } from './hunt-text.js';
 
@@ -48,6 +49,18 @@ export function huntSentences(previous: ReadonlyMap<ServiceName, HuntSummary | n
   return { urgent, step };
 }
 
+/** One short sentence per Proposal status change. A Service seen for the first time is silent. */
+export function proposalSentences(previous: ReadonlyMap<ServiceName, ProposalSummary | null>, services: readonly ServiceState[]): string[] {
+  const out: string[] = [];
+  for (const s of services) {
+    if (!previous.has(s.name) || s.proposal === null) continue;
+    const before = previous.get(s.name) ?? null;
+    if (before !== null && before.id === s.proposal.id && before.status === s.proposal.status) continue;
+    out.push(proposalView(s.proposal, s.name).sentence);
+  }
+  return out;
+}
+
 export const STEP_INTERVAL_MS = 5_000;
 
 /**
@@ -86,6 +99,7 @@ export class StepGate {
 export function LiveAnnouncer({ services }: { services: readonly ServiceState[] }) {
   const previous = useRef<Map<ServiceName, HauntLevel>>(new Map());
   const previousHunts = useRef<Map<ServiceName, HuntSummary | null>>(new Map());
+  const previousProposals = useRef<Map<ServiceName, ProposalSummary | null>>(new Map());
   const gate = useRef(new StepGate());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [message, setMessage] = useState('');
@@ -98,6 +112,8 @@ export function LiveAnnouncer({ services }: { services: readonly ServiceState[] 
     const hunts = huntSentences(previousHunts.current, services);
     previousHunts.current = new Map(services.map((s) => [s.name, s.hunt]));
     sentences.push(...hunts.urgent);
+    sentences.push(...proposalSentences(previousProposals.current, services));
+    previousProposals.current = new Map(services.map((s) => [s.name, s.proposal]));
     if (hunts.step !== null) {
       const said = gate.current.offer(hunts.step, now);
       if (said !== null) sentences.push(said);

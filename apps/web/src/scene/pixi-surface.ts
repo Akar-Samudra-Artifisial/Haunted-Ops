@@ -107,6 +107,10 @@ interface HuntArt {
   sealN: number;
   drawnMarks: number;
   drawnResult: 'none' | 'sealed' | 'failed' | null;
+  /** The fix scroll (with its glow) and the cleansing ring, made once and only moved or faded. */
+  scroll: Container;
+  scrollGlow: Sprite;
+  sweep: Graphics;
 }
 
 interface Layers {
@@ -334,7 +338,7 @@ export class PixiSurface implements Surface {
     const huntArt = this.buildHunt(room, layout);
     const hunt = huntArt.container;
 
-    root.addChild(body, glow, dim, outlineTrim, outlineAlarm, huntArt.seal);
+    root.addChild(body, glow, dim, outlineTrim, outlineAlarm, huntArt.seal, huntArt.sweep);
     const texts = new Container();
     texts.addChild(badgePill, badge, plate, label, incident, hunt);
     return { room, art, root, texts, body, glow, dim, outlineTrim, outlineAlarm, clock, plate, label, badge, badgePill, incident, incidentTri, incidentBang, incidentWord, hunt, huntArt };
@@ -392,8 +396,57 @@ export class PixiSurface implements Surface {
     figure.visible = false;
     figure.position.set(room.doors.px.x, room.doors.px.y);
 
-    container.addChild(marksOff, marksOn, result, figure);
-    return { container, marksOn, result, seal, figure, lanternGlow, lantern, sparks, lanternX, lanternY, slot: { x: slot.x, y: slot.y, w: slot.w, h: slot.h, midY, r, markX }, ringPts, sealN: 0, drawnMarks: -1, drawnResult: null };
+    // The fix scroll: a parchment sheet with a roll at each end and three ink lines.
+    const scroll = new Container();
+    const sw = 0.36 * s;
+    const sh = 0.46 * s;
+    const scrollGlow = new Sprite(this.textures.get('glow') as Texture);
+    scrollGlow.anchor.set(0.5);
+    scrollGlow.width = 1.1 * s;
+    scrollGlow.height = 1.1 * s;
+    scrollGlow.blendMode = 'add';
+    scrollGlow.tint = num(PALETTE.glowWarm);
+    const sheet = new Graphics();
+    sheet.rect(-sw / 2, -sh / 2, sw, sh).fill({ color: num(PALETTE.lampWarm), alpha: 0.95 });
+    const roll = Math.max(1.5, 0.05 * s);
+    sheet.roundRect(-sw / 2 - roll, -sh / 2 - roll, sw + 2 * roll, 2 * roll, roll).fill({ color: num(PALETTE.trim) });
+    sheet.roundRect(-sw / 2 - roll, sh / 2 - roll, sw + 2 * roll, 2 * roll, roll).fill({ color: num(PALETTE.trim) });
+    for (let i = 0; i < 3; i++) sheet.rect(-sw * 0.32, -sh * 0.22 + i * sh * 0.2, sw * 0.64, Math.max(1, 0.02 * s)).fill({ color: num(PALETTE.nightDeep), alpha: 0.7 });
+    scroll.addChild(scrollGlow, sheet);
+    scroll.visible = false;
+
+    // The cleansing ring: drawn once at full size, then scaled and faded.
+    const sweep = new Graphics();
+    const sweepPts: number[] = [];
+    for (let i = 0; i < SEAL_STEPS; i++) {
+      const a = (i / SEAL_STEPS) * Math.PI * 2;
+      sweepPts.push(1.4 * s * Math.cos(a), 0.7 * s * Math.sin(a));
+    }
+    sweep.poly(sweepPts, true).stroke({ color: num(PALETTE.lampWarm), width: Math.max(2, 0.08 * s) });
+    sweep.position.set(room.center.x, room.center.y);
+    sweep.visible = false;
+
+    container.addChild(marksOff, marksOn, result, figure, scroll);
+    return {
+      container,
+      marksOn,
+      result,
+      seal,
+      figure,
+      lanternGlow,
+      lantern,
+      sparks,
+      lanternX,
+      lanternY,
+      slot: { x: slot.x, y: slot.y, w: slot.w, h: slot.h, midY, r, markX },
+      ringPts,
+      sealN: 0,
+      drawnMarks: -1,
+      drawnResult: null,
+      scroll,
+      scrollGlow,
+      sweep,
+    };
   }
 
   applyModel(model: SceneModel): void {
@@ -522,6 +575,22 @@ export class PixiSurface implements Surface {
       if (n > 0) a.seal.poly(a.ringPts.slice(0, 2 * (n + 1)), false).stroke({ color: num(PALETTE.lampWarm), width: Math.max(2, 0.07 * scale), cap: 'round', join: 'round' });
     }
     a.seal.alpha = h.figure;
+
+    // The fix: glowing at the end of the Hunt slot while drafting (the figure has usually left by then), else
+    // pinned on the wall above its start. Both spots stay clear of the badge and the nameplate.
+    const p = h.proposal;
+    a.scroll.visible = p.scroll > 0.003;
+    if (a.scroll.visible) {
+      if (p.pinned) a.scroll.position.set(slot.x - 0.3 * scale, slot.y - 0.35 * scale);
+      else a.scroll.position.set(slot.x + slot.w + 0.35 * scale, slot.midY - 0.1 * scale);
+      a.scroll.alpha = p.scroll;
+      a.scrollGlow.alpha = 0.7 * p.glow;
+    }
+    a.sweep.visible = p.sweep > 0;
+    if (p.sweep > 0) {
+      a.sweep.scale.set(0.2 + 0.8 * p.sweep);
+      a.sweep.alpha = 1 - p.sweep;
+    }
 
     const shown = h.figure > 0.003;
     a.figure.visible = shown;

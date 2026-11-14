@@ -13,6 +13,7 @@ import {
   makeValidator,
 } from './checks.js';
 import { checkHuntSummary } from './hunts.js';
+import { checkProposalSummary } from './proposals.js';
 import type { HauntLevel, HauntReason, IngestStatus, ServiceName, ServiceState, SignalKind } from './types.js';
 
 /**
@@ -47,6 +48,7 @@ export const checkServiceState = checkObject({
   openIncident: checkNullable(checkOpenIncident),
   updatedAt: checkIsoTimestamp,
   hunt: checkNullable(checkHuntSummary),
+  proposal: checkNullable(checkProposalSummary),
 });
 
 export const checkIngestStatus = checkObject({

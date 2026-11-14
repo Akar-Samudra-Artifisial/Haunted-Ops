@@ -82,7 +82,7 @@ describe('hunt summaries', () => {
     expect(validateHuntEvent('hunt.finished', finished).ok).toBe(true);
     expect(validateHuntEvent('hunt.finished', { ...finished, diagnosedBy: null }).ok).toBe(false);
     expect(validateHuntEvent('hunt.finished', { ...finished, reason: 'busy' }).ok).toBe(false);
-    const detail: HuntDetail = { ...base, model: 'claude-sonnet-5.5', toolCalls: 0, durationMs: null, invalidCheck: null, stopDetail: null, linkedHuntId: ID, creditsEstimated: false, allSteps: [], evidence: [], fixHint: null };
+    const detail: HuntDetail = { ...base, model: 'claude-sonnet-5.5', toolCalls: 0, durationMs: null, invalidCheck: null, stopDetail: null, linkedHuntId: ID, creditsEstimated: false, allSteps: [], evidence: [], fixHint: null, proposal: null };
     expect(validateHuntDetail(detail).ok).toBe(true);
     expect(validateHuntDetail({ ...detail, linkedHuntId: 'nope' }).ok).toBe(false);
     expect(validateHuntDetail({ ...detail, reason: 'busy', diagnosedBy: null }).ok).toBe(false);
@@ -100,8 +100,8 @@ describe('hunt summaries', () => {
       openIncident: null,
       updatedAt: '2026-11-13T10:41:00.000Z',
     };
-    expect(validateServiceState({ ...state, hunt: null }).ok).toBe(true);
-    expect(validateServiceState({ ...state, hunt: sealed }).ok).toBe(true);
+    expect(validateServiceState({ ...state, hunt: null, proposal: null }).ok).toBe(true);
+    expect(validateServiceState({ ...state, hunt: sealed, proposal: null }).ok).toBe(true);
     expect(validateServiceState(state).ok).toBe(false);
   });
 });
@@ -120,6 +120,7 @@ describe('hunt detail', () => {
       allSteps: sealed.steps,
       evidence: [{ index: 1, kind: 'deploy', ref: 'deploy:d-7', detail: 'd-7 payments 65c0fca', cited: true }],
       fixHint: 'Restore the guard.',
+      proposal: null,
     };
     expect(validateHuntDetail(detail).ok).toBe(true);
     expect(validateHuntDetail({ ...detail, stopDetail: 'fs_read' }).ok).toBe(true);

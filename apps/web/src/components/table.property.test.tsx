@@ -45,8 +45,9 @@ describe('Property 14: every table row says the level and the cause in text', ()
       fc.property(stateArb, (s) => {
         const { head, cells, html } = rowCells(s);
         expect(head).toBe(s.name);
-        expect(cells).toHaveLength(7);
+        expect(cells).toHaveLength(8);
         expect(cells[6]).toBe('none');
+        expect(cells[7]).toBe('none');
         expect(cells[0]).toContain(`${s.hauntLevel} (${LEVEL_TEXT[s.hauntLevel]})`);
         expect(cells[0]).toContain(LEVEL_MARKER[s.hauntLevel]);
         expect(cells[1]).toBe(formatReason(s.reason, s.metrics));

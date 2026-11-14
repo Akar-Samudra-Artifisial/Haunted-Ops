@@ -63,12 +63,22 @@ enum EvidenceKind {
   commit
 }
 
+/// A fix only moves forward: drafting -> open | checks_failed | failed; open -> merged | rejected | failed;
+/// merged -> deployed | failed. The CHECK constraints and the guarded UPDATE of the store keep it so.
 enum ProposalStatus {
-  draft
+  drafting
+  checks_failed
   open
-  approved
   merged
+  deployed
   rejected
+  failed
+}
+
+/// What the pull request holds: the patch of the fixer agent, or a revert of the culprit commit.
+enum ProposalKind {
+  ai_patch
+  revert
 }
 
 /// Which signal sets the haunt level of a Service.
@@ -194,15 +204,50 @@ model Evidence {
   @@unique([huntId, order])
 }
 
+/// One fix for one succeeded Hunt. A retry is a new row with the next `attempt`; at most one row of a Hunt is active.
 model Proposal {
-  id         String         @id @default(cuid())
-  huntId     String
-  prUrl      String?
-  status     ProposalStatus @default(draft)
-  approvedBy String?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-  hunt       Hunt           @relation(fields: [huntId], references: [id], onDelete: Cascade)
+  id               String         @id @default(cuid())
+  huntId           String
+  attempt          Int            @default(1)
+  kind             ProposalKind?
+  status           ProposalStatus @default(drafting)
+  /// Why it ended `checks_failed` or `failed`: a fixed code, never a message.
+  failReason       String?
+  /// Why the fixer's patch was not used (set with the kind `revert`, or when nothing could be proposed).
+  aiFailReason     String?
+  prNumber         Int?
+  prUrl            String?
+  /// `exorcist/<huntId>`
+  branch           String?
+  /// `incident/<huntId>`
+  baseBranch       String?
+  /// The deployed commit D the branches start from.
+  baseSha          String?
+  /// The fix commit.
+  headSha          String?
+  /// The merge commit M that the lab deploys.
+  mergeSha         String?
+  /// GitHub login of the person who merged, read from the API.
+  mergedBy         String?
+  /// `[{ name, ok }]` in the order the checks ran.
+  checks           Json           @default("[]")
+  patchFiles       Int?
+  patchLines       Int?
+  /// The fixer process started (counts in HUNT_DAILY_MAX).
+  agentStarted     Boolean        @default(false)
+  credits          Float          @default(0)
+  creditsEstimated Boolean        @default(false)
+  /// ETag of the last pull request answer, for conditional polling.
+  etag             String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  openedAt         DateTime?
+  mergedAt         DateTime?
+  deployedAt       DateTime?
+  finishedAt       DateTime?
+  hunt             Hunt           @relation(fields: [huntId], references: [id], onDelete: Cascade)
 
+  @@unique([huntId, attempt])
   @@index([huntId])
+  @@index([status])
 }

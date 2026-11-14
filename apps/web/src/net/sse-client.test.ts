@@ -129,7 +129,7 @@ describe('SseClient', () => {
     await flush();
     expect(d.pending).toHaveLength(1);
     // While the snapshot is in flight, payments goes dark.
-    const dark: ServiceState = { name: 'payments', room: { x: 0, y: 1 }, hauntLevel: 4, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:05.000Z', hunt: null };
+    const dark: ServiceState = { name: 'payments', room: { x: 0, y: 1 }, hauntLevel: 4, reason: null, metrics: null, openIncident: null, updatedAt: '2026-11-12T10:00:05.000Z', hunt: null, proposal: null };
     t.es.latest().emit('service.updated', { service: dark, previousLevel: 0 }, id(BOOT_A, 1));
     // The snapshot was taken earlier and still says calm.
     const stale = SAMPLE_SERVICES.map((s) => (s.name === 'payments' ? { ...s, hauntLevel: 0 } : s));

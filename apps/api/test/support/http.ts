@@ -1,7 +1,8 @@
 import { All, Body, Controller, Get, Module, Post, type ModuleMetadata } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { createApp, type HttpTimeouts } from '../../src/app.js';
+import { createApp, type CreateAppOptions, type HttpTimeouts } from '../../src/app.js';
 import { parseConfig, type Config } from '../../src/config/config.js';
 import type { HuntConfig } from '../../src/hunts/hunt-config.js';
 import { JsonLogger } from '../../src/security/logger.js';
@@ -55,6 +56,8 @@ export async function startServer(
     init?: (app: NestExpressApplication) => void;
     timeouts?: HttpTimeouts;
     huntConfig?: HuntConfig;
+    fixConfig?: CreateAppOptions['fixConfig'];
+    fixOverrides?: CreateAppOptions['fixOverrides'];
   } = {},
 ): Promise<TestServer> {
   const logs: string[] = [];
@@ -64,6 +67,8 @@ export async function startServer(
     imports: [TestRoutesModule, ...(options.imports ?? [])],
     timeouts: options.timeouts,
     huntConfig: options.huntConfig,
+    fixConfig: options.fixConfig,
+    fixOverrides: options.fixOverrides,
   });
   options.init?.(app);
   await app.listen(0, '127.0.0.1');
@@ -74,10 +79,21 @@ export async function startServer(
     config,
     logs,
     close: async () => {
-      await app.close();
+      // A stream a failed test left open would hold `close` until Node's 300 s request timeout and hide the
+      // real failure behind a timeout. After a short grace for a clean shutdown, the connections are cut.
+      const http = app.getHttpServer() as Server;
+      const force = setTimeout(() => http.closeAllConnections(), CLOSE_GRACE_MS);
+      try {
+        await app.close();
+      } finally {
+        clearTimeout(force);
+      }
     },
   };
 }
+
+/** How long `close` waits for open connections before it cuts them. */
+const CLOSE_GRACE_MS = 1_000;
 
 export function parsedLogs(logs: readonly string[]): Record<string, unknown>[] {
   return logs.map((l) => JSON.parse(l) as Record<string, unknown>);

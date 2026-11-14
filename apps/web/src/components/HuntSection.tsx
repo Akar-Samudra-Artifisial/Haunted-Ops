@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react';
-import type { HuntDetail, HuntSummary, ServiceName, ServiceState } from '@haunted-ops/shared';
+import { isActiveProposalStatus, type HuntDetail, type HuntSummary, type ServiceName, type ServiceState } from '@haunted-ops/shared';
 import { huntCellText, huntStepText, huntView } from './hunt-text.js';
+import { proposalView } from './proposal-text.js';
 
 export type LoadHuntDetail = (huntId: string) => Promise<HuntDetail>;
 
-/** The Service the Hunt section is about: the selected one, else the first with a Hunt that is queued or running. */
+/** The Service the Hunt section is about: the selected one, else the first with a running or queued Hunt, else one with an active fix. */
 export function huntSectionService(services: readonly ServiceState[], selected: ServiceName | null): ServiceState | null {
   if (selected !== null) return services.find((s) => s.name === selected) ?? null;
-  return services.find((s) => s.hunt?.status === 'running') ?? services.find((s) => s.hunt?.status === 'queued') ?? null;
+  return (
+    services.find((s) => s.hunt?.status === 'running') ??
+    services.find((s) => s.hunt?.status === 'queued') ??
+    // Then a fix that is still moving, so its pull request link is in the table without a selection.
+    services.find((s) => s.proposal !== null && isActiveProposalStatus(s.proposal.status)) ??
+    null
+  );
 }
 
 /** Loads the detail of a finished Hunt that has a diagnosis, so the cited evidence can be listed. */
@@ -88,7 +95,30 @@ export function HuntSection({ service, loadDetail }: { service: ServiceState | n
           ) : null}
         </div>
       ) : null}
+      <ProposalBlock service={service} />
     </section>
+  );
+}
+
+/** Text view of the latest Proposal of one Service: kind, status, checks in words, the pull request link. */
+function ProposalBlock({ service }: { service: ServiceState }) {
+  const p = service.proposal;
+  if (p === null) return null;
+  const v = proposalView(p, service.name);
+  return (
+    <div data-testid="proposal-block">
+      <h4>Fix proposal, attempt {p.attempt}</h4>
+      <p data-testid="proposal-state">{v.cell}</p>
+      {v.checksText === null ? null : <p>Checks: {v.checksText}.</p>}
+      {v.aiFailText === null ? null : <p>AI patch not used: {v.aiFailText}.</p>}
+      {v.link === null ? null : (
+        <p>
+          <a href={v.link.href} target="_blank" rel="noopener noreferrer">
+            {v.link.label} on GitHub (opens in a new tab)
+          </a>
+        </p>
+      )}
+    </div>
   );
 }
 

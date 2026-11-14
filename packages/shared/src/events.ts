@@ -19,6 +19,7 @@ import {
   type Check,
 } from './validators.js';
 import { HUNT_EVENT_NAMES, huntPayloadChecks, type HuntEventPayloads } from './hunts.js';
+import { PROPOSAL_EVENT_NAMES, proposalPayloadChecks, type ProposalEventPayloads } from './proposals.js';
 
 /** Domain events carry an id and are kept in the ring buffer for resume. */
 export interface DomainEventPayloads {
@@ -43,6 +44,13 @@ export interface DomainEventPayloads {
   'hunt.evidence': HuntEventPayloads['hunt.evidence'];
   'hunt.diagnosis': HuntEventPayloads['hunt.diagnosis'];
   'hunt.finished': HuntEventPayloads['hunt.finished'];
+  'proposal.started': ProposalEventPayloads['proposal.started'];
+  'proposal.checks': ProposalEventPayloads['proposal.checks'];
+  'proposal.opened': ProposalEventPayloads['proposal.opened'];
+  'proposal.merged': ProposalEventPayloads['proposal.merged'];
+  'proposal.deployed': ProposalEventPayloads['proposal.deployed'];
+  'proposal.rejected': ProposalEventPayloads['proposal.rejected'];
+  'proposal.failed': ProposalEventPayloads['proposal.failed'];
 }
 
 /**
@@ -76,6 +84,7 @@ export const DOMAIN_EVENT_NAMES = [
   'ingest.polled',
   'ingest.status',
   ...HUNT_EVENT_NAMES,
+  ...PROPOSAL_EVENT_NAMES,
 ] as const satisfies readonly DomainEventName[];
 export const CONTROL_EVENT_NAMES = ['connected', 'heartbeat', 'resync'] as const satisfies readonly ControlEventName[];
 export const SSE_EVENT_NAMES: readonly SseEventName[] = [...DOMAIN_EVENT_NAMES, ...CONTROL_EVENT_NAMES];
@@ -143,6 +152,7 @@ const payloadChecks: { [K in SseEventName]: Check } = {
   }),
   'ingest.status': checkIngestStatus,
   ...huntPayloadChecks,
+  ...proposalPayloadChecks,
   connected: checkObject({ bootId: checkBootId }),
   heartbeat: checkObject({ at: checkIsoTimestamp }),
   resync: checkObject({ reason: checkOneOf(RESYNC_REASONS) }),

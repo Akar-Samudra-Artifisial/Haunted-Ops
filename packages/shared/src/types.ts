@@ -1,4 +1,5 @@
 import type { HuntSummary } from './hunts.js';
+import type { ProposalSummary } from './proposals.js';
 
 /** The four lab services, in fixed room order. */
 export const SERVICE_NAMES = ['gate', 'orders', 'payments', 'ledger'] as const;
@@ -56,6 +57,8 @@ export interface ServiceState {
   updatedAt: string;
   /** The latest Hunt of the Service, or `null` when it never had one. */
   hunt: HuntSummary | null;
+  /** The latest Proposal (fix) of the latest Hunt, or `null`. */
+  proposal: ProposalSummary | null;
 }
 
 /** Ingest status as sent on the wire. */

@@ -1,0 +1,12 @@
+{
+  "steps": [
+    {
+      "kind": "read",
+      "path": "services/payments/src/charge.js"
+    },
+    {
+      "kind": "sleep",
+      "ms": 600000
+    }
+  ]
+}

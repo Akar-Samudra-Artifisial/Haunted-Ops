@@ -1,7 +1,15 @@
 import fc from 'fast-check';
 import {
+  AI_FAIL_REASONS,
   DIAGNOSIS_CHECKS,
   DOMAIN_EVENT_NAMES,
+  PROPOSAL_CHECK_NAMES,
+  PROPOSAL_FAIL_REASONS,
+  PROPOSAL_KINDS,
+  PROPOSAL_STATUSES,
+  type ProposalCheck,
+  type ProposalEventPayloads,
+  type ProposalSummary,
   EVIDENCE_KINDS,
   HUNT_END_REASONS,
   HUNT_STATUSES,
@@ -63,6 +71,10 @@ export const serviceStateArb: fc.Arbitrary<ServiceState> = fc.record({
     fc.constant(null).chain(() => huntSummaryArb),
     { nil: null },
   ),
+  proposal: fc.option(
+    fc.constant(null).chain(() => proposalSummaryArb),
+    { nil: null },
+  ),
 });
 
 export const cuidArb = fc.stringMatching(/^[a-z0-9]{25}$/);
@@ -118,6 +130,76 @@ export const huntSummaryArb: fc.Arbitrary<HuntSummary> = fc
       diagnosedBy: ended && r.status !== 'succeeded' && r.failReason === 'diagnosed_upstream' ? r.by : null,
     };
   });
+
+// --- proposals ---
+
+export const loginArb = fc.stringMatching(/^[A-Za-z0-9][A-Za-z0-9-]{0,20}$/);
+const prNumberArb = fc.integer({ min: 1, max: 99_999 });
+export const prUrlOf = (n: number): string => `https://github.com/Akar-Samudra-Artifisial/Haunted-Lab/pull/${n}`;
+export const proposalCheckArb: fc.Arbitrary<ProposalCheck> = fc.record({ name: fc.constantFrom(...PROPOSAL_CHECK_NAMES), ok: fc.boolean() });
+const checksArb = fc.array(proposalCheckArb, { maxLength: 8 });
+
+/** A consistent summary: the status decides which fields are set. */
+export const proposalSummaryArb: fc.Arbitrary<ProposalSummary> = fc
+  .record({
+    id: cuidArb,
+    huntId: cuidArb,
+    attempt: fc.integer({ min: 1, max: 5 }),
+    kind: fc.constantFrom(...PROPOSAL_KINDS),
+    status: fc.constantFrom(...PROPOSAL_STATUSES),
+    pr: prNumberArb,
+    // GitHub may answer `merged_by: null`.
+    login: fc.option(loginArb, { nil: null, freq: 4 }),
+    checks: checksArb,
+    fail: fc.constantFrom(...PROPOSAL_FAIL_REASONS),
+    aiFail: fc.option(fc.constantFrom(...AI_FAIL_REASONS), { nil: null }),
+    updatedAt: isoArb,
+  })
+  .map((r): ProposalSummary => {
+    const open = r.status === 'open' || r.status === 'merged' || r.status === 'deployed' || r.status === 'rejected';
+    const failed = r.status === 'failed' || r.status === 'checks_failed';
+    return {
+      id: r.id,
+      huntId: r.huntId,
+      attempt: r.attempt,
+      kind: r.status === 'drafting' || r.status === 'checks_failed' ? null : r.kind,
+      status: r.status,
+      prNumber: open ? r.pr : null,
+      prUrl: open ? prUrlOf(r.pr) : null,
+      mergedBy: r.status === 'merged' || r.status === 'deployed' ? r.login : null,
+      checks: r.checks,
+      failReason: failed ? r.fail : null,
+      aiFailReason: r.aiFail,
+      updatedAt: r.updatedAt,
+    };
+  });
+
+const proposalPayloadArbs: { [K in keyof ProposalEventPayloads]: fc.Arbitrary<ProposalEventPayloads[K]> } = {
+  'proposal.started': fc.record({ proposalId: cuidArb, huntId: cuidArb, service: serviceNameArb, attempt: fc.integer({ min: 1, max: 5 }), at: isoArb }),
+  'proposal.checks': fc.record({
+    proposalId: cuidArb,
+    huntId: cuidArb,
+    service: serviceNameArb,
+    kind: fc.constantFrom(...PROPOSAL_KINDS),
+    checks: checksArb,
+    aiFailReason: fc.option(fc.constantFrom(...AI_FAIL_REASONS), { nil: null }),
+    at: isoArb,
+  }),
+  'proposal.opened': prNumberArb.chain((n) =>
+    fc.record({ proposalId: cuidArb, huntId: cuidArb, service: serviceNameArb, kind: fc.constantFrom(...PROPOSAL_KINDS), prNumber: fc.constant(n), prUrl: fc.constant(prUrlOf(n)), at: isoArb }),
+  ),
+  'proposal.merged': fc.record({ proposalId: cuidArb, huntId: cuidArb, service: serviceNameArb, mergedBy: fc.option(loginArb, { nil: null, freq: 4 }), at: isoArb }),
+  'proposal.deployed': fc.record({ proposalId: cuidArb, huntId: cuidArb, service: serviceNameArb, at: isoArb }),
+  'proposal.rejected': fc.record({ proposalId: cuidArb, huntId: cuidArb, service: serviceNameArb, at: isoArb }),
+  'proposal.failed': fc.record({
+    proposalId: cuidArb,
+    huntId: cuidArb,
+    service: serviceNameArb,
+    status: fc.constantFrom('failed', 'checks_failed' as const),
+    failReason: fc.constantFrom(...PROPOSAL_FAIL_REASONS),
+    at: isoArb,
+  }),
+};
 
 const huntPayloadArbs: { [K in keyof HuntEventPayloads]: fc.Arbitrary<HuntEventPayloads[K]> } = {
   'hunt.queued': fc.record({ huntId: cuidArb, incidentId: cuidArb, service: serviceNameArb, trigger: fc.constantFrom(...HUNT_TRIGGERS), queuedAt: isoArb }),
@@ -201,6 +283,7 @@ export const payloadArbs: { [K in SseEventName]: fc.Arbitrary<SsePayloads[K]> } 
     lastSuccessAt: fc.option(isoArb, { nil: null }),
   }),
   ...huntPayloadArbs,
+  ...proposalPayloadArbs,
   connected: fc.record({ bootId: bootIdArb }),
   heartbeat: fc.record({ at: isoArb }),
   resync: fc.record({ reason: fc.constantFrom(...RESYNC_REASONS) }),

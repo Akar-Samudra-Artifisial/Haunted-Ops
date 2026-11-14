@@ -111,19 +111,19 @@ export const isTokenValid = (value: string): boolean =>
 const MODEL_PATTERN = /^[a-z0-9][a-z0-9.-]{1,63}$/;
 const DECIMAL = /^\d{1,6}(\.\d{1,3})?$/;
 
-function parseDecimal(value: string, min: number, max: number): number | null {
+export function parseDecimal(value: string, min: number, max: number): number | null {
   if (!DECIMAL.test(value)) return null;
   const n = Number(value);
   return n >= min && n <= max ? n : null;
 }
 
-function parseInteger(value: string, min: number, max: number): number | null {
+export function parseInteger(value: string, min: number, max: number): number | null {
   if (!/^\d{1,9}$/.test(value)) return null;
   const n = Number(value);
   return n >= min && n <= max ? n : null;
 }
 
-function statDir(path: string): { uid: number; mode: number } | null {
+export function statDir(path: string): { uid: number; mode: number } | null {
   try {
     const s = lstatSync(path);
     return { uid: s.uid, mode: s.mode };
@@ -132,7 +132,7 @@ function statDir(path: string): { uid: number; mode: number } | null {
   }
 }
 
-const currentUid = (): number => (typeof process.getuid === 'function' ? process.getuid() : -1);
+export const currentUid = (): number => (typeof process.getuid === 'function' ? process.getuid() : -1);
 
 /** Hosts a default LAB_URL may name. `new URL` writes an IPv6 host in brackets. */
 const LOOPBACK_HOSTS: readonly string[] = ['127.0.0.1', '[::1]', 'localhost'];

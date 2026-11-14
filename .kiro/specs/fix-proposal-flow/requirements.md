@@ -47,7 +47,7 @@ Out of scope: the lab side of the deploy (`fix-deploy`, a separate spec in the `
 
 #### Acceptance Criteria
 
-1. THE settings SHALL read `FIX_ENABLED` (default `false`), `GITHUB_TOKEN`, `LAB_GITHUB_REPO`, `CHAOS_URL` (default `http://127.0.0.1:4100`, loopback unless `LAB_ALLOW_REMOTE`), `CHAOS_TOKEN`, `FIX_MODEL`, `FIX_CREDIT_CAP` (default 1.5), `FIX_TIMEOUT_MS` (default 120000), `FIX_MAX_TOOL_CALLS` (default 30), `FIX_TEST_TIMEOUT_MS` (default 90000), `FIX_POLL_MS` (default 30000), `FIX_BRANCH_TTL_DAYS` (default 7) and `FIX_CLONE_DIR`, each with the bounds of the design, and SHALL name an invalid variable and never its value.
+1. THE settings SHALL read `FIX_ENABLED` (default `false`), `GITHUB_TOKEN`, `LAB_GITHUB_REPO`, `CHAOS_URL` (default `http://127.0.0.1:4100`, loopback unless `LAB_ALLOW_REMOTE`), `CHAOS_TOKEN`, `FIX_MODEL`, `FIX_CREDIT_CAP` (default 1.5), `FIX_TIMEOUT_MS` (default 120000), `FIX_MAX_TOOL_CALLS` (default 30), `FIX_TEST_TIMEOUT_MS` (default 90000), `FIX_POLL_MS` (default 30000), `FIX_BRANCH_TTL_DAYS` (default 7) and `FIX_WORKDIR`, each with the bounds of the design, and SHALL name an invalid variable and never its value.
 2. WHEN `FIX_ENABLED=true`, THE settings SHALL require `HUNTS_ENABLED=true`, `GITHUB_TOKEN`, `LAB_GITHUB_REPO` in the form `owner/name`, `CHAOS_TOKEN`, a pinned `FIX_MODEL` (not `auto`), and `git` and the `kiro-cli` of `KIRO_CLI_PATH` as executable files.
 3. THE settings SHALL accept a `GITHUB_TOKEN` only in the form of a fine-grained token (`github_pat_` and the allowed characters) and SHALL refuse a classic token (`ghp_`), an OAuth token and a placeholder.
 4. WHEN `FIX_ENABLED=true`, THE API SHALL call `GET /repos/<repo>` once at startup, SHALL exit with a message that names `GITHUB_TOKEN` or `LAB_GITHUB_REPO` (never the value) when the answer is not 200 or the token cannot push, SHALL make sure the labels `exorcist`, `ai_patch` and `revert` exist, and SHALL log the days left before the token expires when GitHub reports them.
@@ -63,7 +63,7 @@ Out of scope: the lab side of the deploy (`fix-deploy`, a separate spec in the `
 2. THE API SHALL open the pull request with head `exorcist/<huntId>` and base `incident/<huntId>`.
 3. THE API SHALL build a branch name only from a `huntId` that matches the CUID pattern, and SHALL refuse to build one from anything else.
 4. THE API SHALL never push to, create, force-push, rename or delete `main` or a `scenario/*` branch, and SHALL push only the two branch names of this requirement, without force.
-5. IF the Incident branch or the Fix branch of this Hunt already exists on the remote, THEN THE API SHALL treat it as a failed attempt with the Fail reason `branch_exists` and SHALL leave it as it is.
+5. IF the Incident branch or the Fix branch of this Hunt already exists on the remote, THEN THE API SHALL treat a branch at the commit it would push (D, or the Fix commit) as already pushed, SHALL delete and push again a branch at another commit that no open pull request uses (a leftover of a partial push), and SHALL end the attempt with the Fail reason `branch_exists`, leaving both branches as they are, when an open pull request uses one of them.
 6. THE Fix commit SHALL have a fixed author and committer, a message made of the one-line summary and the Hunt id, and no hook or signing configuration involved.
 
 ### Requirement 3: The fixer agent and its process
@@ -172,7 +172,7 @@ Out of scope: the lab side of the deploy (`fix-deploy`, a separate spec in the `
 
 1. THE API SHALL poll every `open` Proposal every `FIX_POLL_MS` (30 s) with `GET /repos/<repo>/pulls/<n>` and a conditional request (`If-None-Match`), and SHALL NOT need a public webhook.
 2. WHEN the pull request is closed without a merge, THE Proposal SHALL become `rejected`.
-3. WHEN the pull request is merged, THE API SHALL read the merge commit M, the head SHA of the pull request and the login of the merger, and the Proposal SHALL become `merged` only when the head SHA equals the `headSha` that the API pushed.
+3. WHEN the pull request is merged, THE API SHALL read the merge commit M, the head SHA of the pull request and the login of the merger (null when GitHub names no one), and the Proposal SHALL become `merged` only when the head SHA equals the `headSha` that the API pushed.
 4. IF the head SHA differs from the pushed `headSha`, THEN THE Proposal SHALL become `failed` with the Fail reason `head_changed` and nothing SHALL be deployed.
 5. WHEN the API restarts, THE API SHALL resume the watch of every `open` Proposal, SHALL treat a `drafting` Proposal as `failed` with `api_restart`, and SHALL continue a `merged` Proposal to its deploy.
 
@@ -182,10 +182,10 @@ Out of scope: the lab side of the deploy (`fix-deploy`, a separate spec in the `
 
 #### Acceptance Criteria
 
-1. WHEN a Proposal is `merged`, THE API SHALL fetch `incident/<huntId>`, SHALL check that its head equals M, and SHALL check the Check `merge_scope` (the diff from D to M touches only files under `services/<S>/` and is not larger than the pushed Patch for `ai_patch`), before it calls the lab.
+1. WHEN a Proposal is `merged`, THE API SHALL fetch `incident/<huntId>`, SHALL check that its head equals M, and SHALL check the Check `merge_scope` (the diff from D to M touches only files under `services/<S>/` and is not larger than the pushed Patch for `ai_patch`), and SHALL check that the tree of M equals the tree of the pushed head (`merge_content`), before it calls the lab. A Deploy Record of M by `exorcist` that already exists SHALL NOT be deployed again.
 2. THE API SHALL call the Chaos deploy contract `POST /chaos/deploy-fix` with the bearer `CHAOS_TOKEN` and the body `{ service, ref, sha }`, with `ref` equal to `incident/<huntId>` and `sha` equal to M, and SHALL send the token only to `CHAOS_URL`.
 3. THE Proposal SHALL become `deployed` only after the lab answers success and the observability API lists a Deploy Record of S with `sha` equal to M and `actor` equal to `exorcist`.
-4. IF the lab refuses the deploy, or the checks of 12.1 fail, or the record does not appear in 60 s, THEN THE Proposal SHALL become `failed` with a fixed Fail reason (`ref_moved`, `merge_scope`, `deploy_rejected`, `deploy_unavailable`, `deploy_unconfirmed`), and a transient error SHALL be retried a bounded number of times first.
+4. IF the lab refuses the deploy, or the checks of 12.1 fail, or the record does not appear within `FIX_DEPLOY_CONFIRM_MS` of the merge (the Proposal stays `merged` and is looked at again on every poll until then), THEN THE Proposal SHALL become `failed` with a fixed Fail reason (`ref_moved`, `merge_scope`, `merge_content`, `deploy_rejected`, `deploy_unavailable`, `deploy_unconfirmed`), and a transient error SHALL be retried a bounded number of times first.
 5. THE API SHALL NOT close the Incident, and the Proposal SHALL NOT change an Incident: after `deployed`, the normal ingest closes the Incident once the signals recover.
 
 ### Requirement 13: The Proposal model
@@ -207,7 +207,7 @@ Out of scope: the lab side of the deploy (`fix-deploy`, a separate spec in the `
 #### Acceptance Criteria
 
 1. `GET /api/proposals/:id` SHALL be public, SHALL answer the Proposal view without any token, local path or raw model text, and SHALL answer 404 for an unknown or malformed id.
-2. `POST /api/hunts/:id/proposal` SHALL need `Authorization: Bearer $HUNT_ADMIN_TOKEN`, SHALL answer 202 when it starts a new attempt for a succeeded Hunt whose last Proposal is `failed` or `checks_failed` (or that has none), and SHALL answer 409 when a Proposal is active or the Hunt did not succeed, and 404 when `FIX_ENABLED=false`.
+2. `POST /api/hunts/:id/proposal` SHALL need `Authorization: Bearer $HUNT_ADMIN_TOKEN`, SHALL answer 202 when it starts a new attempt for a succeeded Hunt whose last Proposal is `failed` or `checks_failed` (or that has none), and SHALL answer 409 when a Proposal is active, when the last one is `rejected` (a person closed it) or `deployed`, or when the Hunt did not succeed; 503 while the Kill switch is off; and 404 when `FIX_ENABLED=false`.
 3. THE API SHALL publish the SSE events `proposal.started`, `proposal.checks`, `proposal.opened`, `proposal.merged`, `proposal.deployed`, `proposal.rejected` and `proposal.failed`, each with a payload that has a validator in Shared, and in an order that follows the status graph.
 4. `GET /api/services` and `GET /api/hunts/:id` SHALL carry the latest Proposal summary of the Hunt (or `null`), and the web reducer SHALL apply the events to it.
 5. THE routes and events SHALL stay under the existing rate limit, SSE limits and error filter.

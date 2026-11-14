@@ -43,6 +43,10 @@ const cases = [
   { demo: 'payments-hunting', service: 'payments', level: '3 (possessed)', reason: 'error rate', hunt: 'running: step 3, logs' },
   { demo: 'payments-sealed', service: 'payments', level: '2 (haunted)', reason: 'error rate', hunt: 'sealed: d-7, 65c0fca' },
   { demo: 'payments-fizzled', service: 'payments', level: '3 (possessed)', reason: 'error rate', hunt: 'failed: credit cap reached' },
+  // The fix: the scroll, the pinned pull request and the cleansing; the Fix cell says the same.
+  { demo: 'payments-fixing', service: 'payments', level: '2 (haunted)', reason: 'error rate', hunt: 'sealed: d-7, 65c0fca', fix: 'Fix, drafting a fix' },
+  { demo: 'payments-fix-open', service: 'payments', level: '2 (haunted)', reason: 'error rate', hunt: 'sealed: d-7, 65c0fca', fix: 'Fix (AI patch), pull request open, waiting for review' },
+  { demo: 'payments-fix-deployed', service: 'payments', level: '0 (calm)', reason: '', hunt: 'sealed: d-7, 65c0fca', fix: 'Fix (AI patch), fix deployed, merged by @on-call-human' },
 ] as const;
 
 test.describe('scene smoke test (software WebGL)', () => {
@@ -81,6 +85,7 @@ test.describe('scene smoke test (software WebGL)', () => {
       await expect(row).toContainText(c.level);
       await expect(row).toContainText(c.reason);
       await expect(row).toContainText(c.hunt);
+      if ('fix' in c) await expect(row).toContainText(c.fix);
 
       // Frame statistics are published in Demo mode only: record them, do not assert (software rendering is slow).
       const frame = await page.evaluate(() => (window as unknown as { __hauntedScene?: unknown }).__hauntedScene ?? null);

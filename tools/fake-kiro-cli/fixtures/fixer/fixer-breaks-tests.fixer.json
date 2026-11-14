@@ -1,0 +1,13 @@
+{
+  "steps": [
+    {
+      "kind": "read",
+      "path": "services/payments/src/charge.js"
+    },
+    {
+      "kind": "write",
+      "path": "services/payments/src/charge.js",
+      "content": "export function chargeAmount() {\n  return -1;\n}\n"
+    }
+  ]
+}

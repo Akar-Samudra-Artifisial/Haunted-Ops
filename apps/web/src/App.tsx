@@ -38,6 +38,12 @@ export function useLiveServices(options: ClientOptions, enabled = true): { servi
   return { services, status, ingest };
 }
 
+/** The Hunt id of a `/hunts/<id>` link (the link a pull request carries), or null for any other path. */
+export function huntIdFromPath(pathname: string): string | null {
+  const m = /^\/hunts\/([a-z0-9]{20,32})\/?$/.exec(pathname);
+  return m === null ? null : (m[1] as string);
+}
+
 /** What the scene mount needs besides data; tests and Demo mode can replace the loader or the renderer. */
 export type SceneOptions = Pick<SceneMountProps, 'loadCanvas' | 'createRenderer'>;
 
@@ -65,6 +71,22 @@ export function App({ client, demo = null, scene = {} }: { client: ClientOptions
     [demo],
   );
   const select = (name: ServiceName | null): void => dispatch(name === null ? { type: 'clear' } : { type: 'select', name });
+  useEffect(() => {
+    // A `/hunts/<id>` link opens on that Hunt's Service. The path is read once, at start.
+    const huntId = demo === null ? huntIdFromPath(window.location.pathname) : null;
+    if (huntId === null) return;
+    let live = true;
+    fetchHuntDetail(client.baseUrl, huntId, client.fetchImpl).then(
+      (detail) => {
+        if (live) dispatch({ type: 'select', name: detail.service });
+      },
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     // Escape clears the selection in the scene and in the table.
     if (selected === null) return;

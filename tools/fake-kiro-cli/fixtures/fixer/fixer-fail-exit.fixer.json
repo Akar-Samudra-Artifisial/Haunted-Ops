@@ -1,0 +1,10 @@
+{
+  "steps": [
+    {
+      "kind": "read",
+      "path": "services/payments/src/charge.js"
+    }
+  ],
+  "exit": 1,
+  "endCredits": false
+}

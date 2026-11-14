@@ -13,6 +13,8 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { CUID_PATTERN, SERVICE_NAMES, type HuntDetail, type HuntEndReason, type ServiceName } from '@haunted-ops/shared';
+import { ProposalRunner } from '../fix/proposal-runner.js';
+import { PrismaProposalStore, toProposalSummary } from '../fix/proposal-store.js';
 import { RATE_LIMIT_WINDOW_MS } from '../security/rate-limit.guard.js';
 import { AdminAuthGuard } from './admin-auth.guard.js';
 import { HuntRunner, type HuntRequest } from './hunt-runner.js';
@@ -57,6 +59,8 @@ export class HuntsController {
   constructor(
     private readonly runner: HuntRunner,
     private readonly store: PrismaHuntStore,
+    private readonly proposals: PrismaProposalStore,
+    private readonly fix: ProposalRunner,
   ) {}
 
   /** The only way to start a Hunt by hand. */
@@ -81,7 +85,10 @@ export class HuntsController {
   async killSwitch(@Body() body: unknown): Promise<{ enabled: boolean }> {
     const enabled = parseKillSwitchBody(body);
     if (enabled === null) throw new BadRequestException();
-    return { enabled: await this.runner.setEnabled(enabled) };
+    const now = await this.runner.setEnabled(enabled);
+    // Turning Hunts off also stops a running fixer; an open pull request keeps being watched.
+    this.fix.killSwitchChanged(now);
+    return { enabled: now };
   }
 
   @Get(':id')
@@ -90,6 +97,8 @@ export class HuntsController {
     if (!CUID_PATTERN.test(id)) throw new BadRequestException();
     const hunt = await this.store.get(id);
     if (hunt === null) throw new NotFoundException();
-    return hunt;
+    // The latest Proposal (fix) of this Hunt, or null.
+    const proposal = await this.proposals.latestOfHunt(id);
+    return { ...hunt, proposal: proposal === null ? null : toProposalSummary(proposal) };
   }
 }

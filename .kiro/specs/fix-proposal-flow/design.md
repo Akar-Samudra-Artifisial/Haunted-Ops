@@ -130,7 +130,7 @@ packages/shared/src/proposals.ts      types, validators, status graph, branch he
 | `FIX_REQUIRE_TESTS` | `true` | `true` or `false` |
 | `FIX_POLL_MS` | `30000` | integer, 5 000 to 300 000 |
 | `FIX_BRANCH_TTL_DAYS` | `7` | integer, 1 to 60 |
-| `FIX_CLONE_DIR` | `<HUNT_WORKDIR>/fix-clone` | absolute, outside every git repository, under the same production rule as `HUNT_WORKDIR` |
+| `FIX_WORKDIR` | `<tmp>/haunted-ops-fix` | absolute, outside every git repository, under the same production rule as `HUNT_WORKDIR`; holds `lab.git` (the bare copy, no remote in its config), `fixer/<proposalId>/{work,export}`, `candidates/<proposalId>-{patch,revert}` and `<proposalId>.pid`. It is not under `HUNT_WORKDIR`, because the Hunt workdir removes entries it does not know |
 
 `FIX_ENABLED=false` starts nothing and answers the operator route with 404. The token is validated for its form in `parseFixConfig`, and for its rights at startup by `GET /repos/<repo>` (200 and `permissions.push`). The expiry header `github-authentication-token-expiration`, when present, is turned into "days left" for one log line; the date and the token are not logged.
 
@@ -179,8 +179,8 @@ The prompt template is fixed. Its data are checked: `service` (one of the four),
 | Check | Passes when | AI fail reason on failure |
 | --- | --- | --- |
 | `non_empty` | at least one changed or added file | `scope` |
-| `scope` | every changed or added path starts with `services/<S>/src/` | `scope` |
-| `forbidden_file` | nothing is deleted; no changed or added path is `package.json`, a lockfile, a script, a configuration file (`.json`, `.yaml`, `.yml`, `.env*`, `.sh`, `.toml`) or a test (a `test`, `tests`, `__tests__` or `spec` directory, or a name ending in `.test.*` or `.spec.*`); no new file sits directly in `services/<S>/`; no path is in `packages/`; every entry passed the reading rules above (regular UTF-8 text) | `forbidden_file` |
+| `scope` | every changed or added path starts with `services/<S>/` (the Service of the Hunt) | `scope` |
+| `forbidden_file` | nothing is deleted; no changed or added path is `package.json`, a lockfile, a script, a configuration file (`.json`, `.yaml`, `.yml`, `.env*`, `.sh`, `.toml`) or a test (a `test`, `tests`, `__tests__` or `spec` directory, or a name ending in `.test.*` or `.spec.*`); every changed or added path inside `services/<S>/` is under `services/<S>/src/` (a file elsewhere in the Service is a forbidden file, not out of scope); every entry passed the reading rules above (regular UTF-8 text) | `forbidden_file` |
 | `size` | `git diff --cached --numstat` in the clone sums to at most 60 changed lines and at most 5 files | `size` |
 | `syntax` | `node --check` passes on every changed or added `.js` and `.mjs` file | `tests_failed` |
 | `tests` | the Check run exits 0 with at least one test | `tests_failed`, or `timeout` |
@@ -204,7 +204,7 @@ The test files are listed by the API (a directory walk of the clone, at most 100
 
 **What isolation this gives, honestly.**
 
-- *On the Mac (G-MVP).* The test code runs as the same OS user as the API. `node --permission` limits file reads and writes, child processes, workers and addons inside Node; it is an application-level fence, not a kernel boundary, and the Node project has published bypasses for local sockets and for network rules, so it is defense in depth ([Node.js permissions documentation](https://nodejs.org/api/permissions.html)). `--allow-net` is experimental and is all or nothing. The environment holds no secret, the working directory is a throwaway clone, and the files outside the clone cannot be read through Node's own API while the fence holds. What the Mac does not give: protection from a kernel or Node escape, from local Unix sockets, or from a native binary (the fence forbids child processes, and the test files are checked to be text). Where `sandbox-exec` exists the API MAY wrap the run in a profile that denies network and file reads outside the clone; this is best effort because the tool is deprecated, and nothing relies on it.
+- *On the Mac (G-MVP).* The test code runs as the same OS user as the API. `node --permission` limits file reads and writes, child processes, workers and addons inside Node; it is an application-level fence, not a kernel boundary, and the Node project has published bypasses for local sockets and for network rules, so it is defense in depth ([Node.js permissions documentation](https://nodejs.org/api/permissions.html)). `--allow-net` is experimental and is all or nothing. Keeping the test child off the network relies on the network gate of `--permission` that Node has from version 25: without `--allow-net`, `net.connect` fails with `ERR_ACCESS_DENIED` and `fetch` is refused (checked by a test that opens a local listener and sees no connection). Node is pinned to 26 in `.nvmrc`, and the API refuses to start with `FIX_ENABLED=true` on a Node older than 25. The environment holds no secret, the working directory is a throwaway clone, and the files outside the clone cannot be read through Node's own API while the fence holds. What the Mac does not give: protection from a kernel or Node escape, from local Unix sockets, or from a native binary (the fence forbids child processes, and the test files are checked to be text). Where `sandbox-exec` exists the API MAY wrap the run in a profile that denies network and file reads outside the clone; this is best effort because the tool is deprecated, and nothing relies on it.
 - *On EC2 (`deploy-demo`).* The test run is started as a separate OS user with no access to the API's files, no instance role and no access to the instance metadata service (IMDSv2 required with hop limit 1, plus a firewall rule for that user), no network (`unshare -n` or a systemd unit with `PrivateNetwork=yes`), memory and process limits. That work belongs to `deploy-demo`; this spec only keeps the run behind one function (`runChecks`) so that its launcher can be replaced.
 
 ### The revert (`revert.ts`)
@@ -217,10 +217,10 @@ Every call: `execFile('git', args, { env, cwd, timeout, maxBuffer, shell: false 
 
 | Step | Command (arguments in an array) | Token |
 | --- | --- | --- |
-| first clone of the API's own copy | `clone --bare https://github.com/<repo>.git <FIX_CLONE_DIR>` | yes (env of this call only) |
+| first clone of the API's own copy | `clone --bare https://github.com/<repo>.git <FIX_WORKDIR>/lab.git` | yes (env of this call only) |
 | refresh | `fetch --prune https://github.com/<repo>.git '+refs/heads/main:refs/remotes/origin/main' '+refs/heads/scenario/*:refs/remotes/origin/scenario/*'` | yes |
 | fetch a proposal ref | `fetch https://github.com/<repo>.git +refs/heads/incident/<id>:refs/remotes/origin/incident/<id>` | yes |
-| fresh candidate clone | `clone --no-hardlinks --shared=false <FIX_CLONE_DIR> <tmp>` then `checkout --detach <D>` | no |
+| fresh candidate clone | `clone --no-hardlinks --shared=false <FIX_WORKDIR>/lab.git <tmp>` then `checkout --detach <D>` | no |
 | apply a patch | the API writes the files itself (no `git apply`) | no |
 | count | `add -A`, `diff --cached --numstat` | no |
 | commit | `commit -m <fixed message>` with the fixed identity | no |
@@ -309,8 +309,8 @@ The lab: (1) validates the body; (2) fetches the ref from `origin`; (3) accepts 
 
 One Proposal at a time (a queue of one active drafting; the pull request watch is independent). Flow, with the status after each step:
 
-1. On `hunt.finished` with status `succeeded` and `FIX_ENABLED`, or on the operator route: create the row (`drafting`, `attempt` = last + 1), `proposal.started`. Refuse while the Kill switch is off (the row is not created).
-2. D = the latest Deploy Record of S from the observability API (`LabLookup.latestDeploy`); unavailable is `failed` / `lab_unavailable`. Refresh the clone; D and C must exist and D must descend from `main` or a `scenario/*` head (`base_unknown` otherwise).
+1. On `hunt.finished` with status `succeeded` and `FIX_ENABLED`, or on the operator route: create the row (`drafting`, `attempt` = last + 1), `proposal.started`. Refuse while the Kill switch is off (the row is not created; the route answers 503). The automatic trigger is a conflict when the Hunt has any Proposal. The operator route is a conflict (409) while the latest Proposal is `drafting`, `open` or `merged`, and also after `rejected` (a person closed it) or `deployed`; it makes a new attempt only after `failed` or `checks_failed`. When the Kill switch turns off during a fixer run, the fixer is stopped and the Proposal goes on with the revert (`aiFailReason` = `agent_failed`; the Credits are what was reported, or the per-run cap when no report arrived).
+2. D = the latest Deploy Record of S from the observability API (`LabLookup.latestDeploy`); unavailable is `failed` / `lab_unavailable`. Refresh the clone; D and C must exist and D must descend from `main` or a `scenario/*` head (`base_unknown` otherwise). Known limitation: when D is an earlier Exorcist merge commit on an `incident/*` branch (a second incident on a Service whose last deploy was a fix), the copy does not hold it and the Proposal ends `base_unknown`.
 3. Decide the AI path: `fitsDailyBudget(spent + proposalCredits, FIX_CREDIT_CAP, HUNT_DAILY_CREDIT_CAP)` and `startsToday < HUNT_DAILY_MAX`; otherwise `aiFailReason` = `budget` or `daily_limit` and go to 5.
 4. Run the fixer (above), read the Patch, run the Checks in a fresh clone. Record Credits (estimated at the cap when no report). All Checks ok: `kind = ai_patch`, go to 6. Else `aiFailReason` = the reason of the first failing Check (`agent_failed` or `timeout` for the run).
 5. Revert candidate and its Checks. All ok: `kind = revert`. Not ok: the Proposal ends `checks_failed` (`failReason` = `revert_unavailable`, `revert_conflict` or `checks_failed`) with the Checks recorded, and the API sends `proposal.failed` with `status: 'checks_failed'`. No branch is pushed and no pull request is opened.
@@ -533,17 +533,33 @@ For any environment, `parseFixConfig` accepts `GITHUB_TOKEN` iff it matches the 
 | Patch fails a Check | first failing Check recorded | `aiFailReason` `scope`, `size`, `forbidden_file`, `tests_failed` |
 | Test run over `FIX_TEST_TIMEOUT_MS` | group killed | `aiFailReason` `timeout` |
 | Revert impossible, conflicting or failing a Check | | `checks_failed` / `revert_unavailable`, `revert_conflict` or `checks_failed` |
-| Incident or Fix branch exists on the remote | nothing is pushed over it | `failed` / `branch_exists` |
+| Incident or Fix branch exists at the commit this attempt would push | treated as already pushed | none |
+| Incident or Fix branch exists at another commit, no open pull request uses it | the leftover `incident/<cuid>` or `exorcist/<cuid>` is deleted and pushed again | none |
+| Incident or Fix branch exists and an open pull request uses it | nothing is pushed, deleted or changed | `failed` / `branch_exists` |
+| Patch writes a non-source file (not `.js`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`), a path with a dot segment, or a package name in any case | refused before any file is written | `aiFailReason` `forbidden_file` |
+| `numstat` prints `-` for a count (binary file, `-diff` attribute) | never read as 0 lines: the `size` Check fails | `aiFailReason` `forbidden_file` |
+| The clone's tree after the test run, or the Fix commit's tree, differs from the tree the checks ran on | the candidate is not pushed (AI patch: the revert is tried) | AI patch: `aiFailReason` `scope`; revert: `checks_failed` / `checks_failed` with `scope` failed |
+| Unknown argument shape of `fs_read` or `fs_write`, or any path key outside the folder | process group stopped | `aiFailReason` `agent_failed` |
+| `tool_call_update` with `title: null` for an unknown call id | process group stopped | `aiFailReason` `agent_failed` |
 | Push rejected | | `failed` / `push_rejected` |
 | GitHub 401, 403, 404, 422, 5xx, rate limit, bad body | fixed codes after the bounded retries | `failed` / `github_*` |
 | Pull request closed without merge | | `rejected` |
 | Merged pull request head differs from the pushed head | nothing deployed | `failed` / `head_changed` |
 | Incident branch head differs from M | nothing deployed | `failed` / `ref_moved` |
-| Merged diff outside `services/<S>/` or too large | nothing deployed | `failed` / `merge_scope` |
-| Lab refuses, is unreachable, or the record never appears | bounded retries, then | `failed` / `deploy_rejected`, `deploy_unavailable`, `deploy_unconfirmed` |
+| Merged diff outside `services/<S>/` or too large (a `-` count is too large) | nothing deployed | `failed` / `merge_scope` |
+| The tree of M is not the tree of the pushed head (an edit made on GitHub while merging, a rebase that changed content), or the pushed head cannot be found | nothing deployed | `failed` / `merge_content` |
+| `merged_by: null` from GitHub | a merge with no login: `mergedBy` null, the web says "merged" | `merged` |
+| A Deploy Record of M by `exorcist` already exists (an API that stopped after the deploy call) | no second `deploy-fix` call | `deployed` |
+| Lab refuses or is unreachable | bounded retries, then | `failed` / `deploy_rejected`, `deploy_unavailable` |
+| The Deploy Record is not listed yet | stays `merged`; every poll looks again, with no second `deploy-fix` call in the same process | `merged` |
+| The Deploy Record is still missing `FIX_DEPLOY_CONFIRM_MS` (default 300000) after the merge | | `failed` / `deploy_unconfirmed` |
+| A database write of a status change fails during a poll | the new ETag is not stored either, so the next poll gets the full answer again | unchanged until the next poll |
+| `FIX_ENABLED=true` on Node older than 25 | the API refuses to start, naming `FIX_ENABLED` | none |
 | Archive with a link or an unsafe path | | `failed` / `export_unsafe` |
 | API restart while `drafting` | | `failed` / `api_restart` |
 | Database write fails | one retry; the error code is logged without values | `failed` / `internal` when it can be stored |
+
+**Review fixes (task 13).** New Fail reason: `merge_content`. New setting: `FIX_DEPLOY_CONFIRM_MS` (10000 to 3600000, default 300000). A change of the tested tree uses the existing codes (`scope` for the AI patch, `checks_failed` with the `scope` Check failed for the revert); no new AI fail reason was needed. Migration `proposal_merged_by_optional` lets a merged or deployed row have a null `mergedBy`. The ETag of a pull request answer is written in the same store call as the status change it answered. Contents RW cannot be limited per branch; protect `main` and `scenario/*` in Haunted-Lab with a GitHub ruleset. Known limit: a branch deleted on GitHub right after the merge is fine for a merge commit (its second parent is the pushed head) but a squash or rebase then needs the head already in the API's copy, else `merge_content`.
 
 Logs: one structured line per Proposal transition (`proposalId`, `huntId`, `service`, `status`, `kind`, `failReason`, `credits`, `durationMs`). Never the prompt, the stream, the diff, the Patch, the pull request body, an environment value, a token, a path outside the Hunt working folder, or any git or GitHub message.
 

@@ -8,6 +8,9 @@ export const DEMO_SCENARIOS = [
   'payments-hunting',
   'payments-sealed',
   'payments-fizzled',
+  'payments-fixing',
+  'payments-fix-open',
+  'payments-fix-deployed',
 ] as const;
 export type DemoScenarioName = (typeof DEMO_SCENARIOS)[number];
 

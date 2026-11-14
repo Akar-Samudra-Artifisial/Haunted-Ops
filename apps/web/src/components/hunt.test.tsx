@@ -58,7 +58,7 @@ describe('TableMode: the Hunt column and section', () => {
     render(<TableMode services={[withHunt(runningHunt(2)), withHunt(null, 'gate')]} />);
     expect(screen.getByRole('columnheader', { name: 'Hunt' })).toBeTruthy();
     expect(within(screen.getByRole('row', { name: /^payments\b/ })).getByText('running: step 2, errors')).toBeTruthy();
-    expect(within(screen.getByRole('row', { name: /^gate\b/ })).getAllByText('none').length).toBe(3);
+    expect(within(screen.getByRole('row', { name: /^gate\b/ })).getAllByText('none').length).toBe(4); // reason, incident, hunt, fix
   });
 
   it('shows the steps as an ordered list for the Service with the running Hunt, with no selection', () => {
@@ -99,6 +99,7 @@ describe('TableMode: the Hunt column and section', () => {
         { index: 2, kind: 'log', ref: 'log:1', detail: 'not cited', cited: false },
       ],
       fixHint: 'Restore it.',
+      proposal: null,
     };
     render(<TableMode services={[withHunt(sealedHunt())]} selected="payments" loadHuntDetail={async () => detail} />);
     expect(screen.getByTestId('hunt-diagnosis').textContent).toContain('Culprit: deploy d-7, commit 65c0fca.');

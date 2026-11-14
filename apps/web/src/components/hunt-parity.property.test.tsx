@@ -66,7 +66,8 @@ describe('Property 14: the scene and the table agree on every hunt', () => {
         for (const s of services) {
           const row = screen.getByRole('row', { name: new RegExp(`^${s.name}\\b`) });
           const cells = within(row).getAllByRole('cell');
-          expect(cells.at(-1)?.textContent).toBe(huntCellText(huntView(s.hunt)));
+          // The Hunt cell, then the Fix cell.
+          expect(cells.at(-2)?.textContent).toBe(huntCellText(huntView(s.hunt)));
         }
         const shown = huntSectionService(services, null);
         if (shown?.hunt) {

@@ -11,6 +11,8 @@ import {
   makeValidator,
   type Check,
 } from './checks.js';
+import { CUID_PATTERN, checkCuid } from './ids.js';
+import { checkProposalSummary, type ProposalSummary } from './proposals.js';
 
 /** The six tools of the Exorcist, in the order the agent is told to use them. */
 export const HUNT_TOOLS = ['query_metrics', 'search_errors', 'tail_logs', 'recent_deploys', 'diff_commit', 'submit_diagnosis'] as const;
@@ -89,8 +91,7 @@ export const HUNT_LIMITS = Object.freeze({
 export const FULL_SHA_PATTERN = /^[0-9a-f]{40}$/;
 /** Lab deploy ids (`d-102`). */
 export const DEPLOY_ID_PATTERN = /^d-[0-9]{1,9}$/;
-/** Ids of rows made by Prisma (`cuid()`). */
-export const CUID_PATTERN = /^[a-z0-9]{20,32}$/;
+export { CUID_PATTERN, checkCuid };
 
 export interface HuntEventPayloads {
   'hunt.queued': { huntId: string; incidentId: string; service: ServiceName; trigger: HuntTrigger; queuedAt: string };
@@ -201,6 +202,8 @@ export interface HuntDetail extends HuntSummary {
   allSteps: HuntStepView[];
   evidence: HuntEvidenceView[];
   fixHint: string | null;
+  /** The latest Proposal (fix) of this Hunt, or null. */
+  proposal: ProposalSummary | null;
 }
 
 // --- checks ---
@@ -242,7 +245,6 @@ const checkMaxItems =
     if (Array.isArray(input) && input.length > max) errors.push(path);
   };
 
-export const checkCuid = checkPattern(CUID_PATTERN);
 export const checkFullSha = checkPattern(FULL_SHA_PATTERN);
 export const checkDeployId = checkPattern(DEPLOY_ID_PATTERN);
 export const checkHuntTool = checkOneOf(HUNT_TOOLS);
@@ -301,7 +303,7 @@ export const checkHuntSummary: Check = (input, path, errors) => {
 };
 
 export const checkHuntDetail: Check = (input, path, errors) => {
-  const { model, toolCalls, durationMs, invalidCheck, stopDetail, creditsEstimated, linkedHuntId, allSteps, evidence, fixHint, ...rest } =
+  const { model, toolCalls, durationMs, invalidCheck, stopDetail, creditsEstimated, linkedHuntId, allSteps, evidence, fixHint, proposal, ...rest } =
     (input ?? {}) as Record<string, unknown>;
   if (typeof input !== 'object' || input === null) {
     errors.push(path);
@@ -329,6 +331,8 @@ export const checkHuntDetail: Check = (input, path, errors) => {
     }),
   )(evidence, `${path}.evidence`, errors);
   checkNullable(checkBoundedText(HUNT_LIMITS.fixHint))(fixHint, `${path}.fixHint`, errors);
+  checkNullable(checkProposalSummary)(proposal, `${path}.proposal`, errors);
+  if (proposal !== null && proposal !== undefined && (proposal as { huntId?: unknown }).huntId !== (rest as { id?: unknown }).id) errors.push(`${path}.proposal`);
 };
 
 const finalStatus = checkOneOf(['succeeded', 'failed', 'cancelled']);

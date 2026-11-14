@@ -13,6 +13,8 @@ export interface LabDeploy {
   sha: string;
   /** ISO time of the deploy. */
   time: string;
+  /** Who deployed it (`exorcist` for a merged fix); absent when the lab does not say. */
+  actor?: string;
 }
 
 export type LabAnswer<T> = { kind: 'ok'; value: T } | { kind: 'missing' } | { kind: 'unavailable' };
@@ -85,9 +87,9 @@ export class HttpLabClient implements LabLookup {
     const out: LabDeploy[] = [];
     for (const item of body.items) {
       if (!isRecord(item)) continue;
-      const { id, service, sha, time } = item;
+      const { id, service, sha, time, actor } = item;
       if (typeof id === 'string' && typeof service === 'string' && typeof sha === 'string' && typeof time === 'string') {
-        out.push({ id, service, sha, time });
+        out.push(typeof actor === 'string' && actor.length <= 40 ? { id, service, sha, time, actor } : { id, service, sha, time });
       }
     }
     return { kind: 'ok', value: out };

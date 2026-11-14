@@ -89,7 +89,7 @@ export interface HuntStore {
   setProgress(huntId: string, progress: { credits: number; toolCalls: number }): Promise<void>;
   /** Ends a queued or running Hunt. False when it had already ended. */
   finish(huntId: string, finish: HuntFinish): Promise<boolean>;
-  /** Credits of the Hunts that started on the UTC day of `now`. */
+  /** Credits of the Hunts that started, and of the fixer runs (Proposals) created, on the UTC day of `now`. */
   creditsToday(now: Date): Promise<number>;
   /** How many Hunts started on the UTC day of `now`. */
   startedToday(now: Date): Promise<number>;
@@ -187,6 +187,8 @@ export function toHuntDetail(row: HuntRowLike, allSteps: HuntRowLike['steps']): 
     allSteps: [...allSteps].sort((a, b) => a.index - b.index).flatMap(toStepView),
     evidence: [...(row.evidence ?? [])].sort((a, b) => a.order - b.order).map((e) => ({ index: e.order, kind: e.kind, ref: e.ref, detail: e.detail, cited: e.cited })),
     fixHint: row.status === 'succeeded' ? row.fixHint : null,
+    // The fix module fills this in (`GET /api/hunts/:id` reads the latest Proposal of the Hunt).
+    proposal: null,
   };
 }
 
@@ -328,7 +330,9 @@ export class PrismaHuntStore implements HuntStore {
     const start = utcDayStart(now);
     const end = new Date(start.getTime() + 86_400_000);
     const r = await this.prisma.hunt.aggregate({ _sum: { credits: true }, where: { startedAt: { gte: start, lt: end } } });
-    return r._sum.credits ?? 0;
+    // The fixer's Credits are in the same day's budget (fix-proposal-flow, Requirement 8.2).
+    const p = await this.prisma.proposal.aggregate({ _sum: { credits: true }, where: { createdAt: { gte: start, lt: end } } });
+    return (r._sum.credits ?? 0) + (p._sum.credits ?? 0);
   }
 
   async startedToday(now: Date): Promise<number> {

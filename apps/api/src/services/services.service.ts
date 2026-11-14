@@ -6,6 +6,7 @@ import {
   type HauntReasonKind,
   type HuntSummary,
   type OpenIncident,
+  type ProposalSummary,
   type ServiceMetrics,
   type ServiceName,
   type ServiceState,
@@ -34,6 +35,7 @@ export function toServiceStates(
   rows: readonly ServiceRow[],
   metrics: ReadonlyMap<ServiceName, ServiceMetrics> = new Map(),
   hunts: ReadonlyMap<ServiceName, HuntSummary> = new Map(),
+  proposals: ReadonlyMap<ServiceName, ProposalSummary> = new Map(),
 ): ServiceState[] {
   const order = (n: ServiceName): number => SERVICE_NAMES.indexOf(n);
   const out: ServiceState[] = [];
@@ -59,6 +61,7 @@ export function toServiceStates(
       openIncident,
       updatedAt: row.updatedAt.toISOString(),
       hunt: hunts.get(name.value) ?? null,
+      proposal: proposals.get(name.value) ?? null,
     });
   }
   return out.sort((a, b) => order(a.name) - order(b.name));
@@ -69,6 +72,7 @@ export class ServicesService {
     private readonly prisma: PrismaService,
     private readonly ingest?: Pick<IngestService, 'metrics'>,
     private readonly hunts?: Pick<HuntStore, 'latestPerService'>,
+    private readonly proposals?: { latestPerService(): Promise<Map<ServiceName, ProposalSummary>> },
   ) {}
 
   async list(): Promise<ServiceState[]> {
@@ -87,6 +91,9 @@ export class ServicesService {
     const metrics = this.ingest ? await this.ingest.metrics() : new Map<ServiceName, ServiceMetrics>();
     // One query per Service for its latest Hunt (indexed); a failure here must not hide the Services.
     const hunts = this.hunts ? await this.hunts.latestPerService().catch(() => new Map<ServiceName, HuntSummary>()) : new Map<ServiceName, HuntSummary>();
-    return toServiceStates(rows, metrics, hunts);
+    const proposals = this.proposals
+      ? await this.proposals.latestPerService().catch(() => new Map<ServiceName, ProposalSummary>())
+      : new Map<ServiceName, ProposalSummary>();
+    return toServiceStates(rows, metrics, hunts, proposals);
   }
 }

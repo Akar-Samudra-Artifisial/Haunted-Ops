@@ -20,6 +20,7 @@ const valid = {
   openIncident: { id: 'inc1', openedAt: '2026-11-12T10:00:00.000Z', peakLevel: 3 },
   updatedAt: '2026-11-12T10:00:00.000Z',
   hunt: null,
+  proposal: null,
 };
 const calm = { ...valid, hauntLevel: 0, reason: null, metrics: null, openIncident: null };
 

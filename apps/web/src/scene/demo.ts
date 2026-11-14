@@ -7,6 +7,8 @@ import {
   type HuntSummary,
   type HuntTool,
   type OpenIncident,
+  type ProposalCheck,
+  type ProposalSummary,
   type Sample,
   type ServiceName,
   type ServiceState,
@@ -146,6 +148,7 @@ function toState(service: ServiceName, second: number, r: Replay, sample: Sample
     openIncident,
     updatedAt: iso(EPOCH),
     hunt,
+    proposal: null,
   };
 }
 
@@ -197,11 +200,43 @@ function fixed(service: ServiceName, over: Partial<ServiceState>): ServiceState 
     openIncident: null,
     updatedAt: iso(EPOCH),
     hunt: null,
+    proposal: null,
     ...over,
   };
 }
 const metrics = (errorRate: number, p95Ms: number, up: number): ServiceState['metrics'] => ({ errorRate, p95Ms, up, at: iso(EPOCH) });
 const incident = (service: ServiceName, peak: HauntLevel): OpenIncident => ({ id: `demo-${service}`, openedAt: iso(EPOCH), peakLevel: peak });
+
+/** The demo's pull requests point at a placeholder repository; nothing is fetched from it. */
+const DEMO_PR_BASE = 'https://github.com/example/haunted-lab/pull/';
+const DEMO_CHECKS: ProposalCheck[] = (['non_empty', 'scope', 'forbidden_file', 'size', 'syntax', 'tests'] as const).map((name) => ({ name, ok: true }));
+
+function demoProposal(over: Partial<ProposalSummary>): ProposalSummary {
+  const hunt = demoHunt(30, EPOCH) as HuntSummary;
+  return {
+    id: 'cdemoproposal0000000000001',
+    huntId: hunt.id,
+    attempt: 1,
+    kind: null,
+    status: 'drafting',
+    prNumber: null,
+    prUrl: null,
+    mergedBy: null,
+    checks: [],
+    failReason: null,
+    aiFailReason: null,
+    updatedAt: iso(EPOCH + 32_000),
+    ...over,
+  };
+}
+
+const sealedPayments = (): Partial<ServiceState> => ({
+  hauntLevel: 2,
+  reason: { kind: 'error_rate', value: 0.25 },
+  metrics: metrics(0.25, 90, 1),
+  openIncident: incident('payments', 3),
+  hunt: demoHunt(30, EPOCH),
+});
 
 /** A frozen state for design and screenshots. */
 export function scenarioServices(name: DemoScenarioName): ServiceState[] {
@@ -259,6 +294,28 @@ export function scenarioServices(name: DemoScenarioName): ServiceState[] {
         },
       });
     }
+    case 'payments-fixing':
+      return patch({
+        payments: { ...sealedPayments(), proposal: demoProposal({ status: 'drafting' }) },
+      });
+    case 'payments-fix-open':
+      return patch({
+        payments: {
+          ...sealedPayments(),
+          proposal: demoProposal({ status: 'open', kind: 'ai_patch', prNumber: 1, prUrl: `${DEMO_PR_BASE}1`, checks: DEMO_CHECKS }),
+        },
+      });
+    case 'payments-fix-deployed':
+      return patch({
+        payments: {
+          hauntLevel: 0,
+          reason: null,
+          metrics: metrics(0.002, 80, 1),
+          openIncident: null,
+          hunt: demoHunt(30, EPOCH),
+          proposal: demoProposal({ status: 'deployed', kind: 'ai_patch', prNumber: 1, prUrl: `${DEMO_PR_BASE}1`, checks: DEMO_CHECKS, mergedBy: 'on-call-human' }),
+        },
+      });
     case 'all-haunted':
       return patch({
         gate: { hauntLevel: 2, reason: { kind: 'error_rate', value: 0.3 }, metrics: metrics(0.3, 150, 1), openIncident: incident('gate', 2) },

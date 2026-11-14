@@ -13,6 +13,11 @@ const URL = /\b(?:[a-z][a-z0-9+.-]{1,15}):\/\/[^\s<>]*|\b(?:https?|ftp|file|data
 /** An HTML tag, or the start of one that is never closed. */
 const TAG = /<[^>]*>?/g;
 
+/** Removes direction controls and invisible characters and nothing else (a diff keeps its lines and its spaces). */
+export function stripHidden(text: string): string {
+  return text.replace(BIDI, '').replace(INVISIBLE, '');
+}
+
 /**
  * Text that a model wrote and a public page shows. It is cleaned of control characters and ANSI escapes,
  * of direction controls and invisible characters (they hide or reorder text), of markdown links, URLs and

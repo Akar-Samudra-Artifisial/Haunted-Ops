@@ -13,6 +13,7 @@ import {
   type ServiceName,
   type ServiceState,
   type HuntSummary,
+  type ProposalSummary,
 } from '@haunted-ops/shared';
 import type { JsonLogger } from '../security/logger.js';
 import { nextIncident, type IncidentState } from './incident-policy.js';
@@ -75,6 +76,18 @@ export class IngestService {
     this.huntLookup = lookup;
   }
 
+  /** Latest Proposal (fix) of a Service's latest Hunt, set by the fix module; `null` until then. */
+  private proposalLookup: (name: ServiceName) => ProposalSummary | null = () => null;
+  setProposalLookup(lookup: (name: ServiceName) => ProposalSummary | null): void {
+    this.proposalLookup = lookup;
+  }
+  private proposalOf(name: ServiceName): ProposalSummary | null {
+    try {
+      return this.proposalLookup(name);
+    } catch {
+      return null;
+    }
+  }
   private huntOf(name: ServiceName): HuntSummary | null {
     try {
       return this.huntLookup(name);
@@ -289,6 +302,7 @@ export class IngestService {
           : { id: open.id, openedAt: rec.openedAt.toISOString(), peakLevel: open.peakLevel },
       updatedAt: rec.updatedAt.toISOString(),
       hunt: this.huntOf(rec.name),
+      proposal: this.proposalOf(rec.name),
     };
   }
 

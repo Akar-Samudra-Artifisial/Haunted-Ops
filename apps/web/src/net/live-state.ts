@@ -1,7 +1,13 @@
 import {
   HUNT_EVENT_NAMES,
   HUNT_LIMITS,
+  PROPOSAL_EVENT_NAMES,
   SERVICE_NAMES,
+  canMove,
+  type ProposalEventName,
+  type ProposalEventPayloads,
+  type ProposalStatus,
+  type ProposalSummary,
   type HuntEventName,
   type HuntEventPayloads,
   type HuntSummary,
@@ -23,7 +29,8 @@ export type LiveEventName =
   | 'ingest.status'
   | 'incident.opened'
   | 'incident.closed'
-  | HuntEventName;
+  | HuntEventName
+  | ProposalEventName;
 
 export const LIVE_EVENT_NAMES: readonly LiveEventName[] = [
   'service.updated',
@@ -32,8 +39,10 @@ export const LIVE_EVENT_NAMES: readonly LiveEventName[] = [
   'incident.opened',
   'incident.closed',
   ...HUNT_EVENT_NAMES,
+  ...PROPOSAL_EVENT_NAMES,
 ];
 
+const isProposalEvent = (name: string): name is ProposalEventName => (PROPOSAL_EVENT_NAMES as readonly string[]).includes(name);
 const isHuntEvent = (name: string): name is HuntEventName => (HUNT_EVENT_NAMES as readonly string[]).includes(name);
 
 /**
@@ -108,6 +117,63 @@ export function applyHuntEvent<K extends HuntEventName>(current: HuntSummary | n
   return current;
 }
 
+/**
+ * Applies one `proposal.*` event to the Service's latest Proposal. An event of another Proposal is
+ * ignored, except `proposal.started` of a newer attempt (or of another Hunt) which replaces it. A move
+ * the status graph does not allow changes nothing, so a replayed or late event is harmless.
+ */
+export function applyProposalEvent<K extends ProposalEventName>(
+  current: ProposalSummary | null,
+  name: K,
+  payload: ProposalEventPayloads[K],
+): ProposalSummary | null {
+  if (name === 'proposal.started') {
+    const p = payload as ProposalEventPayloads['proposal.started'];
+    if (current !== null && (current.id === p.proposalId || (current.huntId === p.huntId && current.attempt >= p.attempt))) return current;
+    return {
+      id: p.proposalId,
+      huntId: p.huntId,
+      attempt: p.attempt,
+      kind: null,
+      status: 'drafting',
+      prNumber: null,
+      prUrl: null,
+      mergedBy: null,
+      checks: [],
+      failReason: null,
+      aiFailReason: null,
+      updatedAt: p.at,
+    };
+  }
+  if (current === null || current.id !== (payload as { proposalId: string }).proposalId) return current;
+  const move = (to: ProposalStatus, at: string, patch: Partial<ProposalSummary> = {}): ProposalSummary =>
+    canMove(current.status, to) ? { ...current, ...patch, status: to, updatedAt: at } : current;
+  switch (name) {
+    case 'proposal.checks': {
+      const p = payload as ProposalEventPayloads['proposal.checks'];
+      if (current.status !== 'drafting') return current;
+      return { ...current, kind: p.kind, checks: p.checks, aiFailReason: p.aiFailReason, updatedAt: p.at };
+    }
+    case 'proposal.opened': {
+      const p = payload as ProposalEventPayloads['proposal.opened'];
+      return move('open', p.at, { kind: p.kind, prNumber: p.prNumber, prUrl: p.prUrl });
+    }
+    case 'proposal.merged': {
+      const p = payload as ProposalEventPayloads['proposal.merged'];
+      return move('merged', p.at, { mergedBy: p.mergedBy });
+    }
+    case 'proposal.deployed':
+      return move('deployed', (payload as ProposalEventPayloads['proposal.deployed']).at);
+    case 'proposal.rejected':
+      return move('rejected', (payload as ProposalEventPayloads['proposal.rejected']).at);
+    case 'proposal.failed': {
+      const p = payload as ProposalEventPayloads['proposal.failed'];
+      return move(p.status, p.at, { failReason: p.failReason });
+    }
+  }
+  return current;
+}
+
 /** Room order: row (y), then column (x), then the fixed service order. */
 export function sortByRoom(services: readonly ServiceState[]): ServiceState[] {
   const rank = (s: ServiceState): number => SERVICE_NAMES.indexOf(s.name);
@@ -132,6 +198,13 @@ function replaceService(services: readonly ServiceState[], next: ServiceState): 
  * state, and an event older than what is stored never overwrites it.
  */
 export function applyLiveEvent<K extends LiveEventName>(state: LiveState, name: K, payload: SsePayloads[K]): LiveState {
+  if (isProposalEvent(name)) {
+    const service = (payload as { service: string }).service;
+    const current = state.services.find((s) => s.name === service);
+    if (!current) return state;
+    const proposal = applyProposalEvent(current.proposal, name, payload as never);
+    return proposal === current.proposal ? state : { ...state, services: replaceService(state.services, { ...current, proposal }) };
+  }
   if (isHuntEvent(name)) {
     const service = (payload as { service: string }).service;
     const current = state.services.find((s) => s.name === service);

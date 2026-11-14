@@ -1,7 +1,7 @@
 import type { ServiceName } from '@haunted-ops/shared';
 import type { Pt, RoomLayout, SceneLayout } from './layout.js';
 import { approach } from './math.js';
-import { ENTER_MS, corridorLight, type HuntVisual, type RoomVisual, type SceneModel } from './model.js';
+import { CLEANSE_MS, ENTER_MS, corridorLight, type HuntVisual, type ProposalVisual, type RoomVisual, type SceneModel } from './model.js';
 import {
   FOG_BANK_MAX,
   FOG_WISP_MAX,
@@ -40,6 +40,10 @@ interface HuntState {
   /** Start of the seal or the fizzle: null not started, -Infinity already done when first seen. */
   sealStart: number | null;
   fizzleStart: number | null;
+  /** The Proposal the room shows, its phase, and the start of the sweep (-Infinity: done when first seen). */
+  proposalKey: string | null;
+  proposalPhase: ProposalVisual['phase'] | null;
+  sweepStart: number | null;
 }
 
 const newHuntState = (): HuntState => ({
@@ -52,7 +56,14 @@ const newHuntState = (): HuntState => ({
   lastPulse: Number.NEGATIVE_INFINITY,
   sealStart: null,
   fizzleStart: null,
+  proposalKey: null,
+  proposalPhase: null,
+  sweepStart: null,
 });
+
+/** A drafting scroll glows on a slow 2 s cycle: no flashing. */
+export const DRAFT_GLOW_MS = 2000;
+export const FADED_ALPHA = 0.35;
 
 const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
 const progress = (start: number | null, timeMs: number, durationMs: number): number => (start === null ? 0 : clamp01((timeMs - start) / durationMs));
@@ -281,6 +292,42 @@ export function createAnimator(): Animator {
     }
   }
 
+  /**
+   * Moves the fix scroll of one room. Drafting: a scroll beside the figure with a slow glow. Open or
+   * merged: pinned on the wall. Deployed: the scroll goes and a ring sweeps the floor for 2.4 s, unless
+   * the fix was already deployed when first seen. Rejected or failed: a dim pinned scroll. Reduced motion
+   * shows the static states and no sweep.
+   */
+  function stepProposal(st: RoomState, p: ProposalVisual | null, timeMs: number, first: boolean, reduced: boolean): void {
+    const s = st.hunt;
+    const f = st.frame.hunt.proposal;
+    if (p === null) {
+      s.proposalKey = null;
+      s.proposalPhase = null;
+      s.sweepStart = null;
+      f.scroll = 0;
+      f.pinned = false;
+      f.glow = 0;
+      f.sweep = 0;
+      return;
+    }
+    if (p.key !== s.proposalKey) {
+      s.proposalKey = p.key;
+      s.proposalPhase = null;
+      s.sweepStart = null;
+    }
+    if (p.phase !== s.proposalPhase) {
+      if (p.phase === 'cleansing') s.sweepStart = first && s.proposalPhase === null ? Number.NEGATIVE_INFINITY : timeMs;
+      s.proposalPhase = p.phase;
+    }
+    f.pinned = p.phase !== 'drafting';
+    f.scroll = p.phase === 'cleansing' ? 0 : p.phase === 'faded' ? FADED_ALPHA : 1;
+    f.glow = p.phase !== 'drafting' ? 0 : reduced ? 0.6 : 0.6 + 0.4 * Math.sin((timeMs / DRAFT_GLOW_MS) * Math.PI * 2);
+    const sweep = reduced || s.sweepStart === null ? 1 : progress(s.sweepStart, timeMs, CLEANSE_MS);
+    f.sweep = sweep >= 1 ? 0 : Math.max(sweep, EPS);
+    if (f.sweep > 0 || (p.phase === 'drafting' && !reduced)) flag.moving = true;
+  }
+
   /** Writes the position of a wisp on the floor of a room, with its drift, into `scratch`. */
   function place(spec: WispSpec, room: RoomLayout, timeMs: number, motion: number): void {
     const top = room.floor[0];
@@ -410,7 +457,9 @@ export function createAnimator(): Animator {
         f.lampBreath = reduced ? 0.5 : 0.5 + 0.5 * Math.sin((timeMs / 1000) * Math.PI * 0.4 + v.seed);
         if (!reduced) flag.moving = true; // idle motion: lamp, motes, wisps, pulses
 
+        const firstSeen = !st.hunt.initialized;
         stepHunt(st, v.hunt, timeMs, dt, reduced);
+        stepProposal(st, v.proposal, timeMs, firstSeen, reduced);
 
         const hide = v.dark ? 0 : 1;
         // Ghost feet stay above the highest text pill, so ghosts never cover the nameplate or the badges.

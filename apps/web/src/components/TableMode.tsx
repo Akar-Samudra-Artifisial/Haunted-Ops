@@ -46,12 +46,13 @@ export function TableMode({
               <th scope="col">Up</th>
               <th scope="col">Incident</th>
               <th scope="col">Hunt</th>
+              <th scope="col">Fix</th>
             </tr>
           </thead>
           <tbody>
             {services.length === 0 ? (
               <tr>
-                <td colSpan={8}>No data yet</td>
+                <td colSpan={9}>No data yet</td>
               </tr>
             ) : (
               services.map((s) => {
@@ -87,6 +88,7 @@ export function TableMode({
                     <td>{row.up}</td>
                     <td>{row.incident}</td>
                     <td>{row.hunt}</td>
+                    <td data-testid="fix-cell">{row.fix}</td>
                   </tr>
                 );
               })

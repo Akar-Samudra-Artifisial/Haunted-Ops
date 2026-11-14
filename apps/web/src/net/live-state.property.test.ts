@@ -23,6 +23,7 @@ const stateFor = (name: ServiceName): fc.Arbitrary<ServiceState> =>
     openIncident: fc.option(fc.record({ id: fc.constantFrom('i1', 'i2'), openedAt: timeArb, peakLevel: levelArb }), { nil: null }),
     updatedAt: timeArb,
     hunt: fc.constant(null),
+    proposal: fc.constant(null),
   });
 
 type Ev = { [K in LiveEventName]: { name: K; payload: SsePayloads[K] } }[LiveEventName];

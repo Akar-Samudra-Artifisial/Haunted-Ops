@@ -288,6 +288,7 @@ describe('Property 14: the model is total', () => {
           openIncident: null,
           updatedAt: 'x',
           hunt: null,
+          proposal: null,
         };
         expect(finiteDeep(toSceneModel([s], NOW, FULL))).toBe(true);
         expect(finiteDeep(toSceneModel([{ ...s, metrics: null }], NOW, FULL))).toBe(true);

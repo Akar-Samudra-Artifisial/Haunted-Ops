@@ -39,10 +39,28 @@ export interface HuntFrame {
   /** The falling sparks of a fizzle: 0 not shown, up to 1 gone. */
   sparks: number;
   result: 'none' | 'sealed' | 'failed';
+  /** The fix of the Hunt. */
+  proposal: ProposalFrame;
 }
 
 export function emptyHuntFrame(): HuntFrame {
-  return { figure: 0, walk: 0, lantern: 0, marks: 0, seal: 0, fizzle: 0, sparks: 0, result: 'none' };
+  return { figure: 0, walk: 0, lantern: 0, marks: 0, seal: 0, fizzle: 0, sparks: 0, result: 'none', proposal: emptyProposalFrame() };
+}
+
+/** The fix scroll and the cleansing sweep of one room. */
+export interface ProposalFrame {
+  /** Alpha of the scroll: 1 drafting or pinned, dim when faded, 0 otherwise. */
+  scroll: number;
+  /** The scroll is beside the figure (drafting) or pinned on the wall (open, merged, faded). */
+  pinned: boolean;
+  /** Glow of a drafting scroll, 0 to 1. */
+  glow: number;
+  /** The cleansing ring: 0 not shown, up to 1 gone. */
+  sweep: number;
+}
+
+export function emptyProposalFrame(): ProposalFrame {
+  return { scroll: 0, pinned: false, glow: 0, sweep: 0 };
 }
 
 export interface RoomFrame {

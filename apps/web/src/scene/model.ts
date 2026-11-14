@@ -8,6 +8,7 @@ import {
 } from '@haunted-ops/shared';
 import { LEVEL_TEXT, formatErrorRatio, formatP95, formatReason } from '../format.js';
 import { huntCellText, huntView } from '../components/hunt-text.js';
+import { proposalView, type ProposalPhase } from '../components/proposal-text.js';
 import { clamp } from './math.js';
 import {
   FOG_MAX,
@@ -81,6 +82,25 @@ export function huntVisual(hunt: ServiceState['hunt'], now: number): HuntVisual 
   }
 }
 
+/** The cleansing sweep after a fix is deployed lasts this long. */
+export const CLEANSE_MS = 2400;
+
+/** What the scene draws of a Room's latest Proposal. Built from `proposalView`, the same helper the table uses. */
+export interface ProposalVisual {
+  phase: Exclude<ProposalPhase, 'none'>;
+  /** The table's fix cell text. */
+  label: string;
+  /** Identity of the Proposal: an animation restarts when it changes. */
+  key: string;
+}
+
+/** The visual of a Service's latest Proposal, or null when it has none. Pure; the phase depends on the status only. */
+export function proposalVisual(proposal: ServiceState['proposal']): ProposalVisual | null {
+  const view = proposalView(proposal);
+  if (proposal === null || view.phase === 'none') return null;
+  return { phase: view.phase, label: view.cell, key: `${proposal.id}:${proposal.attempt}` };
+}
+
 export interface RoomVisual {
   name: ServiceName;
   grid: RoomPosition;
@@ -103,6 +123,7 @@ export interface RoomVisual {
   clock: { hour: number; minute: number };
   seed: number;
   hunt: HuntVisual | null;
+  proposal: ProposalVisual | null;
   summary: string;
 }
 
@@ -154,12 +175,13 @@ function badgeShort(s: ServiceState): string {
   }
 }
 
-function roomSummary(s: ServiceState, dark: boolean, badge: string, hunt: HuntVisual | null): string {
+function roomSummary(s: ServiceState, dark: boolean, badge: string, hunt: HuntVisual | null, proposal: ProposalVisual | null): string {
   let text = `${s.name}: ${levelLabel(s.hauntLevel)}`;
   if (dark && s.hauntLevel < 4) text += ', dark';
   if (badge !== '') text += `, ${badge}`;
   if (s.openIncident !== null) text += ', incident open';
   if (hunt !== null) text += `, hunt ${hunt.label}`;
+  if (proposal !== null) text += `, ${proposal.label}`;
   return text;
 }
 
@@ -223,6 +245,7 @@ export function toSceneModel(services: readonly ServiceState[], now: number, opt
     const badge = s.reason === null ? '' : formatReason(s.reason, s.metrics);
     const peak = s.openIncident?.peakLevel ?? null;
     const hunt = huntVisual(s.hunt, now);
+    const proposal = proposalVisual(s.proposal);
     return {
       name: s.name,
       grid: { x: s.room.x, y: s.room.y },
@@ -249,7 +272,8 @@ export function toSceneModel(services: readonly ServiceState[], now: number, opt
       clock,
       seed: hashString(s.name),
       hunt,
-      summary: roomSummary(s, dark, badge, hunt),
+      proposal,
+      summary: roomSummary(s, dark, badge, hunt, proposal),
     };
   });
 
