@@ -1,0 +1,98 @@
+# Requirements Document
+## Introduction
+`deploy-demo` is the eighth product spec of Haunted Ops, after `foundation`, `haunted-lab`, `ingest-haunt-score`, `scene-engine`, `exorcist-agent`, `fix-proposal-flow` and `accessible-mode`. It makes the demo reachable by judges: one small server runs the web, the API, PostgreSQL, Prometheus and the Haunted Lab, and a timer plants the lab scenarios three times a day so that the Exorcist has something to hunt. Earlier specs deferred the judge deploy, the removal of `dist/.vite/`, the `VITE_DEMO_MODE=true` build and the separate OS user for the fixer to this spec; the decision about the last one changed (see the Glossary entry **Demo server**).
+This spec writes files and local tests only. It starts no cloud resource, opens no connection to a server, to GitHub or to the real `kiro-cli`, and changes no API, Prisma schema, shared type or web code. The orchestrator creates the instance later, runs the install through AWS Systems Manager (SSM) and runs the smoke test there.
+It does not add a container runtime, a second server, a CDN, a CI pipeline, a staging environment, a database backup job, a log shipper, or a fixer on the server.
+## Glossary
+- **Workspace**, **API**, **Web**, **Lab**, **Hunt**, **Kill switch**, **Demo mode**, **Scenario**: as defined in the earlier specs.
+- **Demo server**: the one EC2 `t3.small` (2 vCPU, 2 GiB, amd64, Debian 13, `us-east-1`, 20 GB gp3 disk, 2 GiB swapfile) that serves the public demo and is shared with no other project. It never runs the fixer and holds no `GITHUB_TOKEN`; fix proposals are recorded on the developer's Mac for the video. The separate OS user for the fixer that earlier steering promised is future work.
+- **Release**: the tarball `haunted-ops-<shortsha>.tar.gz` built on the Mac, with its `.sha256` file.
+- **Release tree**: the files that go into a Release, staged in a temporary folder before the tarball is made.
+- **Release check**: the function `checkTree` of `scripts/release-check.mjs` that refuses a Release tree holding a forbidden item.
+- **Current link**: the symlink `/opt/haunted-ops/current` that points at the active release folder `/opt/haunted-ops/releases/<sha>`.
+- **Install script**: `deploy/server/install.sh`, run as root through SSM.
+- **Env guard**: `scripts/demo-env-check.mjs`, which refuses an environment file that breaks a rule of the Demo server.
+- **Smoke test**: `scripts/demo-smoke.mjs`, which checks the public origin from outside.
+- **Pre-flight**: `deploy/server/preflight.sh`, which checks the state of the Demo server from inside.
+- **Scenario timer**: the systemd timer `haunted-scenario.timer` and its service, which apply one Lab scenario three times a day.
+- **Public API**: the part of the API that Caddy forwards from the internet: `GET` and `HEAD` on `/api/*` and `/healthz`.
+- **Admin call**: a request that needs `HUNT_ADMIN_TOKEN` (`POST /api/hunts`, `POST /api/hunts/kill-switch`). It is made only on the Demo server, on `127.0.0.1`.
+- **Decided caps**: `HUNT_DAILY_MAX=3`, `HUNT_CREDIT_CAP=1.5`, `HUNT_DAILY_CREDIT_CAP=4.5`.
+## Requirements
+### Requirement 1: Release bundle
+**User Story:** As the developer, I want one verified tarball built on my Mac, so that nothing is compiled on the server and nothing private can reach it.
+#### Acceptance Criteria
+1. WHEN `deploy/build-release.sh` runs on a clean Git tree, THE script SHALL build the shared package, the MCP package, the API and the Web at the current commit with `VITE_DEMO_MODE=true` and `VITE_API_BASE_URL=https://<domain>` for the domain it is given, and SHALL write `deploy/out/haunted-ops-<shortsha>.tar.gz` and `deploy/out/haunted-ops-<shortsha>.tar.gz.sha256`.
+2. THE Release tree SHALL hold `apps/web/dist` without `.vite/`, `apps/api/dist`, `apps/api/prisma/` (schema and migrations), `apps/api/prisma.config.ts`, `packages/shared` and `packages/exorcist-mcp` (each `package.json` and `dist`, and `bin` for the MCP package), `.kiro/agents/exorcist.json`, every workspace `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `deploy/server/`, and the two scripts the server runs, `scripts/demo-env-check.mjs` and `scripts/demo-smoke.mjs`.
+3. THE script SHALL fail, and write no tarball, WHEN the Git tree has any uncommitted change or untracked file, WHEN the Web build does not carry `VITE_DEMO_MODE=true`, or WHEN the Release check finds a forbidden item. THE script SHALL set `VITE_DEMO_MODE=true` itself (never read it from the environment) and SHALL check the built scripts with `scripts/check-demo-build.mjs`, which reads every script of `apps/web/dist` and accepts any quote style of the minifier.
+4. THE Release check SHALL refuse a Release tree that holds a native binary (a `*.node` file, or a file that starts with an ELF or Mach-O magic number), a `.env` file or any file named `.env*` that is not a `.example`, a path under `spike/`, `spikes/` or `.agents/`, a source map (`*.map`), a path under `.vite/`, a home path (`/Users/<name>/`, `/home/<name>/` or `C:\Users\`), or a token pattern (GitHub, AWS, Slack, a private key block, or a bearer value of 24 or more characters).
+5. THE Release check SHALL name the path and the kind of each finding and SHALL NOT print the matched text.
+6. THE folder `deploy/out/` SHALL be git-ignored.
+7. THE tarball SHALL be made by `deploy/pack-release.sh` from a stage whose folders are 0755, whose files are 0644 and whose `deploy/server/*.sh` are 0755, with owner and group 0, sorted names and the time of the commit as the time of every entry, so that two builds of one commit give the same sha256 and the user `hops` can read every file whatever the umask of the Mac.
+### Requirement 2: Server install
+**User Story:** As the operator, I want one idempotent script that turns a bare Debian instance into the Demo server, so that I can rebuild it without remembering steps.
+#### Acceptance Criteria
+1. THE Install script SHALL be bash with `set -euo pipefail`, SHALL refuse to run as a user other than root, and SHALL take `HAUNTED_DOMAIN`, `RELEASE_URL`, `RELEASE_SHA256` and `LAB_COMMIT` (and `LAB_REPO_URL`), and SHALL stop before any change when one is missing or malformed.
+2. THE Install script SHALL create a 2 GiB swapfile with `vm.swappiness=10`; install Node 26 from the official tarball and pnpm (the version named by `packageManager`) from its registry tarball, each pinned by version and sha256 in `deploy/server/versions.env` and checked before use, with no `npm`, no `npx` and no download piped into a shell; install the Debian packages `caddy`, `postgresql`, `prometheus`, `nftables`; create the system users `hops` (API and Hunts) and `hlab` (Lab) with no login shell; and create `/etc/haunted/` (mode 0750, owner root) with the environment files made from the examples.
+3. THE Install script SHALL generate tokens and the database password with `openssl rand` and SHALL write them only into a file that does not exist yet, so that a second run never changes a secret.
+4. THE Install script SHALL verify the sha256 of the Release before it unpacks it into `/opt/haunted-ops/releases/<sha>`, SHALL, as the user `hops` and with lifecycle scripts off, run `pnpm install --frozen-lockfile --ignore-scripts --filter @haunted-ops/api...` there (the only script that runs is the `@prisma/engines` postinstall, named in `docs/DEPLOY.md`), SHALL run `prisma migrate deploy` with the workspace `prisma` binary as `hops` (no `prisma generate`: the compiled client is in `apps/api/dist`), SHALL seed the four Services, SHALL make the release folder read-only with owner `root` and group `hops`, and SHALL then switch the Current link. The unpack SHALL use `--no-same-owner`. A temporary `policy-rc.d` made for `apt` SHALL be removed on every exit of the script.
+5. THE Install script SHALL clone the Lab repository to `/opt/haunted-lab` at `LAB_COMMIT` with no change to its `main` or `scenario/*` branches on the remote, SHALL install its production dependencies, and SHALL install the systemd units, the Caddyfile, the Prometheus configuration and the nftables rules, and enable and start every service.
+6. WHEN the Install script runs a second time with the same Release, THE Demo server SHALL be left unchanged: no file is rewritten with the same content, no secret changes and no service restarts.
+7. THE script `deploy/server/rollback.sh` SHALL point the Current link at the previous release folder and restart the API, and SHALL refuse when there is no previous release.
+8. NOTHING in the Install script SHALL compile code on the server (no `tsc`, no `vite build`).
+### Requirement 3: systemd units
+**User Story:** As the operator, I want each process to run as its own small, fenced service, so that one failure or one memory spike cannot take the whole instance down.
+#### Acceptance Criteria
+1. THE unit `haunted-api.service` SHALL run as `hops` with `NODE_ENV=production` and `EnvironmentFile=/etc/haunted/api.env`, SHALL set `MemoryMax=1G` (the Hunt child is in the same cgroup), `TasksMax=256`, `NoNewPrivileges=yes`, `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes` and `Restart=on-failure`, SHALL allow writes only in the home of `hops` (which holds the Hunt working folder and the kiro-cli state), and SHALL run the Env guard in `ExecStartPre`.
+2. THE unit `haunted-lab.service` SHALL run as `hlab` with `NODE_ENV=production`, no `FIX_RUN_AS_USER`, `MemoryMax=512M` and the same hardening, and SHALL write only to the Lab data and worktree folders.
+3. THE drop-ins SHALL set Prometheus to listen on `127.0.0.1:9090` with a retention of 24 hours and `MemoryMax=256M`, keep the 5 s scrape interval of the Lab, and set PostgreSQL to listen on `127.0.0.1` with memory settings sized for 2 GiB.
+4. THE unit `haunted-scenario.service` SHALL apply the next Scenario of the rotation (`error-spike`, `fog`, `dark-room`), keep the position in `/var/lib/haunted/scenario-next`, wait 20 minutes and reset the Lab, SHALL stop after at most 30 minutes (`RuntimeMaxSec=30min`), and SHALL reset the Lab again in `ExecStopPost` on stop and on failure.
+5. THE timer `haunted-scenario.timer` SHALL fire exactly three times a day, at 01:00, 09:00 and 17:00 UTC, with `Persistent=false` and `RandomizedDelaySec=0`.
+6. EVERY service unit of the Demo server SHALL have a non-root `User=`, `MemoryMax=`, `NoNewPrivileges=yes` and `ProtectSystem=strict`.
+### Requirement 4: Firewall
+**User Story:** As the operator, I want the network closed except for the web, and the processes held to what they need, so that a bug in one of them cannot reach the cloud account or the internet.
+#### Acceptance Criteria
+1. THE file `deploy/server/nftables.conf` SHALL accept inbound traffic only on TCP 80 and 443, UDP 443 (HTTP/3), the established and related flows, the loopback interface and the minimal control traffic (ICMP errors, DHCP replies, and for IPv6 the ICMPv6 errors and neighbour discovery and the DHCPv6 reply from `fe80::/10` to UDP port 546, so that IPv6 stays enabled), and SHALL drop everything else, with no rule that accepts port 22.
+2. THE rules SHALL limit the users `hlab`, `prometheus` and `postgres` to the loopback interface for outbound traffic, SHALL limit `hops` to the loopback interface, TCP 443 and DNS, and SHALL refuse every user other than root the address `169.254.169.254`, using `meta skuid`.
+3. EVERY rule SHALL carry a comment that says what it allows or denies.
+### Requirement 5: Caddy
+**User Story:** As a judge, I want a fast page over HTTPS and a live event stream, and as the operator I want the internet to be able to read but never to change anything.
+#### Acceptance Criteria
+1. THE Caddyfile SHALL serve the site `{$HAUNTED_DOMAIN}` with automatic TLS and SHALL listen on ports 80 and 443 only.
+2. THE Caddyfile SHALL forward `/api/*` and `/healthz` to `127.0.0.1:<PORT>` with `flush_interval -1`, so that the event stream is not buffered.
+3. THE Caddyfile SHALL answer 405 with `Allow: GET, HEAD` from Caddy, before the API sees the request, for any method other than `GET` and `HEAD` on `/api/*` and `/healthz`.
+4. THE Caddyfile SHALL serve the Web from `/opt/haunted-ops/current/apps/web/dist` with `try_files {path} /index.html` for the application routes, SHALL answer 404 (not the fallback page) for a missing file under `/assets/` and for `/.vite/`, and SHALL NOT list directories.
+5. THE Caddyfile SHALL send `Content-Security-Policy` (the policy the Web needs: same-origin scripts with `'unsafe-eval'` for the shader compiler of PixiJS, inline style attributes, `blob:` and `data:` images, same-origin connections), `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Strict-Transport-Security`, `X-Frame-Options` and `Permissions-Policy` on every response.
+6. THE access log SHALL NOT contain query strings or request headers.
+### Requirement 6: Env guard
+**User Story:** As the operator, I want a start-up check that refuses an unsafe environment, so that a typo in an env file can never turn on the fixer, expose the API or lift a spending cap.
+#### Acceptance Criteria
+1. THE Env guard `scripts/demo-env-check.mjs <file> [api|lab]` SHALL read a systemd-style environment file and, for the `api` profile, SHALL refuse: `FIX_ENABLED` not exactly `false`; any `GITHUB_TOKEN` key; `HOST` set and not a loopback address; `WEB_ORIGIN` that is not an `https://` origin; `HUNT_DAILY_MAX`, `HUNT_CREDIT_CAP` or `HUNT_DAILY_CREDIT_CAP` missing, malformed or above the Decided caps; `LAB_READ_TOKEN` or `HUNT_ADMIN_TOKEN` missing, shorter than 24 characters, or a placeholder; the two tokens equal; `PROMETHEUS_URL` or `LAB_URL` set and not a loopback origin; `NODE_ENV` not `production`; `KIRO_CLI_PATH` not an absolute path; and `DATABASE_URL`, `PORT`, `HUNTS_ENABLED`, `HUNT_WORKDIR` or `TRUST_PROXY_HOPS` missing or malformed.
+2. THE Env guard SHALL, for the `lab` profile, refuse a `NODE_ENV` other than `production`, any `FIX_RUN_AS_USER`, any `GITHUB_TOKEN`, a `SERVICE_BIND_HOST` that is not loopback, a missing, short, placeholder or equal `CHAOS_TOKEN` and `LAB_READ_TOKEN`, and a `TRAFFIC_RPS` outside 0 to 50.
+3. THE Env guard SHALL print only variable names (and the line number of a line it cannot read), never a value, SHALL exit 0 when the file is accepted, 1 when it is refused and 2 on a usage error.
+4. THE example files `deploy/server/env/api.env.example` and `deploy/server/env/lab.env.example` SHALL hold names and safe defaults only: `FIX_ENABLED=false`, no `GITHUB_TOKEN`, the Decided caps, and placeholders in place of every secret.
+5. THE Install script SHALL run the Env guard on each environment file before it starts the service that reads it.
+### Requirement 7: Smoke test and pre-flight
+**User Story:** As the operator, I want one command that says whether the public demo works and one that says whether the server is healthy, so that I know before the judges do.
+#### Acceptance Criteria
+1. THE Smoke test `scripts/demo-smoke.mjs <origin>` SHALL check: `/` answers 200 with HTML; `/hunts/x` answers 200 with HTML; `/?demo=1` answers 200; `/healthz` answers 200 with `status: ok`; `GET /api/services` answers 200 with JSON; `/api/events` answers `text/event-stream` within 5 seconds and is then closed; `POST /api/hunts` and `POST /api/hunts/kill-switch` answer 405; `/.vite/manifest.json` answers 404; and the headers of requirement 5.5 are present on `/`.
+2. THE Smoke test SHALL print a table of name, status and OK or FAIL, SHALL exit 0 only when every check passes, SHALL follow no redirect, and SHALL use no token and send nothing but the listed requests.
+3. THE Pre-flight SHALL check that the services are active, swap is on, memory and disk are free, nftables is loaded, that `kiro-cli whoami` succeeds for `hops` without printing account details, and that the Env guard accepts both files, and SHALL exit non-zero when any check fails.
+### Requirement 8: Documents and steering
+**User Story:** As the next person to run the demo, I want a written runbook and steering that tell the truth about what runs on the server.
+#### Acceptance Criteria
+1. THE file `docs/DEPLOY.md` SHALL state the cost (a `t3.small` is about 15 US dollars a month plus the disk, turn it off after judging), and the runbook in order: create the instance with the decided settings, set the role and the IMDS options, attach an Elastic IP or note that the `sslip.io` name follows the IP, build and publish the Release, run the install through SSM, log `hops` into `kiro-cli` with `kiro-cli login --use-device-flow` in an interactive SSM session, run the Pre-flight and the Smoke test.
+2. THE file SHALL describe the daily check, the three layers of the Kill switch (`POST /api/hunts/kill-switch` on the server, `systemctl stop haunted-scenario.timer`, `HUNTS_ENABLED=false`), the rollback, the teardown, and what is deliberately not on the server (the fixer, the GitHub token, any Admin call from the internet).
+3. THE steering file `security.md` SHALL replace its promise of a separate OS user for the fixer on EC2 with the statement that the Demo server never runs the fixer or fix deploys and that the separate-user isolation is future work, and SHALL add a short "Demo server" section; `structure.md` SHALL list `deploy-demo` among the specs written; the README SHALL carry one line with a placeholder for the demo link.
+4. THE text of `docs/DEV.md` that says the EC2 boundary is a separate OS user of this spec SHALL say the same as the steering.
+5. THE file `docs/KIRO_USAGE.md` SHALL get one line per finished top-level task and SHALL end with a newline.
+### Requirement 9: Tests and checks
+**User Story:** As a maintainer, I want the deploy files covered by fast local tests, so that a later edit cannot quietly weaken a rule.
+#### Acceptance Criteria
+1. THE tests SHALL run with `node --test` (and `fast-check` for properties) with no root, no network beyond `127.0.0.1` and in under 300 seconds together, and SHALL be part of the root script `test:scripts`.
+2. THE tests SHALL cover: every refusal case of the Env guard and a valid file, with no value in the output; the Smoke test against a local fake HTTP server, with all checks passing and each failure detected; the Release check on a fixture tree with each forbidden item; and a static check of the deploy files (units, timer, Caddyfile, nftables, env examples).
+3. FOR ANY environment map, THE Env guard SHALL accept it only when it satisfies every rule, and its output SHALL NOT contain any value of the map.
+4. EVERY shell file under `deploy/` SHALL pass `bash -n`, and SHALL pass `shellcheck` when it is installed.
+5. NO new runtime dependency SHALL be added to `apps/`, no file SHALL hold a secret, a home path, a real IP address or a cloud account id, and no helper file SHALL be left behind.
+6. THE spec SHALL end with a run of `pnpm typecheck`, `pnpm lint`, `pnpm test` twice, `pnpm test:scripts`, `pnpm check:build`, `pnpm --filter @haunted-ops/api db:drift`, `node scripts/check-scene-bundle.mjs` (the Web entry does not grow) and the spec validator, and a run of `deploy/build-release.sh` on a clean tree when one exists.
+7. THE tests SHALL NOT depend on the speed of the machine: a check that must succeed waits on events or a generous limit, and only a check that must time out uses a short one. No test file SHALL hold a token-shaped literal; a fake token is built at run time from parts.

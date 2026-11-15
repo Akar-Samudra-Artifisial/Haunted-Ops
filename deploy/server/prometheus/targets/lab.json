@@ -1,0 +1,6 @@
+[
+  { "targets": ["127.0.0.1:4001"], "labels": { "service": "gate" } },
+  { "targets": ["127.0.0.1:4002"], "labels": { "service": "orders" } },
+  { "targets": ["127.0.0.1:4003"], "labels": { "service": "payments" } },
+  { "targets": ["127.0.0.1:4004"], "labels": { "service": "ledger" } }
+]

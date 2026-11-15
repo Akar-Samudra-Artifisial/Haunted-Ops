@@ -1,0 +1,13 @@
+# Prometheus for the Haunted Lab on the demo server. Scrapes the four services every 5 s (the haunt score depends on it).
+# Same as the lab's deploy/prometheus.yml; the targets use 127.0.0.1 instead of lab-host.
+global:
+  scrape_interval: 5s
+  scrape_timeout: 4s
+  evaluation_interval: 5s
+scrape_configs:
+  - job_name: lab
+    metrics_path: /metrics
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/*.json
+        refresh_interval: 5s

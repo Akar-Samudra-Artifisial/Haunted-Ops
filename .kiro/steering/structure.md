@@ -14,7 +14,8 @@ packages/
 tools/
   sanitize-replay/  fixture sanitizer (hunt streams first, incidents in `replay`)
   fake-kiro-cli/    kiro-cli stand-in for tests (script and replay modes) and its fixtures
-scripts/            gate checks (g1-score, g2-hunt, gmvp-fix), fixer stream tools (sanitize-fixer-stream, fixer-stream-shapes), the live pre-flight (fix-live-preflight) and the scene bundle check
+deploy/             build-release.sh (Mac) and server/ (install, units, Caddyfile, nftables, env examples)
+scripts/            gate checks (g1-score, g2-hunt, gmvp-fix), fixer stream tools (sanitize-fixer-stream, fixer-stream-shapes), the live pre-flight (fix-live-preflight), the scene bundle check and the demo deploy tools (demo-env-check, demo-smoke, release-check)
 .kiro/
   steering/         always-on and fileMatch guidance
   hooks/            agent hooks
@@ -22,6 +23,7 @@ scripts/            gate checks (g1-score, g2-hunt, gmvp-fix), fixer stream tool
   specs/            feature specs
 docs/
   DEV.md            local setup (Node, pnpm, Postgres, tests)
+  DEPLOY.md         demo server runbook (deploy-demo)
   KIRO_USAGE.md     one line per finished task
 spikes/             committed spike work (spikes/g0)
 spike/              local working briefs only, git-ignored
@@ -45,6 +47,6 @@ Note: `spike/` (singular) is ignored. `spikes/` (plural) is committed. Spike cod
 10. `spatial-audio`
 11. `submission-kit`
 
-Written so far: `foundation`, `ingest-haunt-score`, `scene-engine`, `exorcist-agent` and `fix-proposal-flow` (spec and code; the live recording and gate G-MVP are run by the orchestrator) in this repo, `haunted-lab` in the lab repo. The lab-side `fix-deploy` spec is still to be written in the lab repo. Write one spec per prompt.
+Written so far: `foundation`, `ingest-haunt-score`, `scene-engine`, `exorcist-agent`, `fix-proposal-flow` (spec and code; the live recording and gate G-MVP are run by the orchestrator), `accessible-mode` and `deploy-demo` (spec, files and local tests; the orchestrator provisions the server and runs the smoke test there) in this repo, `haunted-lab` in the lab repo. The lab-side `fix-deploy` spec is still to be written in the lab repo. Write one spec per prompt.
 
 Hunts run outside the repo, in `HUNT_WORKDIR` (default under the OS temp folder), so no project steering or hooks load into the Exorcist.

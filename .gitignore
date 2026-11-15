@@ -11,3 +11,4 @@ apps/web/playwright-report/
 
 !.env.example
 .agents/
+deploy/out/

@@ -1,0 +1,81 @@
+# Caddy for the demo server. install.sh copies this file to /etc/caddy/Caddyfile.
+# {$HAUNTED_DOMAIN} comes from /etc/caddy/haunted.env (an sslip.io name of the instance address); TLS is automatic.
+# The internet may only read: any method but GET and HEAD on /api/* and /healthz gets 405 here, before the API.
+# Check with: caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+{
+	# The admin endpoint is a Unix socket in a folder only the caddy user can open (see the drop-in), not a TCP port
+	# that any local user could reach. systemctl reload uses it.
+	admin unix//run/caddy/admin.sock
+}
+
+{$HAUNTED_DOMAIN} {
+	# Access log: no query strings and no request headers (cookies, tokens, user agents).
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 72h
+		}
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp `\?.*` ""
+				request>headers delete
+				resp_headers delete
+			}
+		}
+	}
+
+	# Security headers on every response. The ">" prefix sets them after the API answered, so they replace its own.
+	header {
+		>Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+		>X-Content-Type-Options "nosniff"
+		>Referrer-Policy "no-referrer"
+		>Strict-Transport-Security "max-age=31536000"
+		>X-Frame-Options "DENY"
+		>Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+		-Server
+	}
+
+	# The build manifest is not deployed; if one ever is, it is not served.
+	@hidden path /.vite /.vite/*
+	handle @hidden {
+		respond 404
+	}
+
+	# Read-only internet: refuse every method but GET and HEAD on the API and the health check, from Caddy.
+	@write {
+		path /api/* /healthz
+		not method GET HEAD
+	}
+	handle @write {
+		header Allow "GET, HEAD"
+		respond "method not allowed" 405
+	}
+
+	# The API (loopback). flush_interval -1 sends each event of the SSE stream at once.
+	@api path /api/* /healthz
+	handle @api {
+		reverse_proxy 127.0.0.1:{$HAUNTED_API_PORT:3000} {
+			flush_interval -1
+		}
+	}
+
+	# Built assets: a missing file is a real 404, never the page.
+	handle /assets/* {
+		root * /opt/haunted-ops/current/apps/web/dist
+		encode zstd gzip
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# The web app: routes such as /hunts/<id> fall back to index.html. No directory listing (no "browse").
+	handle {
+		root * /opt/haunted-ops/current/apps/web/dist
+		encode zstd gzip
+		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}

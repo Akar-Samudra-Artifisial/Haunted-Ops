@@ -1,0 +1,31 @@
+# One lab scenario: apply the next one of the rotation, wait 20 minutes, reset. Started by haunted-scenario.timer.
+# The lab is reset again on stop and on failure (ExecStopPost), and the whole run is cut off after 30 minutes.
+[Unit]
+Description=Haunted Lab scenario (apply, wait, reset)
+After=haunted-lab.service
+Wants=haunted-lab.service
+ConditionPathExists=/etc/haunted/lab.env
+
+[Service]
+Type=oneshot
+User=hlab
+Group=hlab
+EnvironmentFile=/etc/haunted/lab.env
+# Creates /var/lib/haunted owned by hlab; it holds scenario-next, the position in the rotation.
+StateDirectory=haunted
+ExecStart=/opt/haunted-ops/current/deploy/server/scenario.sh run
+ExecStopPost=/opt/haunted-ops/current/deploy/server/scenario.sh reset
+RuntimeMaxSec=30min
+MemoryMax=64M
+TasksMax=32
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+UMask=0077

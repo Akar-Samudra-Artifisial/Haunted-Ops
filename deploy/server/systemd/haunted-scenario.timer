@@ -1,0 +1,16 @@
+# Three scenarios a day, at 01:00, 09:00 and 17:00 UTC. Each one starts one automatic hunt, so the day stays within HUNT_DAILY_MAX=3.
+# A missed run is not made up (Persistent=false) and there is no random delay.
+[Unit]
+Description=Haunted Lab scenarios, three times a day
+
+[Timer]
+OnCalendar=*-*-* 01:00:00 UTC
+OnCalendar=*-*-* 09:00:00 UTC
+OnCalendar=*-*-* 17:00:00 UTC
+Persistent=false
+RandomizedDelaySec=0
+AccuracySec=1s
+Unit=haunted-scenario.service
+
+[Install]
+WantedBy=timers.target

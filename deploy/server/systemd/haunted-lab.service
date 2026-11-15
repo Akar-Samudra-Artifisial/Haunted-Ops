@@ -1,0 +1,43 @@
+# Haunted Lab (supervisor and the four services) on the demo server. Runs as hlab. The firewall keeps it on loopback.
+# FIX_RUN_AS_USER is not set, so the fix deploy of the lab answers 503 isolation_unavailable. That is the wanted state.
+[Unit]
+Description=Haunted Lab supervisor (demo server)
+After=network.target
+ConditionPathExists=/etc/haunted/lab.env
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=hlab
+Group=hlab
+Environment=NODE_ENV=production
+Environment=HOME=/var/lib/haunted-lab
+EnvironmentFile=/etc/haunted/lab.env
+WorkingDirectory=/opt/haunted-lab
+ExecStartPre=/usr/local/bin/node /opt/haunted-ops/current/scripts/demo-env-check.mjs /etc/haunted/lab.env lab
+ExecStart=/usr/local/bin/node supervisor/src/main.ts
+Restart=on-failure
+RestartSec=5
+MemoryMax=512M
+MemorySwapMax=256M
+TasksMax=256
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+# Deploy log, git mirror and worktrees. The checkout in /opt/haunted-lab stays read-only.
+ReadWritePaths=/var/lib/haunted-lab
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
