@@ -9,6 +9,6 @@ Accessible mode turns the page into a table-first view: the house scene is not l
 - Turn it on with the "Accessible mode" button in the header (it is the first control after the "Skip to services" link), or open the page with `?mode=accessible` (share that link with a screen-reader user). `?mode=scene` forces the scene for one visit. Your button choice is remembered in this browser; with no choice, a browser set to reduce motion starts in Accessible mode.
 - What it guarantees: everything works by keyboard with a visible focus, Escape closes the detail and returns to its row, one polite live region announces each change once (a room goes dark or is back, a hunt starts and its steps, the diagnosis, a fix opened, merged, deployed or failed), no animation or flashing, text contrast of at least 4.5:1 and 3:1 for controls, and every status has a word and a symbol, never colour alone.
 
-Live demo: `https://<demo-domain>/` (link added after deployment; `?demo=1` plays the scripted incident without the API). Deploy runbook: [docs/DEPLOY.md](docs/DEPLOY.md).
+Live demo: <https://3-209-32-188.sslip.io/> (read-only; a scheduled incident and hunt run a few times a day). Scripted incident without the API: <https://3-209-32-188.sslip.io/?demo=1>. Table-first view: <https://3-209-32-188.sslip.io/?mode=accessible>. Deploy runbook: [docs/DEPLOY.md](docs/DEPLOY.md).
 
 Status: work in progress.
