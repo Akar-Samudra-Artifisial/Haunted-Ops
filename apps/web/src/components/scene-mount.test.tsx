@@ -90,7 +90,8 @@ describe('SceneMount', () => {
     render(<SceneMount services={SAMPLE_SERVICES} model={model()} selected={null} loadCanvas={realLoader} createRenderer={() => renderer} />);
     expect(await screen.findByText(FALLBACK_TEXT)).toBeTruthy();
     expect(screen.queryByRole('img')).toBeNull();
-    expect(renderer.destroy).toHaveBeenCalled();
+    // The canvas is removed with the fallback, but React runs its effect cleanup (the destroy) after that commit.
+    await waitFor(() => expect(renderer.destroy).toHaveBeenCalled());
   });
 
   it('ignores a failure or a callback from the renderer of a canvas that is gone', async () => {
@@ -147,6 +148,8 @@ describe('SceneMount', () => {
       />,
     );
     await screen.findByRole('img');
+    // The canvas shows before its effect has made the renderer; the callbacks exist only after that.
+    await waitFor(() => expect(callbacks).toBeDefined());
     act(() => callbacks.onContext('lost'));
     expect(screen.getByText(FALLBACK_TEXT)).toBeTruthy();
     expect(screen.getByRole('region', { name: 'House scene' }).childElementCount).toBeGreaterThan(0);

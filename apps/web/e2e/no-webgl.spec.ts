@@ -10,7 +10,7 @@ test('without WebGL: shows the message, hides the canvas and room buttons, keeps
     } as typeof original;
   });
   await page.goto('/?demo=payments-haunted');
-  await expect(page.getByText('The house view is not available on this device.')).toBeVisible({ timeout: 45_000 });
+  await expect(page.locator('#scene-mount').getByText('The house view is not available on this device.')).toBeVisible({ timeout: 45_000 });
   await expect(page.locator('#scene-mount canvas')).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'Rooms' })).toHaveCount(0);
   await expect(page.getByRole('row', { name: /payments/ })).toContainText('2 (haunted)');

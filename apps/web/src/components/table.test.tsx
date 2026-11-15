@@ -77,11 +77,12 @@ describe('TableMode', () => {
   it('shows the stale notice with the last update and removes it when ok', () => {
     const stale = { state: 'stale' as const, at: '2026-11-13T14:03:00.000Z', lastSuccessAt: '2026-11-13T14:02:10.000Z' };
     const { rerender } = render(<TableMode services={SAMPLE_SERVICES} ingest={stale} />);
-    expect(screen.getByRole('status').textContent).toBe('Metrics are stale. Last update 14:02:10 UTC.');
+    const text = 'Metrics are stale. Last update 14:02:10 UTC.';
+    expect(screen.getByText(text).getAttribute('role')).toBeNull();
     rerender(<TableMode services={SAMPLE_SERVICES} ingest={{ ...stale, state: 'ok' }} />);
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByText(text)).toBeNull();
     rerender(<TableMode services={SAMPLE_SERVICES} ingest={null} />);
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByText(text)).toBeNull();
   });
 
   it('is a captioned table with column headers and a keyboard-reachable scroll area', () => {

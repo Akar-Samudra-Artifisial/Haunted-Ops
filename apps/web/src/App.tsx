@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { focusIsFreeOrIn, focusRow } from './a11y/focus.js';
+import { useAccessibleMode } from './a11y/useAccessibleMode.js';
 import type { IngestStatus, ServiceName, ServiceState } from '@haunted-ops/shared';
 import { Header } from './components/Header.js';
-import { LiveAnnouncer } from './components/LiveAnnouncer.js';
+import { LiveAnnouncer, type Notice } from './components/LiveAnnouncer.js';
+import { SkipLink } from './components/SkipLink.js';
 import { SceneMount, type SceneMountProps } from './components/SceneMount.js';
 import { TableMode } from './components/TableMode.js';
 import { fetchHuntDetail } from './net/api.js';
@@ -11,6 +14,7 @@ import type { Quality } from './scene/governor.js';
 import { usePrefersReducedMotion, useNow } from './scene/hooks.js';
 import { toSceneModel } from './scene/model.js';
 import type { DemoMode } from './scene/params.js';
+import { statusMark } from './a11y/status-marks.js';
 import { selectionReducer } from './scene/selection.js';
 import { useDemoServices } from './scene/source.js';
 
@@ -62,7 +66,39 @@ export function App({ client, demo = null, scene = {} }: { client: ClientOptions
   const now = huntBusy ? second : minute;
   const [quality, setQuality] = useState<Quality>('full');
   const [selected, dispatch] = useReducer(selectionReducer, null);
-  const model = useMemo(() => toSceneModel(services, now, { reducedMotion, quality }), [services, now, reducedMotion, quality]);
+  const mode = useAccessibleMode();
+  const accessible = mode.accessible;
+  // No Scene model in Accessible mode: the Scene is not mounted.
+  const model = useMemo(() => (accessible ? null : toSceneModel(services, now, { reducedMotion, quality })), [accessible, services, now, reducedMotion, quality]);
+  const focusRequest = useRef<ServiceName | null>(null);
+  // Changes a screen-reader user needs, said through the one announcer; the first state is silent.
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const say = useCallback((text: string) => setNotice({ text }), []);
+  // null until the first ingest status arrives; that first state is not a change.
+  const stale = ingest === null ? null : ingest.state === 'stale';
+  const lastNotified = useRef({ status, stale, connected: status === 'live' });
+  useEffect(() => {
+    const last = lastNotified.current;
+    if (demo !== null) return;
+    if (status !== last.status) {
+      if (status !== 'live' || last.connected) say(`Connection: ${statusMark('connection', status).label}.`);
+      last.connected ||= status === 'live';
+      last.status = status;
+    }
+    if (stale !== last.stale) {
+      if (last.stale !== null && stale !== null) say(stale ? 'Metrics are stale.' : 'Metrics are fresh again.');
+      last.stale = stale;
+    }
+  }, [status, stale, demo, say]);
+  useEffect(() => {
+    // The marker the stylesheet uses to stop all motion, also when the browser does not report Reduced motion.
+    const root = document.documentElement;
+    if (accessible) root.dataset['a11y'] = 'on';
+    else delete root.dataset['a11y'];
+    return () => {
+      delete root.dataset['a11y'];
+    };
+  }, [accessible]);
 
   // The detail of a finished Hunt (its cited evidence) comes from the API; Demo mode has none.
   const loadHuntDetail = useMemo(
@@ -78,7 +114,9 @@ export function App({ client, demo = null, scene = {} }: { client: ClientOptions
     let live = true;
     fetchHuntDetail(client.baseUrl, huntId, client.fetchImpl).then(
       (detail) => {
-        if (live) dispatch({ type: 'select', name: detail.service });
+        if (!live) return;
+        dispatch({ type: 'select', name: detail.service });
+        focusRequest.current = detail.service;
       },
       () => undefined,
     );
@@ -90,28 +128,47 @@ export function App({ client, demo = null, scene = {} }: { client: ClientOptions
   useEffect(() => {
     // Escape clears the selection in the scene and in the table.
     if (selected === null) return;
+    const opener = selected;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') dispatch({ type: 'clear' });
+      if (event.key !== 'Escape') return;
+      // Focus goes back to the row that opened the detail, unless it is on something else (a room button).
+      const back = focusIsFreeOrIn(document.getElementById('services'));
+      dispatch({ type: 'clear' });
+      if (back) focusRow(opener);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [selected]);
 
+  useEffect(() => {
+    // A deep link in Accessible mode puts focus on the row of its Service once the row exists.
+    if (focusRequest.current === null) return;
+    // Scene mode cannot use the request; it is dropped so that a later switch does not take focus.
+    if (!accessible) {
+      focusRequest.current = null;
+      return;
+    }
+    if (focusRow(focusRequest.current)) focusRequest.current = null;
+  }, [accessible, services, selected]);
   return (
     <div className="app">
-      <Header status={status} demo={demo !== null} />
+      <SkipLink />
+      <Header status={status} demo={demo !== null} accessible={{ on: accessible, onToggle: mode.toggle }} />
       <main className="app-main">
-        <SceneMount
-          services={services}
-          model={model}
-          selected={selected}
-          onSelect={select}
-          onQuality={setQuality}
-          publishStats={demo !== null}
-          {...scene}
-        />
+        {model === null ? null : (
+          <SceneMount
+            services={services}
+            model={model}
+            selected={selected}
+            onSelect={select}
+            onQuality={setQuality}
+            publishStats={demo !== null}
+            onNotice={say}
+            {...scene}
+          />
+        )}
         <TableMode services={services} ingest={ingest} selected={selected} onSelect={select} loadHuntDetail={loadHuntDetail} />
-        <LiveAnnouncer services={services} />
+        <LiveAnnouncer services={services} notice={notice} />
       </main>
     </div>
   );

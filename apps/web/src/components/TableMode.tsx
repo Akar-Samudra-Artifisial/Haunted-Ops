@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react';
 import type { IngestStatus, ServiceName, ServiceState } from '@haunted-ops/shared';
-import { LEVEL_MARKER, formatStaleNotice } from '../format.js';
+import { useFocusAnchor } from '../a11y/focus.js';
+import { hauntMark } from '../a11y/status-marks.js';
+import { formatStaleNotice } from '../format.js';
 import { HuntSection, huntSectionService, type LoadHuntDetail } from './HuntSection.js';
 import { tableRowText } from './table-model.js';
 
-/** Accessible text view of the house. The full accessible mode arrives in `accessible-mode`. */
+/** Accessible text view of the house, and the main view in Accessible mode. */
 export function TableMode({
   services,
   ingest = null,
@@ -20,16 +22,18 @@ export function TableMode({
   loadHuntDetail?: LoadHuntDetail;
 }) {
   const selectedRow = useRef<HTMLTableRowElement | null>(null);
+  const region = useRef<HTMLElement | null>(null);
+  useFocusAnchor(region);
   useEffect(() => {
     // The scene can select a room; bring its row into view.
     selectedRow.current?.scrollIntoView?.({ block: 'nearest' });
   }, [selected]);
 
   return (
-    <section className="table-mode" aria-labelledby="table-mode-title">
+    <section id="services" ref={region} tabIndex={-1} className="table-mode" aria-labelledby="table-mode-title">
       <h2 id="table-mode-title">Services</h2>
       {ingest?.state === 'stale' ? (
-        <p className="stale-notice" role="status">
+        <p className="stale-notice">
           {formatStaleNotice(ingest)}
         </p>
       ) : null}
@@ -63,6 +67,7 @@ export function TableMode({
                     key={s.name}
                     ref={isSelected ? selectedRow : undefined}
                     aria-current={isSelected ? 'true' : undefined}
+                    data-row={s.name}
                     data-selected={isSelected ? 'true' : undefined}
                     data-room-state={row.dark ? 'dark' : 'lit'}
                   >
@@ -78,7 +83,7 @@ export function TableMode({
                     </th>
                     <td>
                       <span className="marker" aria-hidden="true">
-                        {LEVEL_MARKER[s.hauntLevel]}
+                        {hauntMark(s.hauntLevel).symbol}
                       </span>{' '}
                       {row.level}
                     </td>

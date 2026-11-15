@@ -27,6 +27,10 @@ export const SPARK_MS = 900;
 /** One lantern pulse per step lasts this long, and pulses are at least this far apart: at most 3 flashes per second. */
 export const PULSE_MS = 400;
 export const PULSE_GAP_MS = 350;
+/** The lamp flicker is value noise on a lattice with one point per this time: at most 2 changes per second. */
+export const FLICKER_CELL_MS = 500;
+/** Extra brightness dip per iso unit of tremble. */
+const TREMBLE_DIP = 10;
 
 /** What the Animator remembers of one room's Hunt between frames. */
 interface HuntState {
@@ -450,10 +454,9 @@ export function createAnimator(): Animator {
         }
 
         const m = v.motion;
-        f.flicker = m.flicker > 0 ? 1 - m.flicker * valueNoise(v.seed, timeMs / 500, 11) : 1;
-        const tremble = m.tremble * layout.scale;
-        f.shakeX = tremble > 0 ? tremble * (valueNoise(v.seed, timeMs / 80, 21) * 2 - 1) : 0;
-        f.shakeY = tremble > 0 ? tremble * (valueNoise(v.seed, timeMs / 80, 22) * 2 - 1) : 0;
+        // The tremble is a deeper dip of the same slow flicker; a room never moves, so nothing shakes.
+        const dip = m.flicker + m.tremble * TREMBLE_DIP;
+        f.flicker = dip > 0 ? 1 - dip * valueNoise(v.seed, timeMs / FLICKER_CELL_MS, 11) : 1;
         f.lampBreath = reduced ? 0.5 : 0.5 + 0.5 * Math.sin((timeMs / 1000) * Math.PI * 0.4 + v.seed);
         if (!reduced) flag.moving = true; // idle motion: lamp, motes, wisps, pulses
 

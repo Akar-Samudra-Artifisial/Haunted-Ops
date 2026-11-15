@@ -6,6 +6,7 @@ import { applyHuntEvent } from '../net/live-state.js';
 import { makeService } from '../test/arbs.js';
 import { SHA, at, failedHunt, huntSummaryArb, makeHunt, runningHunt, sealedHunt } from '../test/hunt-arbs.js';
 import { HuntSection, huntSectionService } from './HuntSection.js';
+import { MIN_GAP_MS } from '../a11y/announcement-queue.js';
 import { LiveAnnouncer, STEP_INTERVAL_MS, StepGate, huntSentences } from './LiveAnnouncer.js';
 import { REASON_TEXT, huntCellText, huntStepText, huntView } from './hunt-text.js';
 import { TableMode } from './TableMode.js';
@@ -277,6 +278,10 @@ describe('Property 16: announcements are short and not repetitive', () => {
       rerender(<LiveAnnouncer services={[withHunt(runningHunt(0))]} />);
       expect(region.textContent).toBe('Hunt started on payments.');
       rerender(<LiveAnnouncer services={[withHunt(runningHunt(1))]} />);
+      // The queue releases one sentence per 2 s: the step comes after that gap.
+      act(() => {
+        vi.advanceTimersByTime(MIN_GAP_MS);
+      });
       expect(region.textContent).toBe('Hunt on payments, step 1: errors.');
       rerender(<LiveAnnouncer services={[withHunt(runningHunt(2))]} />);
       rerender(<LiveAnnouncer services={[withHunt(runningHunt(3))]} />);
@@ -287,6 +292,9 @@ describe('Property 16: announcements are short and not repetitive', () => {
       });
       expect(region.textContent).toBe('Hunt on payments, step 3: errors.');
       rerender(<LiveAnnouncer services={[withHunt(sealedHunt())]} />);
+      act(() => {
+        vi.advanceTimersByTime(MIN_GAP_MS);
+      });
       expect(region.textContent).toBe('Diagnosis for payments: deploy d-7, commit 65c0fca.');
     } finally {
       vi.useRealTimers();

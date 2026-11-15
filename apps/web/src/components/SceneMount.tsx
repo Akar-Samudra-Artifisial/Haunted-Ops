@@ -1,4 +1,4 @@
-import { Component, Suspense, use, useCallback, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import { Component, Suspense, use, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import type { ServiceName, ServiceState } from '@haunted-ops/shared';
 import type { Quality } from '../scene/governor.js';
 import { useElementSize } from '../scene/hooks.js';
@@ -35,7 +35,7 @@ export const FALLBACK_TEXT = 'The house view is not available on this device. Th
 /** Shown instead of the canvas when the scene cannot run. The table stays the full view. */
 export function SceneFallback() {
   return (
-    <p className="scene-fallback" role="status">
+    <p className="scene-fallback">
       {FALLBACK_TEXT}
     </p>
   );
@@ -64,6 +64,8 @@ export interface SceneMountProps {
   loadCanvas?: CanvasLoader;
   createRenderer?: SceneCanvasProps['createRenderer'];
   publishStats?: boolean;
+  /** Said once through the page's one announcer when the fallback appears. */
+  onNotice?: (text: string) => void;
 }
 
 /**
@@ -85,6 +87,11 @@ export function SceneMount(props: SceneMountProps) {
   );
   const height = size.width > 0 ? mountHeight(size.width, aspect, typeof window === 'undefined' ? 800 : window.innerHeight) : undefined;
 
+  const showsFallback = failed || contextLost;
+  const { onNotice } = props;
+  useEffect(() => {
+    if (showsFallback) onNotice?.(FALLBACK_TEXT);
+  }, [showsFallback, onNotice]);
   const onFailure = useCallback(() => setFailed(true), []);
   const onContext = useCallback((event: 'lost' | 'restored') => setContextLost(event === 'lost'), []);
   const onQuality = props.onQuality ?? (() => undefined);

@@ -73,6 +73,7 @@ export interface RoomFrame {
   dim: number;
   /** Multiplier around 1 for the flickering lamp. */
   flicker: number;
+  /** Always 0: a room never moves, whatever its level. */
   shakeX: number;
   shakeY: number;
   /** 0 to 1, 0.5 neutral. */

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { HauntLevel, HuntSummary, ProposalSummary, ServiceName, ServiceState } from '@haunted-ops/shared';
+import { createQueue, enqueue, release, type QueueState } from '../a11y/announcement-queue.js';
 import { proposalView } from './proposal-text.js';
 import { LEVEL_TEXT } from '../format.js';
+import { isDark } from '../scene/model.js';
 import { TOOL_TEXT, huntView } from './hunt-text.js';
 
 /** Sentences for the services whose level changed. A service seen for the first time is silent. */
@@ -13,6 +15,23 @@ export function levelChanges(
   for (const s of services) {
     const before = previous.get(s.name);
     if (before !== undefined && before !== s.hauntLevel) out.push(`${s.name}: ${LEVEL_TEXT[s.hauntLevel]}`);
+  }
+  return out;
+}
+
+/**
+ * Sentences for a room that went dark without its level reaching 4 (its `up` fell), and for a room that is back.
+ * A change of level to 4 is already said by `levelChanges` ("payments: dark").
+ */
+export function darkChanges(previous: ReadonlyMap<ServiceName, ServiceState>, services: readonly ServiceState[]): string[] {
+  const out: string[] = [];
+  for (const s of services) {
+    const before = previous.get(s.name);
+    if (before === undefined) continue;
+    const was = isDark(before);
+    const now = isDark(s);
+    if (!was && now && s.hauntLevel !== 4) out.push(`${s.name} is dark.`);
+    else if (was && !now) out.push(`${s.name} is back.`);
   }
   return out;
 }
@@ -61,6 +80,25 @@ export function proposalSentences(previous: ReadonlyMap<ServiceName, ProposalSum
   return out;
 }
 
+export interface Announcements {
+  /** Said in order, each when the queue lets it through. */
+  urgent: string[];
+  /** The newest Hunt step, which the step gate may delay or drop. */
+  step: string | null;
+}
+
+/**
+ * Every sentence for the change from one list of Services to the next: a room goes dark or is back, a Hunt starts,
+ * a step, the diagnosis, a fix proposal opens, merges, deploys or fails. A Service seen for the first time is silent.
+ */
+export function announcementsFor(previous: readonly ServiceState[], next: readonly ServiceState[]): Announcements {
+  const levels = levelChanges(new Map(previous.map((s) => [s.name, s.hauntLevel])), next);
+  const dark = darkChanges(new Map(previous.map((s) => [s.name, s])), next);
+  const hunts = huntSentences(new Map(previous.map((s) => [s.name, s.hunt])), next);
+  const proposals = proposalSentences(new Map(previous.map((s) => [s.name, s.proposal])), next);
+  return { urgent: [...levels, ...dark, ...hunts.urgent, ...proposals], step: hunts.step };
+}
+
 export const STEP_INTERVAL_MS = 5_000;
 
 /**
@@ -95,52 +133,75 @@ export class StepGate {
   }
 }
 
-/** Visually hidden polite live region: one short sentence per level change or hunt event, nothing on first load. */
-export function LiveAnnouncer({ services }: { services: readonly ServiceState[] }) {
-  const previous = useRef<Map<ServiceName, HauntLevel>>(new Map());
-  const previousHunts = useRef<Map<ServiceName, HuntSummary | null>>(new Map());
-  const previousProposals = useRef<Map<ServiceName, ProposalSummary | null>>(new Map());
+/** A sentence from outside the Services (connection, stale data, scene fallback); a new object is a new sentence. */
+export interface Notice {
+  text: string;
+}
+/**
+ * The one live region of the page: polite and visually hidden. Sentences go through the announcement queue (no repeat
+ * inside 10 s, one per 2 s, at most 5 waiting), and nothing is said for the state that was there at first load.
+ */
+export function LiveAnnouncer({ services, notice = null }: { services: readonly ServiceState[]; notice?: Notice | null }) {
+  const previous = useRef<readonly ServiceState[]>([]);
   const gate = useRef(new StepGate());
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [message, setMessage] = useState('');
+  const queue = useRef<QueueState>(createQueue());
+  const speakTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stepTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pump = useRef<() => void>(() => undefined);
+  const [said, setSaid] = useState({ text: '', n: 0 });
+
+  useEffect(() => {
+    // Releases what the queue allows now and sets one timer for the next waiting sentence.
+    pump.current = () => {
+      if (speakTimer.current !== null) clearTimeout(speakTimer.current);
+      speakTimer.current = null;
+      const out = release(queue.current, Date.now());
+      queue.current = out.state;
+      if (out.spoken !== null) setSaid((s) => ({ text: out.spoken as string, n: s.n + 1 }));
+      if (out.nextInMs !== null) speakTimer.current = setTimeout(() => pump.current(), out.nextInMs);
+    };
+    return () => {
+      if (speakTimer.current !== null) clearTimeout(speakTimer.current);
+      if (stepTimer.current !== null) clearTimeout(stepTimer.current);
+      speakTimer.current = null;
+      stepTimer.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const now = Date.now();
-    const levels = levelChanges(previous.current, services);
-    const sentences: string[] = [];
-    previous.current = new Map(services.map((s) => [s.name, s.hauntLevel]));
-    const hunts = huntSentences(previousHunts.current, services);
-    previousHunts.current = new Map(services.map((s) => [s.name, s.hunt]));
-    sentences.push(...hunts.urgent);
-    sentences.push(...proposalSentences(previousProposals.current, services));
-    previousProposals.current = new Map(services.map((s) => [s.name, s.proposal]));
-    if (hunts.step !== null) {
-      const said = gate.current.offer(hunts.step, now);
+    const { urgent, step } = announcementsFor(previous.current, services);
+    previous.current = services;
+    const sentences = [...urgent];
+    if (step !== null) {
+      const said = gate.current.offer(step, now);
       if (said !== null) sentences.push(said);
       else {
         // The newest step waits; it is said when the interval has passed unless a newer one replaces it.
-        if (timer.current !== null) clearTimeout(timer.current);
-        timer.current = setTimeout(() => {
-          timer.current = null;
+        if (stepTimer.current !== null) clearTimeout(stepTimer.current);
+        stepTimer.current = setTimeout(() => {
+          stepTimer.current = null;
           const late = gate.current.release(Date.now());
-          if (late !== null) setMessage(late);
+          if (late !== null) {
+            queue.current = enqueue(queue.current, late, Date.now());
+            pump.current();
+          }
         }, gate.current.waitMs(now) ?? STEP_INTERVAL_MS);
       }
     }
-    const text = [levels.join('. '), sentences.join(' ')].filter((t) => t !== '').join('. ');
-    if (text !== '') setMessage(text);
+    for (const text of sentences) queue.current = enqueue(queue.current, text, now);
+    pump.current();
   }, [services]);
 
-  useEffect(
-    () => () => {
-      if (timer.current !== null) clearTimeout(timer.current);
-    },
-    [],
-  );
-
+  useEffect(() => {
+    if (notice === null) return;
+    queue.current = enqueue(queue.current, notice.text, Date.now());
+    pump.current();
+  }, [notice]);
   return (
     <div className="visually-hidden" aria-live="polite" aria-atomic="true" data-testid="level-announcer">
-      {message}
+      {/* A new key per sentence makes each one a DOM change, also when the text repeats. */}
+      <span key={said.n}>{said.text}</span>
     </div>
   );
 }

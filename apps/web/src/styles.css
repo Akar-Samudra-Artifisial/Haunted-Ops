@@ -8,12 +8,23 @@
   --warn: #f2c66d;
   --down: #ff9a8a;
   --focus: #ffd866;
+  --border: #7a7394;
+  /* The selected row: the focus colour at 12% over the page background, as one opaque colour. */
+  --selected: #302a25;
+  /* Washes over the picture; the outline, not the wash, is the focus indicator. */
+  --focus-wash: rgba(255, 216, 102, 0.2);
+  --press-wash: rgba(255, 216, 102, 0.1);
   color-scheme: dark;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   background: var(--bg);
   color: var(--text);
 }
 
+/* Accessible mode raises the quiet colours. Every pair is checked by a11y/contrast.test.ts. */
+:root[data-a11y='on'] {
+  --muted: #d4cfe3;
+  --border: #9a93b3;
+}
 * {
   box-sizing: border-box;
 }
@@ -96,11 +107,14 @@ body {
   cursor: pointer;
 }
 .room-button:focus-visible {
-  outline: none;
-  background: rgba(255, 216, 102, 0.2);
+  /* The outline sits inside the box and the room-shaped clip would cut it, so the clip goes while focused. */
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+  clip-path: none !important;
+  background: var(--focus-wash);
 }
 .room-button[aria-pressed='true'] {
-  background: rgba(255, 216, 102, 0.1);
+  background: var(--press-wash);
 }
 .row-select {
   padding: 0.1rem 0.25rem;
@@ -115,7 +129,7 @@ body {
 }
 .table-mode tr[aria-current='true'] th,
 .table-mode tr[aria-current='true'] td {
-  background: rgba(255, 216, 102, 0.12);
+  background: var(--selected);
   border-bottom-color: var(--focus);
 }
 .table-mode tr[aria-current='true'] th {
@@ -142,7 +156,7 @@ body {
 .table-mode td {
   padding: 0.4rem 0.5rem;
   text-align: left;
-  border-bottom: 1px solid #3a3450;
+  border-bottom: 1px solid var(--border);
 }
 
 .table-scroll {
@@ -169,13 +183,56 @@ body {
   white-space: nowrap;
 }
 
+/* No animation or transition runs with Reduced motion or in Accessible mode. Focus has no transition, so it needs no exception. */
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation: none !important;
-    transition: none !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
   }
 }
-
+:root[data-a11y='on'] *,
+:root[data-a11y='on'] *::before,
+:root[data-a11y='on'] *::after {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: -4rem;
+  z-index: 10;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
+  background: var(--focus);
+  color: var(--bg);
+  font-weight: 600;
+}
+.skip-link:focus {
+  top: 0.5rem;
+}
+.a11y-switch {
+  padding: 0.35rem 0.75rem;
+  border: 2px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.a11y-switch[aria-pressed='true'] {
+  border-color: var(--focus);
+  background: var(--selected);
+}
 /* A small label on text that the model wrote; the border keeps it readable without relying on colour. */
 .ai-label {
   display: inline-block;

@@ -148,18 +148,16 @@ describe('Animator transitions', () => {
 });
 
 describe('Animator motion', () => {
-  it('flickers and trembles at level 3 and not at level 0', () => {
+  it('flickers at level 3, never moves, and is still at level 0', () => {
     const level3 = animator([makeService('payments', { hauntLevel: 3 })]).a;
     const calm = animator([makeService('payments', { hauntLevel: 0 })]).a;
     let minFlicker = 1;
-    let maxShake = 0;
     for (let t = 0; t < 4000; t += 16) {
       const f = level3.step(16, t).rooms[0]!;
       minFlicker = Math.min(minFlicker, f.flicker);
-      maxShake = Math.max(maxShake, Math.abs(f.shakeX));
+      expect([f.shakeX, f.shakeY]).toEqual([0, 0]);
     }
     expect(minFlicker).toBeLessThan(0.9);
-    expect(maxShake).toBeGreaterThan(0);
     const c = calm.step(16, 1000).rooms[0]!;
     expect([c.flicker, c.shakeX, c.shakeY]).toEqual([1, 0, 0]);
   });

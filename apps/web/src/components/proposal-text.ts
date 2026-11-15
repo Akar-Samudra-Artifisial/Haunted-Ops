@@ -96,14 +96,17 @@ export function proposalView(p: ProposalSummary | null, service = ''): ProposalV
     .filter((x): x is string => x !== null)
     .join(', ');
   const on = service === '' ? '' : ` on ${service}`;
+  // A short reason for a fix that failed: the proposal's own, else why the AI patch was not used. 80 characters at most.
+  const why = failText ?? aiFailText;
+  const reason = why === null ? '' : `: ${why.slice(0, 80)}`;
   const sentence = {
     drafting: `Fix drafting${on}.`,
     open: `Pull request ${p.prNumber ?? ''} open${on}${kindText === null ? '' : `, ${kindText}`}.`.replace('request  open', 'request open'),
     merged: `Fix merged${on}${mergedBy === null ? '' : ` by ${mergedBy}`}.`,
     deployed: `Fix deployed${on}.`,
     rejected: `Pull request closed without a merge${on}.`,
-    failed: `Fix failed${on}${failText === null ? '' : `: ${failText}`}.`,
-    checks_failed: `No fix could be proposed${on}${failText === null ? '' : `: ${failText}`}.`,
+    failed: `Fix failed${on}${reason}.`,
+    checks_failed: `No fix could be proposed${on}${reason}.`,
   }[p.status];
   return { phase: PROPOSAL_PHASE[p.status], cell, kindText, statusText, checksText: checksInWords(p.checks), aiFailText, failText, link, mergedBy, sentence };
 }

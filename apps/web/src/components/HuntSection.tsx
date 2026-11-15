@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { isActiveProposalStatus, type HuntDetail, type HuntSummary, type ServiceName, type ServiceState } from '@haunted-ops/shared';
+import { statusMark } from '../a11y/status-marks.js';
 import { huntCellText, huntStepText, huntView } from './hunt-text.js';
 import { proposalView } from './proposal-text.js';
 
@@ -107,7 +108,12 @@ function ProposalBlock({ service }: { service: ServiceState }) {
   const v = proposalView(p, service.name);
   return (
     <div data-testid="proposal-block">
-      <h4>Fix proposal, attempt {p.attempt}</h4>
+      <h4>
+        <span className="marker" aria-hidden="true">
+          {statusMark('proposal', p.status).symbol}
+        </span>{' '}
+        Fix proposal, attempt {p.attempt}
+      </h4>
       <p data-testid="proposal-state">{v.cell}</p>
       {v.checksText === null ? null : <p>Checks: {v.checksText}.</p>}
       {v.aiFailText === null ? null : <p>AI patch not used: {v.aiFailText}.</p>}

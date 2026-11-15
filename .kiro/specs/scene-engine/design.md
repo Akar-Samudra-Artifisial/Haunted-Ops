@@ -193,7 +193,7 @@ Formulas (all clamped, `null` counts as 0):
 | `moteCount` | `dark ? 0 : level 0: 6, level 1: 3, otherwise 0` |
 | `motion.drift` | `reduced ? 0 : 0.3 + 0.7 * max(e, f)` |
 | `motion.flicker` | `reduced ? 0 : level 3: 0.3, level 2: 0.05, otherwise 0` |
-| `motion.tremble` | `reduced ? 0 : level 3: 0.012 (iso units), otherwise 0` |
+| `motion.tremble` | `reduced ? 0 : level 3: 0.012 (iso units), otherwise 0`; the animator turns it into a deeper dip of the same slow flicker, never a movement |
 | `transitionMs` | `reduced ? 0 : 1000` |
 | `quality: 'low'` | wanted counts are halved (rounded up) before the total cap |
 
@@ -282,7 +282,7 @@ export interface RoomFrame {
   light: number; coolness: number;
   dim: number;                        // alpha of the dark overlay, 0 lit .. 0.92 dark
   flicker: number;                    // multiplier around 1
-  shake: Pt;                          // tremble offset in pixels
+  shake: Pt;                          // always 0: rooms never move
   lampBreath: number;                 // 0..1
   outlineAlpha: number; badgeAlpha: number;
   clock: { hour: number; minute: number };
@@ -463,7 +463,7 @@ Contrast checked on 13 Nov 2026: text on pill 15.5 to 1; badge colours on pill 1
 | 0 calm | 1.0, warm lamp glow | lamp, clock, up to 6 dust motes, corridor lit | lamp glow breathes 3 percent at 0.2 Hz, motes drift, corridor pulses slowly |
 | 1 uneasy | 0.85, a little cooler | 3 motes, the badge appears | motes drift faster |
 | 2 haunted | 0.65, cool tint | ghosts and fog by metrics, badge, incident mark | light drifts by 5 percent, wisps and fog drift |
-| 3 possessed | 0.5, cold rim in `alarm` | strong ghosts or fog | flicker (amplitude 0.3, under 2 Hz), objects tremble 0.012 iso units |
+| 3 possessed | 0.5, cold rim in `alarm` | strong ghosts or fog | flicker (amplitude 0.3, under 2 Hz), light dips deeper (tremble 0.012 iso units becomes a dim, no movement) |
 | 4 dark | 0 | fill `nightDeep`, outline in `trim`, label and badge on pills | none |
 
 Ghosts are rounded wisps with a wavy hem and two dark eye cuts, drawn semi-transparent; fog is soft grey-blue puffs in slow layers. Both keep inside the floor diamond of their Room. The level 3 rim and the incident mark use a shape (a small triangle with "!" and the text "incident") as well as `alarm`.

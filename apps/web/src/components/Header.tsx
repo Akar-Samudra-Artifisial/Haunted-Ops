@@ -1,42 +1,29 @@
+import { statusMark } from '../a11y/status-marks.js';
 import type { ConnectionStatus } from '../net/status.js';
+import { AccessibleSwitch } from './AccessibleSwitch.js';
 
-const LABELS: Record<ConnectionStatus, string> = {
-  live: 'live',
-  reconnecting: 'reconnecting',
-  offline: 'offline',
-};
+export interface AccessibleControl {
+  on: boolean;
+  onToggle: () => void;
+}
 
-/** Shape plus text, so the status never relies on color alone. */
-function StatusIcon({ status }: { status: ConnectionStatus }) {
-  const common = { width: 12, height: 12, viewBox: '0 0 12 12', 'aria-hidden': true, focusable: false } as const;
-  if (status === 'live') {
-    return (
-      <svg {...common} className="status-icon">
-        <circle cx="6" cy="6" r="5" fill="currentColor" />
-      </svg>
-    );
-  }
-  if (status === 'reconnecting') {
-    return (
-      <svg {...common} className="status-icon">
-        <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-        <path d="M6 1.5 A4.5 4.5 0 0 1 6 10.5 Z" fill="currentColor" />
-      </svg>
-    );
-  }
+/** The symbol of the status, hidden from screen readers; the text beside it says the same. */
+function StatusIcon({ status }: { status: ConnectionStatus | 'demo' }) {
   return (
-    <svg {...common} className="status-icon">
-      <path d="M2 2 L10 10 M10 2 L2 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
+    <span className="status-icon" aria-hidden="true">
+      {statusMark('connection', status).symbol}
+    </span>
   );
 }
 
-export function Header({ status, demo = false }: { status: ConnectionStatus; demo?: boolean }) {
+export function Header({ status, demo = false, accessible }: { status: ConnectionStatus; demo?: boolean; accessible?: AccessibleControl }) {
+  const control = accessible === undefined ? null : <AccessibleSwitch on={accessible.on} onToggle={accessible.onToggle} />;
   if (demo) {
     return (
       <header className="app-header">
         <h1 className="app-title">Haunted Ops</h1>
-        <p className="connection connection-demo" role="status" aria-live="polite" aria-atomic="true">
+        {control}
+        <p className="connection connection-demo">
           Demo data, not live
         </p>
       </header>
@@ -45,9 +32,10 @@ export function Header({ status, demo = false }: { status: ConnectionStatus; dem
   return (
     <header className="app-header">
       <h1 className="app-title">Haunted Ops</h1>
-      <p className={`connection connection-${status}`} role="status" aria-live="polite" aria-atomic="true">
+      {control}
+      <p className={`connection connection-${status}`}>
         <StatusIcon status={status} />
-        <span>Connection: {LABELS[status]}</span>
+        <span>Connection: {statusMark('connection', status).label}</span>
       </p>
     </header>
   );
