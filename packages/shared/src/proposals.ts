@@ -39,7 +39,8 @@ export const isFinalProposalStatus = (s: ProposalStatus): boolean => PROPOSAL_ED
 export const isActiveProposalStatus = (s: ProposalStatus): boolean => s === 'drafting' || s === 'open' || s === 'merged';
 
 /** Why the Fixer's patch was not used. */
-export const AI_FAIL_REASONS = ['scope', 'size', 'forbidden_file', 'tests_failed', 'agent_failed', 'timeout', 'budget', 'daily_limit'] as const;
+/** `unchecked`: the patch passed, but neither a syntax checker nor a test applied to it, so it was not proposed. */
+export const AI_FAIL_REASONS = ['scope', 'size', 'forbidden_file', 'tests_failed', 'agent_failed', 'timeout', 'budget', 'daily_limit', 'unchecked'] as const;
 export type AiFailReason = (typeof AI_FAIL_REASONS)[number];
 
 /** Why a Proposal ended `checks_failed` or `failed`. Fixed codes: no message of git or GitHub is kept. */
@@ -78,7 +79,20 @@ export type ProposalCheckName = (typeof PROPOSAL_CHECK_NAMES)[number];
 export interface ProposalCheck {
   name: ProposalCheckName;
   ok: boolean;
+  /**
+   * Only on `tests` and `syntax`, only with `ok: true`: nothing checked it (no sandbox-green test file; no syntax
+   * checker for the file kinds). Recorded, never a silent pass; the pull request body says so.
+   */
+  skipped?: true;
+  /** With `skipped`: `no sandbox-green tests for <service>`, or `no syntax checker for these files`. */
+  detail?: string;
 }
+
+/** The `detail` of a skipped `tests` check. */
+export const testsSkippedDetail = (service: ServiceName): string => `no sandbox-green tests for ${service}`;
+export const PROPOSAL_CHECK_DETAIL_PATTERN = /^no sandbox-green tests for (gate|orders|payments|ledger)$/;
+/** The `detail` of a skipped `syntax` check (no checker applies to the written file kinds). */
+export const SYNTAX_SKIPPED_DETAIL = 'no syntax checker for these files';
 
 export const PROPOSAL_LIMITS = Object.freeze({ checks: 12, prNumber: 99_999_999 });
 
@@ -117,8 +131,32 @@ export interface ProposalSummary {
   updatedAt: string;
 }
 
-/** `GET /api/proposals/:id`. */
+/** The longest `aiFailDetail`. */
+export const AI_FAIL_DETAIL_MAX = 300;
+// eslint-disable-next-line no-control-regex
+const DETAIL_CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+/** An absolute path: a slash that does not continue a word, a URL or a relative path. */
+const DETAIL_PATH = /(?<![\w.:/-])\/[\w.@~+-]+(?:\/[\w.@~+-]*)*/;
+/** Token-like text: a known token prefix, a long unbroken run, `Bearer <x>`, or credentials in a URL. */
+const DETAIL_TOKEN = /(?:github_pat_|gh[pousr]_|sk-|AKIA)[A-Za-z0-9_.-]{6,}|Bearer\s+\S{6,}|\b[A-Za-z0-9_-]{32,}\b|[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s/@]+@/;
+/**
+ * The text of an `aiFailDetail` as a view may show it: one line, an absolute path as `[path]`, token-like text as
+ * `[redacted]`, at most 300 characters. The same text always passes `checkAiFailDetail`.
+ */
+export function scrubAiFailDetail(text: string): string {
+  const clean = text
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+    .replace(new RegExp(DETAIL_TOKEN.source, 'g'), '[redacted]')
+    .replace(new RegExp(DETAIL_PATH.source, 'g'), '[path]')
+    .trim()
+    .slice(0, AI_FAIL_DETAIL_MAX);
+  // A cut can leave half of a token or path at the end: scrub again so what is shown always passes the check.
+  return DETAIL_PATH.test(clean) || DETAIL_TOKEN.test(clean) ? scrubAiFailDetail(clean.slice(0, -1)) : clean;
+}
+/** `GET /api/proposals/:id`. `aiFailDetail` is why the Fixer's run was not used (`<code>: <few words>`), scrubbed. */
 export interface ProposalView extends ProposalSummary {
+  aiFailDetail: string | null;
   service: ServiceName;
   credits: number;
   creditsEstimated: boolean;
@@ -182,15 +220,48 @@ export const checkProposalStatus = checkOneOf(PROPOSAL_STATUSES);
 export const checkProposalKind = checkOneOf(PROPOSAL_KINDS);
 export const checkAiFailReason = checkOneOf(AI_FAIL_REASONS);
 export const checkProposalFailReason = checkOneOf(PROPOSAL_FAIL_REASONS);
+export const checkAiFailDetail: Check = (input, path, errors) => {
+  if (typeof input !== 'string' || input.length === 0 || input.length > AI_FAIL_DETAIL_MAX || DETAIL_CONTROL.test(input) || DETAIL_PATH.test(input) || DETAIL_TOKEN.test(input)) errors.push(path);
+};
 export const checkPrUrl = checkPattern(PR_URL_PATTERN);
 export const checkGithubLogin = checkPattern(GITHUB_LOGIN_PATTERN);
 
-export const checkProposalCheck: Check = checkObject({
+const checkPlainCheck: Check = checkObject({
   name: checkOneOf(PROPOSAL_CHECK_NAMES),
   ok: (v, p, e) => {
     if (typeof v !== 'boolean') e.push(p);
   },
 });
+const checkSkippedSyntax: Check = checkObject({
+  name: checkOneOf(['syntax']),
+  ok: (v, p, e) => {
+    if (v !== true) e.push(p);
+  },
+  skipped: (v, p, e) => {
+    if (v !== true) e.push(p);
+  },
+  detail: (v, p, e) => {
+    if (v !== SYNTAX_SKIPPED_DETAIL) e.push(p);
+  },
+});
+const checkSkippedTests: Check = checkObject({
+  name: checkOneOf(['tests']),
+  ok: (v, p, e) => {
+    if (v !== true) e.push(p);
+  },
+  skipped: (v, p, e) => {
+    if (v !== true) e.push(p);
+  },
+  detail: (v, p, e) => {
+    if (typeof v !== 'string' || !PROPOSAL_CHECK_DETAIL_PATTERN.test(v)) e.push(p);
+  },
+});
+/** `{ name, ok }`, or the skipped tests check `{ name: 'tests', ok: true, skipped: true, detail }`. */
+export const checkProposalCheck: Check = (input, path, errors) => {
+  const skipped = typeof input === 'object' && input !== null && Object.hasOwn(input, 'skipped');
+  const isSyntax = skipped && (input as { name?: unknown }).name === 'syntax';
+  (skipped ? (isSyntax ? checkSkippedSyntax : checkSkippedTests) : checkPlainCheck)(input, path, errors);
+};
 
 const checkChecks: Check = (input, path, errors) => {
   checkArrayOf(checkProposalCheck)(input, path, errors);
@@ -237,6 +308,7 @@ export const checkProposalView: Check = (input, path, errors) => {
   const before = errors.length;
   checkObject({
     ...summaryShape,
+    aiFailDetail: checkNullable(checkAiFailDetail),
     service: checkServiceName,
     credits: (v, p, e) => {
       checkFiniteNumber(v, p, e);

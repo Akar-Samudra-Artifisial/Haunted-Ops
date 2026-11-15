@@ -30,6 +30,27 @@ export class HttpChaosClient {
     private readonly fetchImpl: PostFetch = fetch as unknown as PostFetch,
   ) {}
 
+  /**
+   * Checks the chaos token once at startup with `GET /chaos/state`, which needs the token and changes nothing:
+   * `rejected` on 401 or 403, `ok` on 2xx, `unavailable` otherwise. Nothing of the answer is read.
+   */
+  async probe(getImpl: (url: string, init: { method: 'GET'; headers: Record<string, string>; redirect: 'error'; signal: AbortSignal }) => Promise<Response> = fetch as never): Promise<'ok' | 'rejected' | 'unavailable'> {
+    let res: Response;
+    try {
+      res = await getImpl(new URL('/chaos/state', this.baseUrl).toString(), {
+        method: 'GET',
+        headers: { accept: 'application/json', authorization: `Bearer ${this.token}` },
+        redirect: 'error',
+        signal: AbortSignal.timeout(CHAOS_TIMEOUT_MS),
+      });
+    } catch {
+      return 'unavailable';
+    }
+    await res.body?.cancel().catch(() => undefined);
+    if (res.status === 401 || res.status === 403) return 'rejected';
+    return res.status >= 200 && res.status < 300 ? 'ok' : 'unavailable';
+  }
+
   async deployFix(body: { service: ServiceName; huntId: string; sha: string }): Promise<DeployFixAnswer> {
     if (!(SERVICE_NAMES as readonly string[]).includes(body.service) || !FULL_SHA_PATTERN.test(body.sha)) return { kind: 'rejected', status: 400 };
     let ref: string;

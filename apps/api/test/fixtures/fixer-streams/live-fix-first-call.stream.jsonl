@@ -1,0 +1,1 @@
+{"type":"sessionUpdate","data":{"sessionId":"session-1","update":{"sessionUpdate":"tool_call","toolCallId":"call-1","title":"Read File","kind":"read","rawInput":{"path":"services/payments/src/refunds.ts","offset":null,"limit":null}}}}

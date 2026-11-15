@@ -1,0 +1,3 @@
+{"type":"sessionUpdate","data":{"sessionId":"session-1","update":{"sessionUpdate":"tool_call","toolCallId":"call-1","title":"Editing refunds.ts","kind":"edit","rawInput":{"command":"strReplace","path":"services/payments/src/refunds.ts","oldStr":"  const refund = findRefund(orderId) as RefundTerms;\n","newStr":"  const refund = findRefund(orderId);\n  if (!refund) {\n    return DEFAULT_TERMS;\n  }\n"},"_meta":{"kiro":{"toolName":"write"}}}}}
+{"type":"sessionUpdate","data":{"sessionId":"session-1","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-1","status":"pending"}}}
+{"type":"sessionUpdate","data":{"sessionId":"session-1","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-1","status":"completed"}}}

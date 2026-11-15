@@ -6,15 +6,18 @@ import {
   PROPOSAL_EVENT_NAMES,
   PROPOSAL_STATUSES,
   canMove,
+  checkAiFailDetail,
   fixBranch,
   incidentBranch,
   isActiveProposalStatus,
   isFinalProposalStatus,
+  scrubAiFailDetail,
   validateProposalEvent,
   validateProposalSummary,
   validateProposalView,
   validateServiceState,
   validateSseEvent,
+  testsSkippedDetail,
   type ProposalSummary,
   type ProposalView,
 } from '../src/index.js';
@@ -79,6 +82,7 @@ describe('proposal summaries', () => {
   it('accepts a view and checks its extra fields', () => {
     const view: ProposalView = {
       ...open,
+      aiFailDetail: null,
       service: 'payments',
       credits: 0.9,
       creditsEstimated: false,
@@ -92,10 +96,80 @@ describe('proposal summaries', () => {
     expect(validateProposalView({ ...view, deployedAt: view.createdAt }).ok).toBe(false);
     expect(validateProposalView({ ...view, service: 'nginx' }).ok).toBe(false);
   });
+  it('shows why the Fixer run was not used: aiFailDetail is one short line with no path and no token (task 22)', () => {
+    const view: ProposalView = {
+      ...open,
+      status: 'drafting',
+      kind: null,
+      prNumber: null,
+      prUrl: null,
+      aiFailReason: 'agent_failed',
+      aiFailDetail: 'fixer_not_started: Error: parentEnv is required in tests',
+      service: 'payments',
+      credits: 0,
+      creditsEstimated: false,
+      createdAt: '2026-11-14T09:59:00.000Z',
+      openedAt: null,
+      mergedAt: null,
+      deployedAt: null,
+    };
+    expect(validateProposalView(view).ok).toBe(true);
+    for (const detail of ['foreign_tool: Tool Call tool_id=tool::builtin::fs_read', 'write_outside_scope: fs_write outside services/payments/src/ kind=edit keys=[command,path]', 'step_error: Error: spawn kiro-cli ENOENT [path]']) {
+      expect(validateProposalView({ ...view, aiFailDetail: detail }).ok, detail).toBe(true);
+    }
+    const bad = [
+      '',
+      'x'.repeat(301),
+      'two\nlines',
+      'step_error: ENOENT /var/folders/ab/cd',
+      'step_error: open /etc/passwd failed',
+      'token github_pat_AAAAAAAAAAAAAAAAAAAAAAAA',
+      'a'.repeat(40),
+      'https://user:secret@example.com/x',
+      5,
+    ];
+    for (const detail of bad) expect(validateProposalView({ ...view, aiFailDetail: detail }).ok, String(detail)).toBe(false);
+    expect(validateProposalView({ ...view, aiFailDetail: undefined }).ok).toBe(false);
+  });
+  it('scrubs a detail so that it always passes: absolute paths and token-like text are replaced, the length is capped', () => {
+    expect(scrubAiFailDetail('step_error: ENOENT, open /var/folders/ab/cd/file.txt and /etc/hosts')).toBe('step_error: ENOENT, open [path] and [path]');
+    expect(scrubAiFailDetail('a/b and c/d stay, and https://github.com/x/y too')).toBe('a/b and c/d stay, and https://github.com/x/y too');
+    expect(scrubAiFailDetail('Bearer abcdef123456 github_pat_ABCDEFGHIJKLMNOP')).toBe('[redacted] [redacted]');
+    expect(scrubAiFailDetail('line one\nline two\u0007')).toBe('line one line two');
+    fc.assert(
+      fc.property(fc.string({ maxLength: 600 }), (text) => {
+        const out = scrubAiFailDetail(text);
+        expect(out.length).toBeLessThanOrEqual(300);
+        const checked: string[] = [];
+        checkAiFailDetail(out, '$', checked);
+        // An empty result is not a detail (the store shows null for it); anything else passes the check.
+        expect(checked.length === 0 || out === '', text).toBe(true);
+      }),
+      { numRuns: 300 },
+    );
+  });
 
   it('is a valid field of a Service state and refused when malformed', () => {
     fc.assert(fc.property(serviceStateArb, (s) => validateServiceState(s).ok), { numRuns: 100 });
     fc.assert(fc.property(proposalSummaryArb, (p) => validateProposalSummary(p).ok), { numRuns: 200 });
+  });
+});
+
+describe('a skipped tests check', () => {
+  const skipped = { name: 'tests', ok: true, skipped: true, detail: 'no sandbox-green tests for orders' } as const;
+  it('is accepted only on tests, with ok true and the fixed detail', () => {
+    expect(validateProposalSummary({ ...open, checks: [{ name: 'scope', ok: true }, skipped] }).ok).toBe(true);
+    expect(testsSkippedDetail('orders')).toBe(skipped.detail);
+    for (const bad of [
+      { ...skipped, name: 'size' },
+      { ...skipped, ok: false },
+      { ...skipped, skipped: false },
+      { ...skipped, detail: 'anything else' },
+      { name: 'tests', ok: true, skipped: true },
+      { name: 'tests', ok: true, detail: skipped.detail },
+    ]) {
+      expect(validateProposalSummary({ ...open, checks: [bad] }).ok, JSON.stringify(bad)).toBe(false);
+    }
   });
 });
 

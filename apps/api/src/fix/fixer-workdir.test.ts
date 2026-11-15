@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -106,11 +106,56 @@ describe('FixerWorkdir (an export from git archive of a local repository)', () =
     expect(() => writeFileSync(join(f.work, 'packages/lab-common/new.js'), 'x')).toThrow();
     writeFileSync(join(f.work, 'services/payments/src/charge.js'), 'changed');
     expect(readFileSync(join(f.exportDir, 'services/payments/src/charge.js'), 'utf8')).toBe(BROKEN_CHARGE);
-    // The agent copy is byte-equal, and a rewrite is noticed.
+    // The agent copy is the committed file; the kiro-cli migration is accepted, any other rewrite is noticed.
     expect(await wd.agentIntact(f.work)).toBe(true);
     expect(readFileSync(join(f.work, '.kiro/agents/exorcist-fixer.json'))).toEqual(readFileSync(defaultFixerAgentSource()));
+    writeFileSync(join(f.work, '.kiro/agents/exorcist-fixer.json'), readFileSync(new URL('../../test/fixtures/fixer-agent-migrated.json', import.meta.url)));
+    expect(await wd.agentCheck(f.work)).toEqual({ ok: true });
     writeFileSync(join(f.work, '.kiro/agents/exorcist-fixer.json'), '{"changed":true}');
     expect(await wd.agentIntact(f.work)).toBe(false);
+    expect(await wd.agentCheck(f.work)).toEqual({ ok: false, key: 'description' });
+  });
+
+  it('makes the export read-only once filled, and still removes it (18.4)', async () => {
+    const f = await wd.create(ID, 'payments', tar);
+    expect(statSync(join(f.exportDir, 'services/payments/src/charge.js')).mode & 0o222).toBe(0);
+    expect(() => writeFileSync(join(f.exportDir, 'services/payments/src/charge.js'), 'x')).toThrow();
+    expect(() => writeFileSync(join(f.exportDir, 'services/payments/src/new.js'), 'x')).toThrow();
+    // The work copy stays writable.
+    writeFileSync(join(f.work, 'services/payments/src/charge.js'), 'changed');
+    await wd.remove(ID);
+    expect(existsSync(f.base)).toBe(false);
+  });
+
+  it('gives the fixer its own 0700 HOME with only the kiro-cli data folder linked in (18.4)', async () => {
+    const parent = join(tmp, 'parent-home');
+    mkdirSync(join(parent, 'Library/Application Support/kiro-cli'), { recursive: true });
+    mkdirSync(join(parent, '.ssh'), { recursive: true });
+    mkdirSync(join(parent, '.kiro/steering'), { recursive: true });
+    const home = await wd.prepareHome(parent);
+    expect(statSync(home).mode & 0o777).toBe(0o700);
+    expect(readdirSync(home)).toEqual(['Library']);
+    expect(lstatSync(join(home, 'Library/Application Support/kiro-cli')).isSymbolicLink()).toBe(true);
+    expect(existsSync(join(home, '.ssh'))).toBe(false);
+    expect(existsSync(join(home, '.kiro'))).toBe(false);
+    // Made empty again for the next run, and nothing at all when the parent has no kiro-cli folder.
+    writeFileSync(join(home, 'left.txt'), 'x');
+    const again = await wd.prepareHome(join(tmp, 'no-such-home'));
+    expect(again).toBe(home);
+    expect(readdirSync(again)).toEqual([]);
+  });
+
+  it('keeps the mode of the linked folder and its files over repeated runs (task 21)', async () => {
+    const parent = join(tmp, 'parent-home-21');
+    const state = join(parent, 'Library/Application Support/kiro-cli');
+    mkdirSync(state, { recursive: true });
+    chmodSync(state, 0o700);
+    writeFileSync(join(state, 'data.sqlite3'), 'login', { mode: 0o600 });
+    chmodSync(join(state, 'data.sqlite3'), 0o600);
+    for (let i = 0; i < 3; i += 1) await wd.prepareHome(parent);
+    expect(statSync(state).mode & 0o777).toBe(0o700);
+    expect(statSync(join(state, 'data.sqlite3')).mode & 0o777).toBe(0o600);
+    expect(readFileSync(join(state, 'data.sqlite3'), 'utf8')).toBe('login');
   });
 
   it('removes the folders of a run, read-only parts included, and a second removal is harmless', async () => {

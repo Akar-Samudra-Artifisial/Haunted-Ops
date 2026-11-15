@@ -12,7 +12,7 @@ import {
 } from '@haunted-ops/shared';
 import { toSceneModel } from '../scene/model.js';
 import { serviceStateArb } from '../test/arbs.js';
-import { PROPOSAL_PHASE, proposalView } from './proposal-text.js';
+import { PROPOSAL_PHASE, checksInWords, proposalView } from './proposal-text.js';
 import { tableRowText } from './table-model.js';
 
 const iso = '2026-11-14T10:00:00.000Z';
@@ -97,8 +97,32 @@ describe('Property 13: the table and the scene show the same Proposal state', ()
         expect(v.cell).toContain(v.statusText);
         expect(v.sentence.length).toBeGreaterThan(0);
         expect(v.sentence.length).toBeLessThan(120);
-        if (p.checks.length > 0) expect(v.checksText).toMatch(/(passed|failed)/);
+        if (p.checks.length > 0) expect(v.checksText).toMatch(/(passed|failed|skipped)/);
       }),
     );
+  });
+
+  it('says "tests skipped" for a skipped tests check, never "tests passed"', () => {
+    const text = checksInWords([
+      { name: 'scope', ok: true },
+      { name: 'tests', ok: true, skipped: true, detail: 'no sandbox-green tests for orders' },
+    ]);
+    expect(text).toBe('in scope passed, tests skipped');
+    expect(text).not.toContain('tests passed');
+    const v = proposalView({
+      id: 'cmproposalaaaaaaaaaaaaaaa',
+      huntId: 'cmhuntaaaaaaaaaaaaaaaaaaa',
+      attempt: 1,
+      kind: 'ai_patch',
+      status: 'open',
+      prNumber: 4,
+      prUrl: 'https://github.com/owner/repo/pull/4',
+      mergedBy: null,
+      checks: [{ name: 'tests', ok: true, skipped: true, detail: 'no sandbox-green tests for orders' }],
+      failReason: null,
+      aiFailReason: null,
+      updatedAt: '2026-11-14T10:00:00.000Z',
+    });
+    expect(v.cell).toContain('tests skipped');
   });
 });

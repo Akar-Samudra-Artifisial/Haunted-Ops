@@ -3,6 +3,7 @@ import {
   canMove,
   checkProposalCheck,
   isActiveProposalStatus,
+  scrubAiFailDetail,
   validateServiceName,
   type AiFailReason,
   type ProposalCheck,
@@ -26,6 +27,8 @@ export interface ProposalRecord {
   status: ProposalStatus;
   failReason: ProposalFailReason | null;
   aiFailReason: AiFailReason | null;
+  /** What stopped the fixer, `<code>: <detail>`. In the view (scrubbed), not in the summary. */
+  aiFailDetail: string | null;
   prNumber: number | null;
   prUrl: string | null;
   branch: string | null;
@@ -45,6 +48,8 @@ export interface ProposalRecord {
   updatedAt: Date;
   openedAt: Date | null;
   mergedAt: Date | null;
+  /** When the lab was asked to deploy the merge commit (internal, not in the view). */
+  deployAskedAt: Date | null;
   deployedAt: Date | null;
   finishedAt: Date | null;
 }
@@ -56,6 +61,7 @@ export type ProposalPatch = Partial<
     | 'kind'
     | 'failReason'
     | 'aiFailReason'
+    | 'aiFailDetail'
     | 'prNumber'
     | 'prUrl'
     | 'branch'
@@ -73,6 +79,7 @@ export type ProposalPatch = Partial<
     | 'etag'
     | 'openedAt'
     | 'mergedAt'
+    | 'deployAskedAt'
     | 'deployedAt'
     | 'finishedAt'
   >
@@ -122,6 +129,8 @@ export const toProposalSummary = (r: ProposalRecord): ProposalSummary => ({
 
 export const toProposalView = (r: ProposalRecord): ProposalView => ({
   ...toProposalSummary(r),
+  // Why the Fixer's run was not used: one line, no path, no token-like text, at most 300 characters.
+  aiFailDetail: r.aiFailDetail === null ? null : scrubAiFailDetail(r.aiFailDetail) || null,
   service: r.service,
   credits: r.credits,
   creditsEstimated: r.creditsEstimated,
@@ -151,6 +160,7 @@ interface Row {
   status: ProposalStatus;
   failReason: string | null;
   aiFailReason: string | null;
+  aiFailDetail: string | null;
   prNumber: number | null;
   prUrl: string | null;
   branch: string | null;
@@ -170,6 +180,7 @@ interface Row {
   updatedAt: Date;
   openedAt: Date | null;
   mergedAt: Date | null;
+  deployAskedAt: Date | null;
   deployedAt: Date | null;
   finishedAt: Date | null;
   hunt: { service: { name: string } };

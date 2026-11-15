@@ -43,6 +43,7 @@ const AI_FAIL_TEXT: Readonly<Record<AiFailReason, string>> = Object.freeze({
   timeout: 'timed out',
   budget: 'budget reached',
   daily_limit: 'daily limit reached',
+  unchecked: 'nothing could check it',
 });
 
 const FAIL_TEXT = (r: ProposalFailReason): string => r.replace(/_/g, ' ');
@@ -69,7 +70,8 @@ export const isGithubUrl = (url: string | null): url is string => url !== null &
 
 export function checksInWords(checks: readonly ProposalCheck[]): string | null {
   if (checks.length === 0) return null;
-  return checks.map((c) => `${CHECK_TEXT[c.name]} ${c.ok ? 'passed' : 'failed'}`).join(', ');
+  // A skipped tests check is said as such, never as "passed": no automated test ran for that service.
+  return checks.map((c) => `${CHECK_TEXT[c.name]} ${c.skipped === true ? 'skipped' : c.ok ? 'passed' : 'failed'}`).join(', ');
 }
 
 /** The one place that turns a Proposal into text, for the table cell, the announcer and the scene label. */
@@ -83,7 +85,14 @@ export function proposalView(p: ProposalSummary | null, service = ''): ProposalV
   const mergedBy = p.mergedBy !== null && p.status !== 'drafting' && p.status !== 'open' ? p.mergedBy : null;
   const failText = p.failReason === null ? null : FAIL_TEXT(p.failReason);
   const aiFailText = p.aiFailReason === null ? null : AI_FAIL_TEXT[p.aiFailReason];
-  const cell = [kindText === null ? 'Fix' : `Fix (${kindText})`, statusText, mergedBy === null ? null : `merged by @${mergedBy}`, failText === null ? null : `reason: ${failText}`]
+  const testsSkipped = p.checks.some((c) => c.name === 'tests' && c.skipped === true);
+  const cell = [
+    kindText === null ? 'Fix' : `Fix (${kindText})`,
+    statusText,
+    testsSkipped ? 'tests skipped' : null,
+    mergedBy === null ? null : `merged by @${mergedBy}`,
+    failText === null ? null : `reason: ${failText}`,
+  ]
     .filter((x): x is string => x !== null)
     .join(', ');
   const on = service === '' ? '' : ` on ${service}`;

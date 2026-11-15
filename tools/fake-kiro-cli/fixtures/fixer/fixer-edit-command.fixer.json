@@ -1,0 +1,17 @@
+{
+  "steps": [
+    {
+      "kind": "migrate-agent"
+    },
+    {
+      "kind": "read-dynamic",
+      "path": "services/payments/src/charge.js"
+    },
+    {
+      "kind": "edit-command",
+      "path": "services/payments/src/charge.js",
+      "oldStr": "  return Math.round(order.amount * 100);\n",
+      "newStr": "  if (!order || typeof order.amount !== 'number') return 0;\n  return Math.round(order.amount * 100);\n"
+    }
+  ]
+}

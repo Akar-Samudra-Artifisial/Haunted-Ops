@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
 import { lstat, open, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { AiFailReason, ProposalCheck, ServiceName } from '@haunted-ops/shared';
+import { SYNTAX_SKIPPED_DETAIL, testsSkippedDetail, type AiFailReason, type ProposalCheck, type ServiceName } from '@haunted-ops/shared';
 
 /** The most files and lines a patch may change. */
 export const MAX_PATCH_FILES = 5;
@@ -29,6 +29,8 @@ export interface Patch {
 
 const NAME = /^[A-Za-z0-9._@][A-Za-z0-9._/@-]{0,249}$/;
 const AGENT_FILE = '.kiro/agents/exorcist-fixer.json';
+/** The backup kiro-cli 3.3.0 writes when it migrates the agent file in place. */
+export const AGENT_BACKUP = `${AGENT_FILE}.bak`;
 
 const isPlainName = (p: string): boolean => NAME.test(p) && p.normalize('NFC') === p && !p.split('/').some((s) => s === '..' || s === '.' || s === '');
 
@@ -67,18 +69,44 @@ async function readText(file: string): Promise<{ ok: true; text: string } | { ok
   }
 }
 
+export interface ReadPatchOptions {
+  /** The bytes of the agent file the runner exported (the committed file, not the migrated copy). */
+  pristineAgent?: Buffer;
+}
+
+/** True when the file (opened without following a link) holds exactly `bytes`. */
+async function sameBytes(file: string, bytes: Buffer): Promise<boolean> {
+  let handle;
+  try {
+    handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const s = await handle.stat();
+    if (!s.isFile() || s.nlink !== 1 || s.size !== bytes.length) return false;
+    return (await handle.readFile()).equals(bytes);
+  } catch {
+    return false;
+  } finally {
+    await handle?.close();
+  }
+}
+
 /**
  * The patch: what the work folder holds compared with the export, byte for byte. The tree is walked with `lstat`
  * and never followed through a link. The agent copy under `.kiro` is not part of it (the runner checks its hash);
  * anything else under `.kiro` is unreadable. A name that is not a plain relative path is unreadable too.
  */
-export async function readPatch(exportDir: string, workDir: string): Promise<Patch> {
+export async function readPatch(exportDir: string, workDir: string, o: ReadPatchOptions = {}): Promise<Patch> {
   const before = new Map((await listTree(exportDir)).map((e) => [e.path, e]));
   const after = await listTree(workDir);
   const patch: Patch = { changed: [], added: [], deleted: [], unreadable: [] };
   const seen = new Set<string>();
   for (const e of after) {
-    if (e.path === '.kiro' || e.path === '.kiro/agents' || e.path === AGENT_FILE) continue;
+    // The agent folders and the agent copy are left out only in the shape the runner made them: folders, a file.
+    // A link (or anything else) in their place is unreadable.
+    if ((e.path === '.kiro' || e.path === '.kiro/agents') && e.kind === 'dir') continue;
+    if (e.path === AGENT_FILE && e.kind === 'file' && e.nlink === 1) continue;
+    // kiro-cli keeps the agent file it migrated as `<agent>.json.bak`. It is left out, and never applied, only when it
+    // is a plain file (no link, no hard link) holding exactly the bytes of the agent file the runner exported.
+    if (e.path === AGENT_BACKUP && e.kind === 'file' && e.nlink === 1 && o.pristineAgent !== undefined && (await sameBytes(join(workDir, e.path), o.pristineAgent))) continue;
     if (e.kind === 'dir') {
       if (e.path.startsWith('.kiro/')) patch.unreadable.push({ path: e.path, why: 'name' });
       continue;
@@ -140,13 +168,26 @@ export interface TestsResult {
   /** How many tests ran. */
   ran: number;
   timedOut: boolean;
+  /**
+   * No test ran on purpose: the service tests with vitest and its sandbox-green set is empty. The `tests` check is then
+   * recorded as `{ name: 'tests', ok: true, skipped: true, detail }` (with `ok` true and nothing ran), whatever
+   * `FIX_REQUIRE_TESTS` says, and the pull request body warns the reviewer. Never set for a service tested with
+   * `node --test`.
+   */
+  skipped?: boolean;
+}
+
+/** The `tests` entry of a passed check list: the skipped form when the run was skipped. */
+export function testsCheck(service: ServiceName, tests: TestsResult): ProposalCheck {
+  return tests.skipped === true ? { name: 'tests', ok: true, skipped: true, detail: testsSkippedDetail(service) } : { name: 'tests', ok: true };
 }
 
 /** What needs a clone and a process: asked for only when every check before it passed. */
 export interface DynamicChecks {
   /** `binary`: git could not count a file (`-` in numstat: a binary file, or a `-diff` attribute), so its lines are unknown. */
   size(): Promise<PatchSize> | PatchSize;
-  syntax(): Promise<boolean> | boolean;
+  /** `true`/`'ok'` parsed, `false`/`'failed'` refused, `'skipped'` no checker applies to the written files. */
+  syntax(): Promise<boolean | 'ok' | 'failed' | 'skipped'> | boolean | 'ok' | 'failed' | 'skipped';
   tests(): Promise<TestsResult> | TestsResult;
 }
 
@@ -203,7 +244,9 @@ export async function judgePatch(patch: Patch, ctx: JudgeContext, dyn: DynamicCh
   if (all.length === 0) return fail('non_empty', 'scope');
   pass('non_empty');
   const service = `services/${ctx.service}/`;
-  if (!all.every((p) => p.startsWith(service))) return fail('scope', 'scope');
+  // Unreadable entries are judged by `forbidden_file` (the honest reason), wherever they are; scope looks at the rest.
+  const readable = [...patch.changed.map((f) => f.path), ...patch.added.map((f) => f.path), ...patch.deleted];
+  if (!readable.every((p) => p.startsWith(service))) return fail('scope', 'scope');
   pass('scope');
   const src = `${service}src/`;
   const written = [...patch.changed, ...patch.added].map((f) => f.path);
@@ -214,12 +257,16 @@ export async function judgePatch(patch: Patch, ctx: JudgeContext, dyn: DynamicCh
   if (size.binary === true) return fail('size', 'forbidden_file');
   if (size.files > MAX_PATCH_FILES || size.lines > MAX_PATCH_LINES || size.files < 1) return fail('size', 'size');
   pass('size');
-  if (!(await dyn.syntax())) return fail('syntax', 'tests_failed');
-  pass('syntax');
+  const syntax = await dyn.syntax();
+  if (syntax === false || syntax === 'failed') return fail('syntax', 'tests_failed');
+  const syntaxSkipped = syntax === 'skipped';
+  checks.push(syntaxSkipped ? { name: 'syntax', ok: true, skipped: true, detail: SYNTAX_SKIPPED_DETAIL } : { name: 'syntax', ok: true });
   const tests = await dyn.tests();
   if (tests.timedOut) return fail('tests', 'timeout');
-  if (!tests.ok || (tests.ran === 0 && ctx.requireTests)) return fail('tests', 'tests_failed');
-  pass('tests');
+  if (!tests.ok || (tests.ran === 0 && ctx.requireTests && tests.skipped !== true)) return fail('tests', 'tests_failed');
+  checks.push(testsCheck(ctx.service, tests));
+  // Nothing at all checked the code: no syntax checker and no test. The AI patch is not proposed (the revert is tried).
+  if (syntaxSkipped && tests.skipped === true) return { accepted: false, checks, aiFailReason: 'unchecked' };
   checks.push({ name: 'touches_culprit_files', ok: written.some((p) => ctx.culpritFiles.includes(p)) });
   return { accepted: true, checks, aiFailReason: null };
 }

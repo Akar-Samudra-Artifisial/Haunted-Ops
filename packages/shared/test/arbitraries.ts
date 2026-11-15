@@ -136,7 +136,10 @@ export const huntSummaryArb: fc.Arbitrary<HuntSummary> = fc
 export const loginArb = fc.stringMatching(/^[A-Za-z0-9][A-Za-z0-9-]{0,20}$/);
 const prNumberArb = fc.integer({ min: 1, max: 99_999 });
 export const prUrlOf = (n: number): string => `https://github.com/Akar-Samudra-Artifisial/Haunted-Lab/pull/${n}`;
-export const proposalCheckArb: fc.Arbitrary<ProposalCheck> = fc.record({ name: fc.constantFrom(...PROPOSAL_CHECK_NAMES), ok: fc.boolean() });
+export const proposalCheckArb: fc.Arbitrary<ProposalCheck> = fc.oneof(
+  { weight: 9, arbitrary: fc.record({ name: fc.constantFrom(...PROPOSAL_CHECK_NAMES), ok: fc.boolean() }) },
+  { weight: 1, arbitrary: fc.constantFrom(...SERVICE_NAMES).map((s): ProposalCheck => ({ name: 'tests', ok: true, skipped: true, detail: `no sandbox-green tests for ${s}` })) },
+);
 const checksArb = fc.array(proposalCheckArb, { maxLength: 8 });
 
 /** A consistent summary: the status decides which fields are set. */

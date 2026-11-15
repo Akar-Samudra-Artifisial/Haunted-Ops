@@ -215,6 +215,8 @@ model Proposal {
   failReason       String?
   /// Why the fixer's patch was not used (set with the kind `revert`, or when nothing could be proposed).
   aiFailReason     String?
+  /// Internal: what stopped the fixer (`<code>: <detail>`, at most 300 characters). Never in a public answer.
+  aiFailDetail     String?
   prNumber         Int?
   prUrl            String?
   /// `exorcist/<huntId>`
@@ -243,6 +245,8 @@ model Proposal {
   updatedAt        DateTime       @updatedAt
   openedAt         DateTime?
   mergedAt         DateTime?
+  /// When the API asked the lab to deploy the merge commit; a restart then looks for the record instead of asking again.
+  deployAskedAt    DateTime?
   deployedAt       DateTime?
   finishedAt       DateTime?
   hunt             Hunt           @relation(fields: [huntId], references: [id], onDelete: Cascade)

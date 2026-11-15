@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { PROPOSAL_STATUSES, canMove, isActiveProposalStatus, validateProposalSummary, type ProposalStatus } from '@haunted-ops/shared';
+import { PROPOSAL_STATUSES, canMove, isActiveProposalStatus, validateProposalSummary, validateProposalView, type ProposalStatus } from '@haunted-ops/shared';
 import { MemoryProposalStore } from '../../test/support/fix.js';
 import { toProposalSummary, toProposalView, type ProposalPatch } from './proposal-store.js';
 
@@ -91,5 +91,28 @@ describe('Property 5: a proposal status only moves forward along the graph', () 
     await check();
     await store.move(rec.id, 'merged', 'deployed', { deployedAt: NOW });
     await check();
+  });
+});
+
+// Feature: fix-proposal-flow, Property 20: the view shows the halt detail only scrubbed
+describe('Property 20: the view of a Proposal shows aiFailDetail scrubbed, whatever the stored text is', () => {
+  it('always gives a view that passes the validator, with no absolute path and no token-like text', async () => {
+    const store = new MemoryProposalStore(() => NOW);
+    const rec = (await store.create(HUNT, NOW)) as { id: string };
+    await fc.assert(
+      fc.asyncProperty(fc.oneof(fc.string({ maxLength: 500 }), fc.constantFrom('step_error: Error: ENOENT /var/x/y github_pat_AAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'agent_changed: changed at permissions.rules[5].capability')), async (detail) => {
+        await store.patch(rec.id, 'drafting', { aiFailDetail: detail });
+        const view = toProposalView((await store.byId(rec.id)) as never);
+        expect(validateProposalView(view).ok, JSON.stringify(detail)).toBe(true);
+        if (view.aiFailDetail !== null) {
+          expect(view.aiFailDetail.length).toBeLessThanOrEqual(300);
+          expect(view.aiFailDetail).not.toContain('/var/x');
+          expect(view.aiFailDetail).not.toContain('github_pat_AAAA');
+        }
+      }),
+      { numRuns: 300 },
+    );
+    await store.patch(rec.id, 'drafting', { aiFailDetail: null });
+    expect(toProposalView((await store.byId(rec.id)) as never).aiFailDetail).toBeNull();
   });
 });

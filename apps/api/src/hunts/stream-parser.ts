@@ -5,9 +5,10 @@
  */
 
 export type HuntStreamEvent =
-  | { type: 'tool_call'; id: string; title: string; rawInput: unknown }
+  /** `toolName` is `_meta.kiro.toolName` (the stable name, `read`, `write`) when the event has the key; a non-string value gives `''`. */
+  | { type: 'tool_call'; id: string; title: string; rawInput: unknown; kind?: string; toolName?: string }
   /** `title` is null when the update has none (kiro-cli 3.3.0 sends `title: null` while a call runs); `rawInput` is only what the update itself carries. */
-  | { type: 'tool_call_update'; id: string; status: string; title?: string | null; rawInput?: unknown }
+  | { type: 'tool_call_update'; id: string; status: string; title?: string | null; rawInput?: unknown; toolName?: string }
   /** The sum of `credits[i].usage` of one report. */
   | { type: 'credits'; usage: number }
   | { type: 'turn'; elapsedMs: number | null; stopReason: string | null }
@@ -33,6 +34,13 @@ function creditsOf(kiro: Record<string, unknown>): number | null {
   return sum;
 }
 
+/** `_meta.kiro.toolName` of a tool event, as `{ toolName }`; nothing when the key is absent, `''` when it is not a string. */
+function toolNameOf(update: Record<string, unknown>): { toolName?: string } {
+  const kiro = isRecord(update._meta) && isRecord(update._meta.kiro) ? update._meta.kiro : null;
+  if (kiro === null || !('toolName' in kiro)) return {};
+  return { toolName: typeof kiro.toolName === 'string' ? str(kiro.toolName, 60) : '' };
+}
+
 /** Turns one JSON value into an event. Total: any value gives an event. */
 export function classify(value: unknown): HuntStreamEvent {
   if (!isRecord(value)) return { type: 'malformed' };
@@ -44,7 +52,15 @@ export function classify(value: unknown): HuntStreamEvent {
   if (update === null) return { type: 'ignored' };
   switch (update.sessionUpdate) {
     case 'tool_call':
-      return { type: 'tool_call', id: str(update.toolCallId, 200), title: str(update.title, 200), rawInput: update.rawInput };
+      return {
+        type: 'tool_call',
+        id: str(update.toolCallId, 200),
+        title: str(update.title, 200),
+        rawInput: update.rawInput,
+        // `read`, `edit`, `other`: only named in a stop detail, never trusted to decide anything.
+        ...(typeof update.kind === 'string' ? { kind: str(update.kind, 40) } : {}),
+        ...toolNameOf(update),
+      };
     case 'tool_call_update':
       // `content` and `rawOutput` hold the tool result: not read. The title and the input are read only to check them against the call.
       return {
@@ -53,6 +69,7 @@ export function classify(value: unknown): HuntStreamEvent {
         status: str(update.status, 40) || 'unknown',
         title: typeof update.title === 'string' && update.title !== '' ? str(update.title, 200) : null,
         rawInput: update.rawInput,
+        ...toolNameOf(update),
       };
     case 'session_info_update': {
       const kiro = isRecord(update._meta) && isRecord(update._meta.kiro) ? update._meta.kiro : null;

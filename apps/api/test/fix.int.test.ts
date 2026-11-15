@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -365,7 +365,8 @@ describeDb('The fix flow end to end (Test database, fake kiro-cli fixer, fake Gi
     const cases: Array<[string, (rig: Rig, huntId: string, mergeSha: string) => void, string]> = [
       ['the lab refuses the chaos token', () => undefined, 'deploy_rejected'],
       ['a commit of the chain is outside the service', (rig, id, m) => rig.teachLab(id, m, [{ sha: m, files: ['services/orders/src/x.js'] }, { sha: rig.lab.base, files: [] }]), 'deploy_rejected'],
-      ['the lab is unavailable', (rig) => void (rig.fakeLab.deployFix.mode = 'unavailable'), 'deploy_unavailable'],
+      // Transient: kept `merged` and retried; with the confirm window at 0 it ends `deploy_unconfirmed` (task 18.3).
+      ['the lab is unavailable', (rig) => void (rig.fakeLab.deployFix.mode = 'unavailable'), 'deploy_unconfirmed'],
       ['the record never shows up', (rig) => void (rig.fakeLab.deployFix.mode = 'never_record'), 'deploy_unconfirmed'],
     ];
     for (const [label, arrange, reason] of cases) {
@@ -405,5 +406,23 @@ describeDb('The fix flow end to end (Test database, fake kiro-cli fixer, fake Gi
     expect((await rig.store.byId(op.id))?.status).toBe('rejected');
     // An event bus subscriber that started after the restart still sees the later events.
     expect(rig.server.app.get(EventBus).subscriberCount).toBeGreaterThan(0);
+  }, 180_000);
+
+  it('never changes the mode of the linked kiro-cli folder of the parent home, over two runs in the same FIX_WORKDIR (task 21)', async () => {
+    const rig = await startRig();
+    const state = join(rig.root, 'Library', 'Application Support', 'kiro-cli');
+    mkdirSync(state, { recursive: true });
+    chmodSync(state, 0o700);
+    const file = join(state, 'data.sqlite3');
+    writeFileSync(file, 'login state', { mode: 0o600 });
+    chmodSync(file, 0o600);
+    const modes = (): string => [state, file].map((p) => (statSync(p).mode & 0o777).toString(8)).join(' ');
+    for (let i = 0; i < 2; i += 1) {
+      const p = await rig.propose(await rig.hunt());
+      expect(p.status, `run ${i + 1}`).toBe('open');
+      expect(lstatSync(join(rig.root, 'fix', 'home', 'Library', 'Application Support', 'kiro-cli')).isSymbolicLink()).toBe(true);
+      expect(modes()).toBe('700 600');
+      expect(readFileSync(file, 'utf8')).toBe('login state');
+    }
   }, 180_000);
 });

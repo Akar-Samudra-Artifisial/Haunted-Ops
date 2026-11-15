@@ -11,6 +11,11 @@ export interface FakeKiroFixerOptions {
   fixture: string;
   dir?: string;
   observe?: boolean;
+  /**
+   * A file whose text is the path of a `*.stream.jsonl` to replay (read at each run, so one fake can replay many
+   * streams). When set, the stream replaces the fixture.
+   */
+  streamFile?: string;
 }
 export interface FixerObserved {
   argv: string[];

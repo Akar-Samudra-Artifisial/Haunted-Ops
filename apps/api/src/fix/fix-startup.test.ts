@@ -7,7 +7,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fixBranch, incidentBranch } from '@haunted-ops/shared';
 import { startFakeGithub, type FakeGithub } from '../../../../tools/fake-kiro-cli/fake-github.mjs';
 import { FixConfigError } from './fix-config.js';
-import { checkFixStartup, gitAtLeast, PROPOSAL_LABELS } from './fix-startup.js';
+import { startFakeLab } from '../../../../tools/fake-kiro-cli/fake-lab.mjs';
+import { CHAOS_TOKEN_REJECTED, checkFixStartup, gitAtLeast, PROPOSAL_LABELS } from './fix-startup.js';
+import { HttpChaosClient } from './lab-deploy-client.js';
 import { publishBranches } from './branch-publisher.js';
 import { GitClient, GitError, defaultGitExec, type GitExec } from './git-client.js';
 import { GithubClient } from './github-client.js';
@@ -65,6 +67,35 @@ describe('checkFixStartup', () => {
     expect(await names(() => checkFixStartup({ enabled: true }, deps(gh(), '')))).toEqual(['FIX_ENABLED']);
     fake.failNext(503, 503, 503);
     expect(await names(() => checkFixStartup({ enabled: true }, deps(gh())))).toEqual(['LAB_GITHUB_REPO']);
+  });
+
+  it('refuses to start when the lab rejects the chaos token, warns when the lab is unreachable or pnpm is missing', async () => {
+    const CHAOS = 'chaos-token-0123456789-abcdefghij';
+    const lab = await startFakeLab({ token: 'lab-read-token-0123456789-abcdef', chaosToken: CHAOS });
+    try {
+      const base = { github: gh(), gitVersion: async () => '2.43.0', log };
+      logs.length = 0;
+      await checkFixStartup({ enabled: true }, { ...base, chaos: new HttpChaosClient(lab.url, CHAOS), pnpmPath: '/usr/local/bin/pnpm' });
+      expect(logs.join('\n')).not.toContain('lab chaos api unreachable');
+      let message = '';
+      try {
+        await checkFixStartup({ enabled: true }, { ...base, chaos: new HttpChaosClient(lab.url, 'chaos-token-WRONG-0123456789-abcdef') });
+      } catch (err) {
+        expect(err).toBeInstanceOf(FixConfigError);
+        expect((err as FixConfigError).variables).toEqual(['CHAOS_TOKEN']);
+        message = (err as Error).message;
+      }
+      expect(message).toBe(CHAOS_TOKEN_REJECTED);
+      expect(message).not.toContain('WRONG');
+      // The probe is a GET of the state route: nothing is deployed.
+      expect(lab.deployFix.calls).toHaveLength(0);
+      logs.length = 0;
+      await checkFixStartup({ enabled: true }, { ...base, chaos: new HttpChaosClient('http://127.0.0.1:9', CHAOS), pnpmPath: null });
+      expect(logs.join('\n')).toContain('lab chaos api unreachable');
+      expect(logs.join('\n')).toContain('pnpm not found');
+    } finally {
+      await lab.close();
+    }
   });
 
   it('reads git versions', () => {

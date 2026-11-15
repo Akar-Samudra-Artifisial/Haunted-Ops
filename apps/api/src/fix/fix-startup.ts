@@ -13,7 +13,14 @@ export interface StartupDeps {
   /** `git --version`, for example `2.43.0`. */
   gitVersion: () => Promise<string>;
   log: (level: 'info' | 'warn', msg: string, fields?: Record<string, unknown>) => void;
+  /** The lab chaos API, checked with the chaos token (`HttpChaosClient.probe`). */
+  chaos?: { probe(): Promise<'ok' | 'rejected' | 'unavailable'> };
+  /** `FixConfig.pnpmPath`: null makes a warning (vitest services cannot run their tests). */
+  pnpmPath?: string | null;
 }
+
+/** The message when the lab refuses the chaos token: it names the variable, never its value. */
+export const CHAOS_TOKEN_REJECTED = 'CHAOS_TOKEN rejected by the lab';
 
 /** True when `version` is at least `major.minor` (`GIT_CONFIG_COUNT` needs 2.31). */
 export function gitAtLeast(version: string, major: number, minor: number): boolean {
@@ -42,4 +49,11 @@ export async function checkFixStartup(cfg: Pick<FixConfig, 'enabled'>, deps: Sta
     if (err instanceof GithubError) throw new FixConfigError([err.code === 'github_unauthorized' || err.code === 'github_forbidden' ? 'GITHUB_TOKEN' : 'LAB_GITHUB_REPO']);
     throw new FixConfigError(['LAB_GITHUB_REPO']);
   }
+  // The chaos token must be the lab's own: a wrong one would only show after a human merged a pull request.
+  if (deps.chaos !== undefined) {
+    const answer = await deps.chaos.probe().catch(() => 'unavailable' as const);
+    if (answer === 'rejected') throw new FixConfigError(['CHAOS_TOKEN'], CHAOS_TOKEN_REJECTED);
+    if (answer === 'unavailable') deps.log('warn', 'lab chaos api unreachable', {});
+  }
+  if (deps.pnpmPath === null) deps.log('warn', 'pnpm not found: services tested with vitest cannot pass their tests check', {});
 }

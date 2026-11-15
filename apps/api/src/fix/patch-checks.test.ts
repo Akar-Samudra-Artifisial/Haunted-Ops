@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { MAX_PATCH_FILE_BYTES, isForbiddenName, judgePatch, readPatch, type DynamicChecks, type JudgeContext, type Patch } from './patch-checks.js';
+import { defaultFixerAgentSource } from './fix-env.js';
+import { AGENT_BACKUP, MAX_PATCH_FILE_BYTES, isForbiddenName, judgePatch, readPatch, type DynamicChecks, type JudgeContext, type Patch } from './patch-checks.js';
 
 describe('readPatch', () => {
   let tmp: string;
@@ -66,6 +67,100 @@ describe('readPatch', () => {
     expect(why['.kiro/hooks/x.json']).toBe('name');
     // The link target was never read: nothing of /etc/hosts is in the patch.
     expect(JSON.stringify(p)).not.toContain('localhost');
+  });
+});
+
+describe('readPatch and the agent backup kiro-cli writes when it migrates the agent file', () => {
+  const PRISTINE = readFileSync(defaultFixerAgentSource());
+  const MIGRATED = readFileSync(new URL('../../test/fixtures/fixer-agent-migrated.json', import.meta.url));
+  const AGENT = '.kiro/agents/exorcist-fixer.json';
+  const ctx: JudgeContext = { service: 'payments', requireTests: true, culpritFiles: [] };
+  const dyn: DynamicChecks = { size: () => ({ files: 1, lines: 1 }), syntax: () => true, tests: () => ({ ok: true, ran: 2, timedOut: false }) };
+  let tmp: string;
+  let n = 0;
+  beforeAll(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'read-patch-bak-'));
+  });
+  afterAll(() => rmSync(tmp, { recursive: true, force: true }));
+  /** An export and a work folder as a real run leaves them: one in-scope edit, the migrated agent, and `extra`. */
+  const run = (extra: (work: string) => void): { exp: string; work: string } => {
+    const base = join(tmp, String(++n));
+    const exp = join(base, 'export');
+    const work = join(base, 'work');
+    for (const root of [exp, work]) {
+      mkdirSync(join(root, 'services/payments/src'), { recursive: true });
+      writeFileSync(join(root, 'services/payments/src/refunds.ts'), 'export const a = 1;\n');
+    }
+    writeFileSync(join(work, 'services/payments/src/refunds.ts'), 'export const a = 2;\n');
+    mkdirSync(join(work, '.kiro/agents'), { recursive: true });
+    writeFileSync(join(work, AGENT), MIGRATED);
+    extra(work);
+    return { exp, work };
+  };
+
+  it('leaves out a .bak byte-equal to the exported agent: the patch is exactly the edit, and the gates pass', async () => {
+    const { exp, work } = run((w) => writeFileSync(join(w, AGENT_BACKUP), PRISTINE));
+    const p = await readPatch(exp, work, { pristineAgent: PRISTINE });
+    expect(p).toEqual({ changed: [{ path: 'services/payments/src/refunds.ts', content: 'export const a = 2;\n' }], added: [], deleted: [], unreadable: [] });
+    const j = await judgePatch(p, ctx, dyn);
+    expect(j.checks.slice(0, 3)).toEqual([
+      { name: 'non_empty', ok: true },
+      { name: 'scope', ok: true },
+      { name: 'forbidden_file', ok: true },
+    ]);
+    expect(j.accepted).toBe(true);
+    // Without the pristine bytes the backup is not trusted.
+    expect((await readPatch(exp, work)).unreadable).toEqual([{ path: AGENT_BACKUP, why: 'name' }]);
+  });
+
+  it('keeps a .bak with other bytes unreadable, and the patch fails forbidden_file', async () => {
+    const { exp, work } = run((w) => writeFileSync(join(w, AGENT_BACKUP), MIGRATED));
+    const p = await readPatch(exp, work, { pristineAgent: PRISTINE });
+    expect(p.unreadable).toEqual([{ path: AGENT_BACKUP, why: 'name' }]);
+    expect(await judgePatch(p, ctx, dyn)).toMatchObject({ accepted: false, aiFailReason: 'forbidden_file' });
+  });
+
+  it('keeps a .bak that is a symlink or a hard link unreadable, even to the right bytes', async () => {
+    const link = run((w) => {
+      writeFileSync(join(w, 'pristine.json'), PRISTINE);
+      symlinkSync(join(w, 'pristine.json'), join(w, AGENT_BACKUP));
+    });
+    const lp = await readPatch(link.exp, link.work, { pristineAgent: PRISTINE });
+    expect(lp.unreadable).toContainEqual({ path: AGENT_BACKUP, why: 'name' });
+    const hard = run((w) => {
+      writeFileSync(join(w, AGENT_BACKUP), PRISTINE);
+      linkSync(join(w, AGENT_BACKUP), join(w, '.kiro/agents/twin.json'));
+    });
+    const hp = await readPatch(hard.exp, hard.work, { pristineAgent: PRISTINE });
+    expect(hp.unreadable.map((u) => u.path)).toContain(AGENT_BACKUP);
+  });
+
+  it('does not leave out the agent copy or its folder when they are links (18.4)', async () => {
+    const { exp, work } = run((w) => {
+      rmSync(join(w, AGENT));
+      writeFileSync(join(w, 'agent-real.json'), MIGRATED);
+      symlinkSync(join(w, 'agent-real.json'), join(w, AGENT));
+    });
+    const p = await readPatch(exp, work, { pristineAgent: PRISTINE });
+    expect(p.unreadable).toContainEqual({ path: AGENT, why: 'name' });
+  });
+
+  it('keeps any other new file under .kiro unreadable, failing forbidden_file and not scope', async () => {
+    const { exp, work } = run((w) => {
+      writeFileSync(join(w, AGENT_BACKUP), PRISTINE);
+      writeFileSync(join(w, '.kiro/agents/other.json'), '{}');
+    });
+    const p = await readPatch(exp, work, { pristineAgent: PRISTINE });
+    expect(p.unreadable).toEqual([{ path: '.kiro/agents/other.json', why: 'name' }]);
+    expect(await judgePatch(p, ctx, dyn)).toMatchObject({
+      accepted: false,
+      aiFailReason: 'forbidden_file',
+      checks: [
+        { name: 'non_empty', ok: true },
+        { name: 'scope', ok: true },
+        { name: 'forbidden_file', ok: false },
+      ],
+    });
   });
 });
 

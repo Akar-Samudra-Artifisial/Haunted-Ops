@@ -10,3 +10,4 @@ apps/web/playwright-report/
 .vscode/
 
 !.env.example
+.agents/

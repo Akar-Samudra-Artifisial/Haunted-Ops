@@ -300,6 +300,34 @@ test('tool-call-wrapper writes diff_commit and tail_logs through the Tool Call w
   assert.ok(r.ledger.some((l) => l.type === 'diagnosis'));
 });
 
+test('the fixer fake applies create, strReplace (with replaceAll) and insert (with and without insertLine) in the work folder (task 22)', async () => {
+  const { applyEdit } = await import('./fake-kiro-fixer.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'fake-apply-'));
+  try {
+    const read = () => readFileSync(join(dir, 'src', 'a.ts'), 'utf8');
+    assert.equal(applyEdit({ command: 'create', path: 'src/a.ts', content: 'l1\nl2\nl3\nl2\n' }, dir), true);
+    assert.equal(read(), 'l1\nl2\nl3\nl2\n');
+    assert.equal(applyEdit({ command: 'insert', path: 'src/a.ts', content: 'X\n', insertLine: 1 }, dir), true);
+    assert.equal(read(), 'l1\nX\nl2\nl3\nl2\n');
+    assert.equal(applyEdit({ command: 'insert', path: 'src/a.ts', content: 'END\n' }, dir), true);
+    assert.equal(read(), 'l1\nX\nl2\nl3\nl2\nEND\n');
+    assert.equal(applyEdit({ command: 'strReplace', path: 'src/a.ts', oldStr: 'l2', newStr: 'L2' }, dir), true);
+    assert.equal(read(), 'l1\nX\nL2\nl3\nl2\nEND\n');
+    assert.equal(applyEdit({ command: 'strReplace', path: 'src/a.ts', oldStr: 'l2', newStr: 'L2', replaceAll: true }, dir), true);
+    assert.equal(read(), 'l1\nX\nL2\nl3\nL2\nEND\n');
+    // The older shapes, and calls that change nothing.
+    assert.equal(applyEdit({ path: 'src/b.ts', text: 'old' }, dir), true);
+    assert.equal(applyEdit({ path: 'src/b.ts', oldStr: 'old', newStr: 'new' }, dir), true);
+    assert.equal(readFileSync(join(dir, 'src', 'b.ts'), 'utf8'), 'new');
+    assert.equal(applyEdit({ command: 'strReplace', path: 'src/a.ts', oldStr: 'not there', newStr: 'x' }, dir), false);
+    assert.equal(applyEdit({ path: 'src/a.ts', offset: null, limit: null }, dir), false);
+    assert.equal(applyEdit({ operations: [{ mode: 'Line', path: 'src/a.ts' }] }, dir), false);
+    assert.equal(applyEdit(undefined, dir), false);
+    assert.equal(applyEdit({ command: 'delete', path: 'src/a.ts' }, dir), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 test('tool-call-foreign writes a wrapper that names a built-in tool, runs nothing, and waits to be killed', async () => {
   const r = await run('tool-call-foreign', { timeoutMs: 4000 });
   assert.equal(r.signal, 'SIGKILL');

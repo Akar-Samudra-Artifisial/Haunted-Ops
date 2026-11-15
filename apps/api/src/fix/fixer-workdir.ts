@@ -1,8 +1,19 @@
-import { createHash } from 'node:crypto';
-import { chmod, copyFile, cp, lstat, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { open, chmod, copyFile, cp, lstat, mkdir, readFile, readdir, realpath, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, parse } from 'node:path';
 import { CUID_PATTERN, SERVICE_NAMES, type ServiceName } from '@haunted-ops/shared';
+import { agentUnchanged, type AgentCheck } from './agent-check.js';
 import { defaultFixerAgentSource, FIXER_AGENT } from './fix-env.js';
+
+export const FIXER_STREAM_SUFFIX = '.fixer.stream.jsonl';
+/**
+ * The paths of the API user's home that are linked into the fixer's own `HOME`: the kiro-cli data folder, where it
+ * keeps its login (macOS, then Linux). Not checked against a real kiro-cli in this task (no live run); the opt-in live
+ * test (10.2) confirms it, and the list is the one place to change.
+ */
+export const KIRO_STATE_PATHS = ['Library/Application Support/kiro-cli', '.local/share/kiro-cli'] as const;
+/** Fixer stream files are kept this long. */
+export const FIXER_STREAM_MAX_AGE_MS = 7 * 24 * 3_600_000;
 
 /** Why a fixer folder was refused. Never carries a path. */
 export class FixerWorkdirError extends Error {
@@ -100,32 +111,50 @@ export function readTar(tar: Buffer, allowed: readonly string[]): TarEntry[] {
   return entries;
 }
 
+/** Visits real files and folders below `dir`. A symlink is skipped: never followed, never visited. */
 async function walk(dir: string, visit: (path: string, isDir: boolean) => Promise<void>): Promise<void> {
   for (const name of await readdir(dir)) {
     const p = join(dir, name);
     const s = await lstat(p);
+    if (s.isSymbolicLink()) continue;
     if (s.isDirectory()) {
       await walk(p, visit);
       await visit(p, true);
-    } else await visit(p, false);
+    } else if (s.isFile()) await visit(p, false);
   }
 }
 
-/** Files 0444 and folders 0555 below `dir`, `dir` included. */
+/** Permission changes never follow links: the folder given must not be a link itself. */
+async function assertNotLink(dir: string): Promise<void> {
+  if ((await lstat(dir)).isSymbolicLink()) throw new Error('permission change refused: the folder is a link');
+}
+
+/** Files 0444 and folders 0555 below `dir`, `dir` included. Links are skipped; `dir` itself must not be a link. */
 export async function makeReadOnly(dir: string): Promise<void> {
+  await assertNotLink(dir);
   await walk(dir, (p, isDir) => chmod(p, isDir ? 0o555 : 0o444));
   await chmod(dir, 0o555);
 }
 
-/** The reverse of `makeReadOnly`, so the folder can be deleted. */
+/** The reverse of `makeReadOnly`, so the folder can be deleted. Links are skipped; `dir` itself must not be a link. */
 export async function makeWritable(dir: string): Promise<void> {
+  await assertNotLink(dir);
   await chmod(dir, 0o755).catch(() => undefined);
   const todo: string[] = [];
   await walk(dir, async (p, isDir) => void todo.push(isDir ? `d${p}` : `f${p}`)).catch(() => undefined);
   for (const t of todo) await chmod(t.slice(1), t[0] === 'd' ? 0o755 : 0o644).catch(() => undefined);
 }
 
-const sha256 = async (p: string): Promise<string> => createHash('sha256').update(await readFile(p)).digest('hex');
+/** Unlinks every symlink below `dir` (never following one), so a later `rm` cannot reach a target. */
+async function unlinkLinks(dir: string): Promise<void> {
+  for (const name of await readdir(dir)) {
+    const p = join(dir, name);
+    const s = await lstat(p);
+    if (s.isSymbolicLink()) await unlink(p);
+    else if (s.isDirectory()) await unlinkLinks(p);
+  }
+}
+
 
 /**
  * The folders of the fixer. Each run gets `<root>/fixer/<proposalId>/work` (where the process runs) and `.../export`
@@ -172,6 +201,33 @@ export class FixerWorkdir {
     return join(this.path, `${proposalId}.pid`);
   }
 
+  /** The folder of the fixer streams, `<root>/streams` (mode 0700). */
+  get streamsDir(): string {
+    return join(this.path, 'streams');
+  }
+
+  /** Path of the reduced stream of a fixer run, `<root>/streams/<proposalId>.fixer.stream.jsonl`. */
+  streamPath(proposalId: string): string {
+    if (!CUID_PATTERN.test(proposalId)) throw new FixerWorkdirError('bad_proposal_id');
+    return join(this.streamsDir, `${proposalId}${FIXER_STREAM_SUFFIX}`);
+  }
+
+  /** Makes the streams folder and deletes stream files older than `maxAgeMs` (7 days by default). Returns how many. */
+  async pruneStreams(now: Date, maxAgeMs: number = FIXER_STREAM_MAX_AGE_MS): Promise<number> {
+    await mkdir(this.streamsDir, { recursive: true, mode: 0o700 });
+    await chmod(this.streamsDir, 0o700);
+    let removed = 0;
+    for (const name of await readdir(this.streamsDir)) {
+      if (!name.endsWith(FIXER_STREAM_SUFFIX)) continue;
+      const p = join(this.streamsDir, name);
+      const s = await lstat(p).catch(() => null);
+      if (s === null || !s.isFile() || now.getTime() - s.mtimeMs <= maxAgeMs) continue;
+      await rm(p, { force: true });
+      removed += 1;
+    }
+    return removed;
+  }
+
   /** The API's own bare copy of the Lab repo and the candidate clones live next to the fixer folders. */
   get mirrorPath(): string {
     return join(this.path, 'lab.git');
@@ -202,6 +258,8 @@ export class FixerWorkdir {
       }
     }
     await cp(f.exportDir, f.work, { recursive: true, verbatimSymlinks: true });
+    // The export is what the patch is read against: read-only once filled (after the copy, which keeps modes).
+    await makeReadOnly(f.exportDir);
     const common = join(f.work, 'packages', 'lab-common');
     if (await stat(common).then(() => true, () => false)) await makeReadOnly(common);
     if (!(await stat(this.agentSource).then(() => true, () => false))) throw new FixerWorkdirError('bad_agent');
@@ -227,13 +285,67 @@ export class FixerWorkdir {
     return out;
   }
 
-  /** True when the agent copy is still byte-equal to the committed file (the run may have rewritten it). */
-  async agentIntact(work: string): Promise<boolean> {
+  /**
+   * Whether the agent copy is still the committed agent after the run. kiro-cli 3.3.0 migrates the file in place
+   * (renamed tools, added allow rules, `kiroUpgrade`), so this is a semantic check (`agentUnchanged`), not a byte one.
+   * A missing or unreadable copy is a change.
+   */
+  async agentCheck(work: string): Promise<AgentCheck> {
+    let copy: string;
+    let source: string;
+    let handle;
     try {
-      return (await sha256(join(work, AGENT_REL))) === (await sha256(this.agentSource));
+      // The copy is opened without following a link, and must be a regular file with one link.
+      handle = await open(join(work, AGENT_REL), constants.O_RDONLY | constants.O_NOFOLLOW);
+      const s = await handle.stat();
+      if (!s.isFile() || s.nlink !== 1 || s.size > 256 * 1024) return { ok: false, key: '(not a plain file)' };
+      copy = (await handle.readFile()).toString('utf8');
+      source = await readFile(this.agentSource, 'utf8');
     } catch {
-      return false;
+      return { ok: false, key: '(missing)' };
+    } finally {
+      await handle?.close();
     }
+    return agentUnchanged(source, copy);
+  }
+
+  /**
+   * The fixer's own `HOME`: `<root>/home`, mode 0700, made empty for every run. kiro-cli keeps its login in its data
+   * folder under the user's home; only that folder is linked in (`KIRO_STATE_PATHS`, when it exists in `parentHome`),
+   * nothing else of the API user's home (no `.kiro` with global agents or steering, no `.ssh`, no `.aws`, no shell
+   * profile). The links are outside the work folder, so the stream guard keeps the fixer's tools away from them.
+   */
+  async prepareHome(parentHome: string | undefined): Promise<string> {
+    const home = join(this.path, 'home');
+    // No `makeWritable` here: the links go first, then the rest; `chmod` runs on `home` only.
+    const old = await lstat(home).catch(() => null);
+    if (old?.isSymbolicLink() === true) await unlink(home);
+    else if (old?.isDirectory() === true) {
+      await chmod(home, 0o700).catch(() => undefined);
+      await unlinkLinks(home).catch(() => undefined);
+    }
+    await rm(home, { recursive: true, force: true });
+    await mkdir(home, { recursive: true, mode: 0o700 });
+    await chmod(home, 0o700);
+    if (parentHome !== undefined && parentHome !== '' && parentHome !== home) {
+      for (const rel of KIRO_STATE_PATHS) {
+        const from = join(parentHome, rel);
+        if (!(await stat(from).then((s) => s.isDirectory(), () => false))) continue;
+        await mkdir(dirname(join(home, rel)), { recursive: true, mode: 0o700 });
+        await symlink(from, join(home, rel), 'dir');
+      }
+    }
+    return home;
+  }
+
+  /** The bytes of the agent file each run's folder gets (the committed file, before kiro-cli migrates the copy). */
+  async pristineAgent(): Promise<Buffer> {
+    return readFile(this.agentSource);
+  }
+
+  /** True when `agentCheck` accepts the copy. */
+  async agentIntact(work: string): Promise<boolean> {
+    return (await this.agentCheck(work)).ok;
   }
 
   /** Deletes the folders of a run, whatever its result. */

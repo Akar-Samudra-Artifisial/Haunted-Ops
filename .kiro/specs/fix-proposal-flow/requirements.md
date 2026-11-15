@@ -74,8 +74,8 @@ Out of scope: the lab side of the deploy (`fix-deploy`, a separate spec in the `
 
 1. THE agent `.kiro/agents/exorcist-fixer.json` SHALL be a headless `kiro-cli chat --no-interactive` agent whose only tools are `fs_read` and `fs_write`, both limited to its working folder, with no shell, no MCP server, no web tool and no `includeMcpJson`.
 2. THE run SHALL enforce the allow-list three times: in the agent file, with `--trust-tools=fs_read,fs_write` on the command line, and by the API reading every `tool_call` of the stream.
-3. THE API SHALL stop the Fixer at once as `agent_failed` when a tool call names any other tool, or when the `path` of an `fs_read` or `fs_write` input is not inside the Fixer working folder after resolution.
-4. THE API SHALL judge a repeated call id again unless the later event names the same tool with a path inside the folder, as Requirement 25.1 of `exorcist-agent` does for Hunts.
+3. THE API SHALL stop the Fixer at once as `agent_failed` when a tool call names any other tool, or when the `path` of an `fs_read` or `fs_write` input is not inside the Fixer working folder after resolution. The titles `Read File` (`fs_read`), `Replace in File` and `Write File` (`fs_write`) of kiro-cli 3.3.0, pinned from recordings, SHALL be accepted with their recorded input shapes, and every other title SHALL be foreign.
+4. THE API SHALL judge a repeated call id again unless the later event names the same tool with a path inside the folder, as Requirement 25.1 of `exorcist-agent` does for Hunts. The batch read shape of kiro-cli 3.3.0 (Requirement 25) and its edit shape (Requirement 26) SHALL be accepted under the same rules.
 5. THE Fixer process SHALL use a model pinned by `FIX_MODEL`, its own process group, an output cap, a note `<proposalId>.pid` that the startup reaper handles, and the limits `FIX_CREDIT_CAP`, `FIX_TIMEOUT_MS` and `FIX_MAX_TOOL_CALLS`. A limit that is reached SHALL end the run with the AI fail reason `agent_failed`, or `timeout` for the time limit.
 6. THE Fixer process SHALL receive an environment that holds only the whitelisted names of the design, and SHALL NOT receive the GitHub token, a lab token, a database URL, a chaos token or any other name.
 7. THE Fixer SHALL write no output that the API reads as a result: the API ignores the agent's text and reads only the Patch.
@@ -261,3 +261,119 @@ Out of scope: the lab side of the deploy (`fix-deploy`, a separate spec in the `
 1. `docs/DEV.md` SHALL describe the fine-grained token setup (one repository, Contents and Pull requests read and write, nothing else), `FIX_ENABLED` and the caps, what runs where, the isolation limits of the test run on the Mac, and how to run the gate.
 2. `.kiro/steering/security.md` SHALL carry the GitHub token rules and the fixer boundaries, and `.kiro/steering/structure.md` SHALL list the new folders.
 3. `docs/KIRO_USAGE.md` SHALL get one line per finished task.
+
+### Requirement 20: Findings of the first live run
+
+**User Story:** As the operator, I want the test check to work on the real lab and a failed fixer run to say why, so that the next live run either passes or can be diagnosed.
+
+#### Acceptance Criteria
+
+1. WHEN a service's `package.json` has a `test` script that starts with `vitest`, THE Check run SHALL run that service's tests with the lab's own vitest from a dependency tree the API installs in `FIX_WORKDIR/deps/<lockfile hash>/` (`pnpm install --frozen-lockfile --ignore-scripts`, a fixed environment with no token, a timeout), reused while the lockfile is unchanged, linked into the candidate clone for the run only and never visible to the Fixer.
+2. THE vitest run SHALL keep `node --permission`: reads limited to the clone, the tree and the `node` binary, writes limited to the clone's temporary folder, no `--allow-net`, no WASI; the test workers SHALL be forked children with their own `--permission` set and no child process, worker or addon grant; the vitest main process MAY have `--allow-child-process` and `--allow-addons`, and the design SHALL say that this is not a security boundary on the Mac.
+3. AT startup and WHEN the lab `main` head or its lockfile changes, THE API SHALL run every test file of every vitest service at `main`, one file at a time, in the same sandbox; the files that pass SHALL form the sandbox-green set of the service, and the others SHALL be left out with the reason `needs_network`, `timeout` or `failed`.
+4. THE `tests` Check of a candidate SHALL run only the sandbox-green set of its service; an empty set SHALL be recorded as a skipped `tests` Check (Requirement 21.5); the pull request body SHALL list the files that ran and the ones left out with their reason in fixed words; the Check entry SHALL stay `{ name: 'tests', ok }`, and the counts SHALL go to the log.
+5. A failing test run SHALL write one log line with the runner, a fixed code, the counts, the first 2 KiB of stderr and the first failure message, with absolute paths removed, and SHALL NOT put them in the pull request or a public answer.
+6. EVERY Fixer run SHALL keep its reduced stream in `FIX_WORKDIR/streams/<proposalId>.fixer.stream.jsonl` (mode 0600, removed after 7 days); WHEN a run is not used, THE API SHALL log `fixerHalt: { code, detail }` and store `<code>: <detail>` (at most 300 characters) in the internal column `Proposal.aiFailDetail`, which no public answer returns.
+7. WITH `FIX_ENABLED=true`, THE API SHALL check the chaos token at startup with an authenticated route of the lab that changes nothing, and SHALL refuse to start with `CHAOS_TOKEN rejected by the lab` on a 401 or 403.
+8. THE script `db:drift` SHALL compare the migrations with the Prisma schema through a shadow database taken from `TEST_DATABASE_URL`, and SHALL exit 0 when they match.
+
+### Requirement 21: Recorded fixer shapes and an empty sandbox-green set
+
+**User Story:** As the operator, I want the guard to let the real fixer work and an empty test set to be said out loud, so that the next live run neither stops on a known tool nor passes a patch silently untested.
+
+#### Acceptance Criteria
+
+1. THE guard SHALL map `Read File` to `fs_read` and `Replace in File` and `Write File` to `fs_write`, accept their recorded input shapes (`offset` and `limit` may be null), check the key `path` of each against the working folder, and stop an `fs_write` whose path is not under `services/<service>/src/` with the code `write_outside_scope`.
+2. THE stop detail SHALL name the title, the event `kind` and the sorted key names of the input, and no value.
+3. THE three recordings SHALL be kept sanitized as test fixtures and replay with no stop; a mutated copy (a foreign title, a path out of the folder, a write out of the service sources, an id reused by another title) SHALL stop.
+4. A test file that fails at `main` SHALL be recorded with its first error line (cleaned, at most 200 characters) in the `test baseline` log.
+5. WHEN a vitest service has no sandbox-green test file, THE `tests` Check SHALL be `{ name: 'tests', ok: true, skipped: true, detail: 'no sandbox-green tests for <service>' }`, the checks before it SHALL still gate the patch, the pull request body SHALL say near the top "No automated tests ran in the sandbox for this service. Review the diff carefully.", and the table SHALL show "tests skipped".
+
+### Requirement 22: The agent copy after kiro-cli migrated it
+
+**User Story:** As the operator, I want a good AI patch to be kept when kiro-cli rewrites the agent copy in its usual way, and refused when the copy was changed in any other way, so that the check neither throws away real fixes nor lets a widened agent through.
+
+#### Acceptance Criteria
+
+1. AFTER a Fixer run, THE API SHALL accept the agent copy when it equals the committed agent except that `tools` and `allowedTools` name the same two file tools in either spelling (`fs_read`/`read`, `fs_write`/`write`), `permissions.rules` holds only `allow` rules for `fs_read`, `fs_write` or `skill`, and `kiroUpgrade` is added; any other difference, and a copy that does not parse, SHALL end the run as `agent_failed`.
+2. WHEN the copy is refused, THE API SHALL record `agent_changed` with the first differing key in `fixerHalt.detail`, and no value.
+3. THE stream guard and the work folder SHALL stay the fence: a write outside `services/<service>/src/` and a read outside the work folder SHALL stop the run whatever the agent copy allows, and the design SHALL say why the widened rules of the migrated copy are acceptable.
+4. `.kiro/agents/exorcist-fixer.json` SHALL stay committed in its unmigrated form.
+
+### Requirement 23: The agent backup of the kiro-cli migration
+
+**User Story:** As the operator, I want a correct AI patch to survive the backup file kiro-cli writes next to the agent copy, so that a good fix is not replaced by a revert for a file the fixer never wrote.
+
+#### Acceptance Criteria
+
+1. THE patch reader SHALL leave out `.kiro/agents/exorcist-fixer.json.bak` only when it is a regular file with one link whose bytes equal the exported agent file, SHALL never apply or push it, and SHALL keep every other `.bak` and every other new file under `.kiro/` unreadable.
+2. AN unreadable entry SHALL fail the `forbidden_file` Check, not `scope`, and a patch SHALL still be accepted only when every Check passes.
+
+### Requirement 24: Second review fixes
+
+**User Story:** As a security reviewer, I want the fixer run to fail closed on what it cannot read, the checks to say what they really checked, and a merged fix to survive a passing outage, so that nothing unchecked is proposed and nothing reviewed is lost.
+
+#### Acceptance Criteria
+
+1. ONE malformed line of the Fixer stream (not JSON, or longer than the 1 MiB line cap) SHALL stop the run at once with the halt code `stream_malformed`; the Hunt runner's tolerance SHALL stay as it is.
+2. A file-tool call whose arguments were never judged (no input, or only empty inputs) SHALL stop the run when an update reports any status other than `pending`, with the halt code `unjudged_input`.
+3. THE `syntax` Check SHALL check TypeScript files (strip-only type removal, then `node --check`, in sandboxed children) as well as JavaScript; a file kind no checker knows SHALL make the check `skipped`, never `ok`; WHEN `syntax` and `tests` are both `skipped`, THE AI patch SHALL be refused with the AI fail reason `unchecked`.
+4. AFTER the merge, ONLY `ref_moved`, `merge_scope`, `merge_content`, `head_changed` and `deploy_rejected` SHALL end a `merged` Proposal at once; any other error SHALL keep it `merged` and be retried on the next tick until `FIX_DEPLOY_CONFIRM_MS` from the merge, then end it `failed` / `deploy_unconfirmed`.
+5. THE time the deploy was asked SHALL be stored with the Proposal (`deployAskedAt`), and after a restart THE API SHALL look for the Deploy Record before it asks again, and SHALL NOT ask again for a Proposal whose deploy was already asked.
+6. THE export folder SHALL be read-only once filled; the agent folders and copy SHALL be left out of the patch only in their expected kind (folder, single-link file), and the copy SHALL be read without following a link.
+7. THE sandbox-green set SHALL be made at the commit the candidate starts from, per service and commit; a candidate test file the set never saw SHALL be listed as not run, with the reason `not_at_base`.
+8. THE Fixer SHALL get its own `HOME` (`FIX_WORKDIR/home`, mode 0700) holding only links to the kiro-cli data folder, and the lab install SHALL get a temporary empty `HOME` with the pnpm store named explicitly.
+
+### Requirement 25: The batch read shape of kiro-cli 3.3.0
+
+**User Story:** As the operator, I want the guard to let the real fixer read the way kiro-cli 3.3.0 reads, and still refuse anything it cannot judge, so that the live run is not halted on a known read and no read reaches outside the work folder.
+
+#### Acceptance Criteria
+
+1. THE guard SHALL identify a file tool first by `_meta.kiro.toolName` when the event has it: `read` is `fs_read`, `write` is `fs_write`, any other value (or a value that is not text) SHALL stop the run as `foreign_tool`. A title is the second source: the three recorded titles and the pattern `Reading <text>` on a `tool_call` of kind `read`. A title and a `toolName` that name different tools SHALL stop the run as `foreign_tool`.
+2. FOR `fs_read` THE guard SHALL accept `{ path, offset?, limit? }` and `{ operations, summary? }` with 1 to 8 entries, each `{ mode, path, ... }` with `mode` one of `Line`, `Directory` or `Search`, every `path` inside the work folder by the rule of Requirement 3.3. THE mode `Image`, `image_paths`, an unknown or missing mode, an unknown key at either level, an empty list and more than 8 entries SHALL stop the run as `unknown_args`.
+3. THE write shapes SHALL stay as they were, and a later event of a call id SHALL pass only when it names the same tool, by its title or by its `toolName`.
+4. THE recorded event SHALL be kept sanitized as a test fixture (`read-operations.stream.jsonl`, with its `toolName`) and replay with no stop; a mutated copy (a path outside, `..`, an absolute path, `Image`, 9 entries, an unknown key, `toolName` `shell`, a title that disagrees with the `toolName`) SHALL stop.
+
+### Requirement 26: The dynamic edit shape of kiro-cli 3.3.0
+
+**User Story:** As the operator, I want the guard to let the real fixer write the way kiro-cli 3.3.0 writes, and still refuse any command or key it does not know, so that the live run is not halted on a known edit and no write reaches outside the service sources.
+
+#### Acceptance Criteria
+
+1. THE guard SHALL accept the title pattern `Editing <text>` (one line, no control character) on a `tool_call` of kind `edit` as `fs_write`, with `_meta.kiro.toolName` `write` first when the event has it. A title and a `toolName` that name different tools SHALL stop the run as `foreign_tool`.
+2. FOR a call announced with that title THE guard SHALL accept only `{ command: "strReplace", path, oldStr, newStr, replace_all? }`, with `path` inside the work folder by the rule of Requirement 3.3, `oldStr` and `newStr` text within the size cap of one patch file, and no other key. A missing `command`, any other `command` value, an unknown key and a value of another type SHALL stop the run as `unknown_args`.
+3. THE shapes of Requirement 3.3 and 25 SHALL stay as they were. A repeated call id SHALL keep its tool, and an update with `title: null` SHALL follow it.
+4. THE recorded event and its update SHALL be kept sanitized as a test fixture (`edit-command.stream.jsonl`) and replay with no stop, and a fake `kiro-cli` that replays this shape SHALL produce an `ai_patch` Proposal; a mutated copy (another `command`, no `command`, a path outside, `..`, an absolute path, `oldStr` not text, an unknown key, `toolName` `shell`, the title `Editing x` with `toolName` `read`, a repeated id naming another tool) SHALL stop.
+5. THE agent copy check and the `.bak` rule SHALL keep passing for the migrated agent (tools `read` and `write`) during a run that uses the `Reading` and `Editing` shapes.
+
+### Requirement 27: Permission changes never follow links
+
+**User Story:** As the operator, I want the fixer's own `HOME` to be rebuilt without ever touching what its links point at, so that a run cannot change the mode of my real kiro-cli folder.
+
+#### Acceptance Criteria
+
+1. THE functions that walk a folder to change modes (`makeReadOnly`, `makeWritable`) SHALL change only real files and folders found with `lstat`, SHALL skip every symlink (never `chmod` it, never follow it), and SHALL refuse (throw) when the folder they were given is itself a link.
+2. `prepareHome` SHALL remove the old home by unlinking its links first and then removing the rest, and SHALL call `chmod` on no path under `home` other than `home` itself.
+3. THE removal of a Proposal's folders and every other caller SHALL keep working.
+4. THE runner SHALL NOT fall back to the real `HOME` under tests: a runner built without `parentEnv` SHALL throw when it prepares the fixer's home, and every test that builds a runner SHALL pass a `parentEnv` whose `HOME` is a temporary folder.
+5. A guard test SHALL run the fix flow twice in one `FIX_WORKDIR` with a temporary parent home that holds `Library/Application Support/kiro-cli` (mode 0700, with a 0600 file), and afterwards both modes SHALL be unchanged and the file readable.
+6. A property test SHALL cover random trees with links to targets outside them (Property 19).
+
+### Requirement 28: One hardening pass before the live test
+
+**User Story:** As the operator, I want every gap that a full audit of the live path found closed in one pass, so that the next live run is not another discovery run.
+
+#### Acceptance Criteria
+
+1. THE opt-in live test SHALL build its app through one exported helper (`apps/api/test-live/live-app.ts`) that always sets the runner's `parentEnv` to `HOME` and `LANG` of the environment and nothing else, runs the startup check and `ProposalRunner.start()` as `main.ts` does, and is used by the live test and by the parity test of 28.9. THE guard of the runner (a run under Vitest with no `parentEnv` throws) SHALL stay for every other test.
+2. A setup error before the fixer process is spawned SHALL be recorded as `fixer_not_started: <class and message>` and SHALL NOT count in the day's starts (`agentStarted` is set after the spawn, and cleared when `kiro-cli` could not be executed); an error after the spawn SHALL be recorded as `step_error: <class and message>`. The text SHALL be one line of at most 200 characters, with an absolute path as `[path]` and token-like text as `[redacted]`. An unsafe export (`FixerWorkdirError` `export_unsafe`) SHALL end the Proposal `failed` / `export_unsafe`.
+3. THE view `GET /api/proposals/:id` SHALL carry `aiFailReason` and `aiFailDetail`; `aiFailDetail` SHALL be null or one line of 1 to 300 characters with no absolute path and no token-like text, and the shared validator SHALL refuse anything else.
+4. WHEN `_meta.kiro.toolName` is present THE guard SHALL take the tool from it alone (`read` is `fs_read`, `write` is `fs_write`; any other value, or a value that is not text, SHALL stop the run as `foreign_tool`), and the title SHALL only have to be one line of at most 200 characters with no control character; the kind SHALL not matter. WITHOUT `toolName` the recorded titles and the title patterns of Requirements 3.3, 25 and 26 SHALL stay as they are.
+5. A `tool_call_update` of an accepted call id SHALL keep that id's tool whatever its title or `_meta` say (a missing `_meta`, `title: null` or a new one-line title is fine); the input it carries SHALL be judged again by the same rules, a `tool_id` that names another tool SHALL stop the run, and an update of an unknown id SHALL be refused as before. A repeated `tool_call` SHALL still name the same tool.
+6. FOR `write` THE guard SHALL accept exactly `{ command: "create", path, content }`, `{ command: "strReplace", path, oldStr, newStr, replaceAll? }` and `{ command: "insert", path, content, insertLine? }` (`insertLine` a whole number from 0; `replace_all` stays accepted as the recorded spelling), each with an optional text `summary`, and the older snake_case family (`create`, `str_replace`, `append`, `insert` with `file_text`, `old_str`, `new_str`, `insert_line`); a call that carries `toolName` or an `Editing` title SHALL have a `command`. Every `path` SHALL be inside the work folder and under `services/<S>/src/` (a new file included), texts SHALL be within the size cap of one patch file, and any other command, a missing required key, a value of another type and an unknown key SHALL stop the run as `unknown_args`.
+7. FOR `read` THE guard SHALL accept 1 to 8 operations `{ mode: "Line", path, offset?, limit? }` and `{ mode: "Directory", path, depth?, exclude_patterns? }` (`depth` a whole number from 0 to 5, at most 20 patterns of at most 100 characters), and the older `Search` operation. THE mode `Image` SHALL be refused with the reason `image_read`. THE stop detail SHALL name the refused tool name, command or key (cleaned, never a value).
+8. SANITIZED fixtures SHALL cover `create`, `insert` with and without `insertLine`, `strReplace` with `replaceAll`, `Directory` with `depth`, `Image`, an update with a changed title and an update with no `_meta`, listed in `scripts/fixer-stream-shapes.mjs` as schema-derived, not recorded; every accepted shape SHALL pass and every refusal of 6 and 7 SHALL have a test.
+9. A PARITY test SHALL build the app with the helper of 28.1 against a fake GitHub, a fake lab and a fake `kiro-cli` that replays, one run each, every fixture that edits `refunds.ts`, and each run SHALL end `ai_patch` with the checks passing (a fixture refused by design SHALL end `revert` with its reason and detail in the view); the mode of the parent `kiro-cli` folder SHALL be unchanged afterwards.
+10. THE live test SHALL wait for the lab dependency tree and the test baseline before it starts the clock of the proposal, SHALL give the proposal its fixer timeout plus 60 seconds, SHALL print one line per status change, and on a failed expectation SHALL print first the status, kind, reasons, detail and checks of the proposal and the last 40 matching log lines, and at its start the `kiro-cli` version and the stream file name.
+11. A PRE-FLIGHT script SHALL check, without calling the model and with one `OK` or `FAIL` line each, the `kiro-cli` version (3.3.0), `whoami`, the mode of the `kiro-cli` folder, the names of the environment variables the live test needs (never their values), the lab, Prometheus, the Test database and the read access of the token to the lab repository (only the HTTP status is printed), and SHALL exit 0 only when all pass.

@@ -6,7 +6,7 @@ import { DUMMY_GITHUB_TOKEN } from '../../test/support/fix.js';
 import { PROPOSAL_LABELS } from './fix-startup.js';
 import { GithubClient } from './github-client.js';
 import { openPullRequest } from './pull-request.js';
-import { PR_BODY_MAX, PR_NOTICE, PR_TITLE_MAX, PrFactsError, ZWSP, assertPrText, prBody, prTextProblems, prTitle, sanitizePrText, type PrFacts } from './pr-text.js';
+import { PR_BODY_MAX, PR_NOTICE, PR_TESTS_SKIPPED_WARNING, PR_TITLE_MAX, PrFactsError, ZWSP, assertPrText, prBody, prTextProblems, prTitle, sanitizePrText, type PrFacts } from './pr-text.js';
 
 const REPO = 'Akar-Samudra-Artifisial/Haunted-Lab';
 const ORIGIN = 'http://localhost:5173';
@@ -76,6 +76,36 @@ describe('the pull request text', () => {
     expect(body).toContain('- size: failed');
     expect(body).toContain('Credits spent: 1.50 (estimated)');
     expect(body.endsWith(PR_NOTICE)).toBe(true);
+  });
+
+  it('lists the test files that ran in the sandbox and the ones left out, and nothing that is not a test path', () => {
+    const body = prBody(
+      facts({
+        testFiles: ['services/payments/test/refunds.test.ts', 'https://evil.example/x'],
+        excludedTests: [
+          { file: 'services/payments/test/routes.test.ts', why: 'needs network' },
+          { file: 'services/payments/test/other.test.ts', why: 'see https://evil.example' },
+        ],
+      }),
+    );
+    expect(body).toContain('Tests run in the sandbox\n- services/payments/test/refunds.test.ts');
+    expect(body).toContain('Not run in the sandbox\n- services/payments/test/routes.test.ts (needs network)');
+    expect(body).not.toContain('evil');
+    expect(body).not.toContain('other.test.ts');
+    expect(prTextProblems(prTitle(facts()), body, ctx)).toEqual([]);
+    expect(prBody(facts())).not.toContain('in the sandbox');
+  });
+
+  it('warns near the top, and only then, when the tests check was skipped', () => {
+    const skipped = prBody(facts({ testsRan: false, checks: [{ name: 'scope', ok: true }, { name: 'tests', ok: true, skipped: true, detail: 'no sandbox-green tests for payments' }] }));
+    const lines = skipped.split('\n');
+    const at = lines.indexOf(PR_TESTS_SKIPPED_WARNING);
+    expect(at).toBeGreaterThan(0);
+    expect(at).toBeLessThan(lines.indexOf('Summary'));
+    expect(skipped).toContain('- tests: skipped (no sandbox-green tests for this service)');
+    expect(prTextProblems(prTitle(facts()), skipped, ctx)).toEqual([]);
+    expect(prBody(facts())).not.toContain(PR_TESTS_SKIPPED_WARNING);
+    expect(prBody(facts({ checks: [{ name: 'tests', ok: false }] }))).not.toContain(PR_TESTS_SKIPPED_WARNING);
   });
 
   it('removes HTML, images, links, mentions and references from model text, and keeps the words', () => {

@@ -3,7 +3,7 @@ import { lstat, open } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ProposalCheck, ServiceName } from '@haunted-ops/shared';
 import type { GitClient } from './git-client.js';
-import { MAX_PATCH_FILE_BYTES, type TestsResult } from './patch-checks.js';
+import { MAX_PATCH_FILE_BYTES, testsCheck, type TestsResult } from './patch-checks.js';
 
 export type RevertUnavailable = 'revert_unavailable' | 'revert_conflict';
 
@@ -80,6 +80,11 @@ export async function judgeRevert(
   if ((await dyn.problems()).length > 0) return stop('forbidden_file');
   checks.push({ name: 'forbidden_file', ok: true });
   const tests = await dyn.tests();
+  if (tests.skipped === true && tests.ok && !tests.timedOut) {
+    // The service has no sandbox-green test file: recorded as skipped, never a silent pass.
+    checks.push(testsCheck(o.service, tests));
+    return { accepted: true, checks };
+  }
   if (!tests.ok || tests.timedOut || (tests.ran === 0 && o.requireTests)) return stop('tests');
   checks.push({ name: 'tests', ok: true });
   return { accepted: true, checks };

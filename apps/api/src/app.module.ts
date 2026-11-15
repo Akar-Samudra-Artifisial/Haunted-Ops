@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { Module, type DynamicModule, type ModuleMetadata } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -11,6 +12,7 @@ import { FixerWorkdir } from './fix/fixer-workdir.js';
 import { GitClient } from './fix/git-client.js';
 import { GithubClient } from './fix/github-client.js';
 import { HttpChaosClient, HttpFixLab } from './fix/lab-deploy-client.js';
+import { LabDeps } from './fix/lab-deps.js';
 import { ProposalRunner, type ProposalRunnerDeps } from './fix/proposal-runner.js';
 import { PrismaProposalStore } from './fix/proposal-store.js';
 import { parseFixConfig, type FixConfig } from './fix/fix-config.js';
@@ -151,6 +153,15 @@ export class AppModule {
               github,
               git,
               workdir: new FixerWorkdir(fixConfig.workdir),
+              labDeps: fixConfig.enabled
+                ? new LabDeps({
+                    root: join(fixConfig.workdir, 'deps'),
+                    pnpmPath: fixConfig.pnpmPath ?? null,
+                    parentEnv: overrides.parentEnv ?? process.env,
+                    git,
+                    log: (level, msg, fields) => logger.log(level, msg, fields),
+                  })
+                : undefined,
               bus,
               logger,
               huntsEnabled: () => huntRunner.isEnabled,

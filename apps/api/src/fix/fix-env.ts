@@ -22,6 +22,11 @@ export interface FixEnvInput {
   /** The environment of the API process: only `HOME` and `LANG` are read from it. */
   parentEnv: Readonly<Record<string, string | undefined>>;
   nodeDir?: string;
+  /**
+   * The fixer's own `HOME` (`FixerWorkdir.prepareHome`: `<FIX_WORKDIR>/home`, mode 0700, holding only links to the
+   * kiro-cli login state). Absent: the API user's home, as before (unit tests of this function only).
+   */
+  home?: string;
 }
 
 const SYSTEM_PATH = ['/usr/bin', '/bin'];
@@ -29,7 +34,7 @@ const SYSTEM_PATH = ['/usr/bin', '/bin'];
 /** The environment of a fixer process: exactly the names in `FIX_ENV_NAMES`, nothing inherited. */
 export function buildFixEnv(i: FixEnvInput): Record<string, string> {
   const path = [i.nodeDir ?? dirname(process.execPath), dirname(i.cfg.kiroCliPath), ...SYSTEM_PATH];
-  const home = i.parentEnv.HOME !== undefined && i.parentEnv.HOME !== '' ? i.parentEnv.HOME : homedir();
+  const home = i.home ?? (i.parentEnv.HOME !== undefined && i.parentEnv.HOME !== '' ? i.parentEnv.HOME : homedir());
   const lang = i.parentEnv.LANG !== undefined && /^[A-Za-z0-9_.@-]{1,40}$/.test(i.parentEnv.LANG) ? i.parentEnv.LANG : 'en_US.UTF-8';
   return {
     PATH: [...new Set(path.filter((p) => p !== '' && p !== '.'))].join(':'),

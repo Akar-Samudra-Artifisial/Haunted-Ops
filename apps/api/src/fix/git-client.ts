@@ -236,6 +236,26 @@ export class GitClient {
     return out.split('\0').filter((n) => n !== '');
   }
 
+  /** Every file path of the tree of a commit (`git ls-tree -r --name-only -z`). */
+  async listFiles(dir: string, sha: string): Promise<string[]> {
+    assertSha(sha);
+    const out = await this.text(['-C', dir, 'ls-tree', '-r', '--name-only', '-z', sha]);
+    return out.split('\0').filter((n) => n !== '');
+  }
+
+  /** The bytes of one file at a commit (`git show <sha>:<path>`), or null when it is absent or over `capBytes`. */
+  async readBlob(dir: string, sha: string, path: string, capBytes: number): Promise<Buffer | null> {
+    assertSha(sha);
+    if (!isSafePath(path)) throw new GitError('bad_argument');
+    try {
+      const buf = await this.run(['-C', dir, 'show', `${sha}:${path}`]);
+      return buf.length > capBytes ? null : buf;
+    } catch (err) {
+      if (err instanceof GitError && err.code === 'git_timeout') throw err;
+      return null;
+    }
+  }
+
   /** `git archive` of paths at a commit, as a tar buffer. */
   async archive(dir: string, sha: string, paths: readonly string[]): Promise<Buffer> {
     assertSha(sha);

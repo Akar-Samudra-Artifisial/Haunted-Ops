@@ -4,6 +4,7 @@ import type { HuntStreamEvent } from '../hunts/stream-parser.js';
 import { FixerGuard, checkFixerCall, describeFixerStop, fileToolArgsProblem, isInside, isSameFixerCall, pathsOf } from './fixer-guard.js';
 
 const FOLDER = '/var/fix/fixer/cmprop0000000000000000001/work';
+type FixerToolName = 'fs_read' | 'fs_write';
 const call = (id: string, title: string, rawInput: unknown): HuntStreamEvent => ({ type: 'tool_call', id, title, rawInput });
 const update = (id: string, title: string | null, rawInput?: unknown): HuntStreamEvent => ({ type: 'tool_call_update', id, status: 'in_progress', title, rawInput });
 
@@ -13,10 +14,13 @@ describe('the fixer allow-list, with the shapes of kiro-cli 3.3.0', () => {
       expect(checkFixerCall(title, { path: 'services/payments/src/charge.js' }), title).toEqual({ kind: 'foreign', title });
       const g = new FixerGuard(FOLDER);
       expect(g.judge(call('c1', title, { path: 'a' })).kind, title).toBe('stop');
-      // A known id followed by an inherited name is a different tool, not the same call.
+      // A known id followed by an inherited name as a call is a different tool, not the same call. As an update the
+      // title is decorative (task 22): the tool of the id stays, and the input it carries is judged again.
       const h = new FixerGuard(FOLDER);
       h.judge(call('c2', 'fs_read', { path: 'a' }));
-      expect(h.judge(update('c2', title, { path: 'a' })).kind, title).toBe('stop');
+      expect(h.judge(call('c2', title, { path: 'a' })).kind, title).toBe('stop');
+      expect(h.judge(update('c2', title, { path: 'a' })).kind, title).toBe('pass');
+      expect(h.judge(update('c2', title, { path: '../a' })).kind, title).toBe('stop');
     }
   });
 
@@ -63,12 +67,17 @@ describe('the fixer allow-list, with the shapes of kiro-cli 3.3.0', () => {
     }
   });
 
-  it('refuses a repeated call id that names another tool, as a call or as an update', () => {
+  it('refuses a repeated call id that names another tool as a call, and an update that carries the input of another tool', () => {
     const g = new FixerGuard(FOLDER);
     g.judge(call('c1', 'fs_read', { path: 'services/payments/src/charge.js' }));
     expect(g.judge(call('c1', 'fs_write', { path: 'services/payments/src/charge.js' })).kind).toBe('stop');
     expect(g.judge(update('c1', 'execute_bash', { command: 'ls' })).kind).toBe('stop');
     expect(g.judge(update('c1', 'Tool Call', { tool_id: 'tool::builtin::fs_write', arguments: {} })).kind).toBe('stop');
+    // An update keeps the tool of its id whatever its title says (task 22), and a title with a control character is not a title.
+    expect(g.judge(update('c1', 'execute_bash')).kind).toBe('pass');
+    expect(g.judge(update('c1', 'Tool Load')).kind).toBe('pass');
+    expect(g.judge(update('c1', 'a\nb')).kind).toBe('stop');
+    expect(g.judge(update('c1', 'x'.repeat(201))).kind).toBe('stop');
     expect(g.judge(update('c1', 'fs_read', { path: '../x' })).kind).toBe('stop');
     expect(g.judge(update('c1', 'fs_read', { path: 'services/payments/src/other.js' })).kind).toBe('pass');
   });
@@ -76,7 +85,7 @@ describe('the fixer allow-list, with the shapes of kiro-cli 3.3.0', () => {
   it('refuses an update with no title for a call id it never saw, and judges a titled one as a new call that counts', () => {
     // 13.7: `title: null` names nothing, so an unknown id with it is refused, never passed through.
     for (const input of [undefined, null, {}, { path: 'services/payments/src/charge.js' }, { path: '/etc/hosts' }]) {
-      expect(new FixerGuard(FOLDER).judge(update('zz', null, input)), JSON.stringify(input)).toMatchObject({ kind: 'stop', detail: 'update of an unknown call' });
+      expect(new FixerGuard(FOLDER).judge(update('zz', null, input)), JSON.stringify(input)).toMatchObject({ kind: 'stop', code: 'unknown_update', detail: expect.stringMatching(/^update of an unknown call kind=none keys=/) });
     }
     const g = new FixerGuard(FOLDER);
     expect(g.judge(update('zz', 'fs_read', { operations: [{ mode: 'Line', path: 'services/payments/src/charge.js' }] })).kind).toBe('step');
@@ -87,12 +96,12 @@ describe('the fixer allow-list, with the shapes of kiro-cli 3.3.0', () => {
     expect(g.count).toBe(1);
   });
 
-  it('reads the kiro-cli 3.3.0 argument shapes: the wrapper, fs_read operations (with Image mode) and fs_write commands', () => {
+  it('reads the kiro-cli 3.3.0 argument shapes: the wrapper, fs_read operations (up to 8) and fs_write commands', () => {
     const ok = [
       ['fs_read', { operations: [{ mode: 'Line', path: 'services/payments/src/charge.js', start_line: 1, end_line: 20 }] }],
       ['fs_read', { operations: [{ mode: 'Directory', path: 'services/payments', depth: 2 }, { mode: 'Search', path: 'services', pattern: 'charge', context_lines: 2 }], summary: 'look' }],
-      ['fs_read', { operations: [{ mode: 'Image', image_paths: ['services/payments/a.png', `${FOLDER}/b.png`] }] }],
-      ['fs_read', { mode: 'Line', path: 'services/payments/src/charge.js' }],
+      ['fs_read', { operations: Array.from({ length: 8 }, () => ({ mode: 'Line', path: 'services/payments/src/charge.js' })) }],
+      ['fs_read', { path: 'services/payments/src/charge.js', offset: null, limit: 40 }],
       ['fs_write', { command: 'str_replace', path: 'services/payments/src/charge.js', old_str: 'a', new_str: 'b', summary: 'fix' }],
       ['fs_write', { command: 'insert', path: 'services/payments/src/charge.js', insert_line: 3, new_str: 'x' }],
       ['fs_write', { command: 'append', path: 'services/payments/src/charge.js', new_str: 'x' }],
@@ -119,6 +128,10 @@ describe('the fixer allow-list, with the shapes of kiro-cli 3.3.0', () => {
       ['fs_read', { operations: 'a.js' }],
       ['fs_read', { operations: [{ mode: 'Line', path: 'a.js' }], extra: 1 }],
       ['fs_read', { operations: [{ mode: 'Image', image_paths: 'a.png' }] }],
+      // Task 19: the Image mode (with a good path too), a single operation on its own, a ninth operation.
+      ['fs_read', { operations: [{ mode: 'Image', image_paths: ['services/payments/a.png'] }] }],
+      ['fs_read', { mode: 'Line', path: 'services/payments/src/charge.js' }],
+      ['fs_read', { operations: Array.from({ length: 9 }, () => ({ mode: 'Line', path: 'a.js' })) }],
       ['fs_read', { operations: [{ mode: 'Line', path: ['a.js'] }] }],
       ['fs_write', { command: 'delete', path: 'services/payments/src/a.js' }],
       ['fs_write', { command: 'create', file_text: 'x' }],
@@ -174,7 +187,7 @@ describe('Property 6: the fixer allow-list accepts only the two file tools insid
   /** Arguments of a known kiro-cli 3.3.0 shape for the tool a title names, with the path in every path slot. */
   const argsFor = (title: string, path: string): unknown => {
     if (title === 'fs_write' || title === 'Write') return { command: 'create', path, file_text: 'x' };
-    return { operations: [{ mode: 'Line', path }, { mode: 'Image', image_paths: [path] }] };
+    return { operations: [{ mode: 'Line', path }, { mode: 'Directory', path }] };
   };
   const callArb = fc.oneof(
     fc.tuple(toolTitle, fc.oneof(inside, outside)).map(([title, path]) => ({ title, input: argsFor(title, path), expected: insideOracle(path) })),
@@ -203,7 +216,7 @@ describe('Property 6: the fixer allow-list accepts only the two file tools insid
     );
   });
 
-  it('judges a later event with the id of an accepted call: it passes iff it names the same tool with paths inside', () => {
+  it('judges a later event with the id of an accepted call: a call passes iff it names the same tool with paths inside', () => {
     const later = fc.oneof(
       fc.constant({ title: null as string | null, input: undefined as unknown }),
       fc.constantFrom('fs_read', 'fs_write', 'Read', 'Write', 'execute_bash', 'Tool Load').map((title) => ({ title: title as string | null, input: undefined as unknown })),
@@ -212,11 +225,10 @@ describe('Property 6: the fixer allow-list accepts only the two file tools insid
       fc.oneof(inside, outside).map((path) => ({ title: 'fs_write' as string | null, input: argsFor('fs_write', path) })),
     );
     fc.assert(
-      fc.property(fc.constantFrom('fs_read' as const, 'fs_write' as const), later, fc.boolean(), (accepted, ev, asCall) => {
+      fc.property(fc.constantFrom('fs_read' as const, 'fs_write' as const), later, (accepted, ev) => {
         const g = new FixerGuard(FOLDER);
         expect(g.judge(call('c1', accepted, argsFor(accepted, 'services/payments/src/charge.js'))).kind).toBe('step');
-        const event = asCall ? call('c1', ev.title ?? '', ev.input) : update('c1', ev.title, ev.input);
-        const out = g.judge(event);
+        const out = g.judge(call('c1', ev.title ?? '', ev.input));
         const same = isSameFixerCall({ kind: 'step', tool: accepted }, ev.title, ev.input);
         const pathsFine = pathsOf(ev.input).every((p) => isInside(FOLDER, p));
         // The generated arguments are always of a known shape for their tool, so only the tool and the paths decide.
@@ -225,6 +237,26 @@ describe('Property 6: the fixer allow-list accepts only the two file tools insid
         const names = ev.title === 'Tool Call' ? (ev.input as { tool_id: string }).tool_id.split('::').at(-1) : ev.title;
         if (names !== null && names !== undefined && ['fs_read', 'fs_write'].includes(names) && names !== accepted) expect(out.kind).toBe('stop');
         if (ev.title === 'execute_bash' || ev.title === 'Tool Load') expect(out.kind).toBe('stop');
+      }),
+      { numRuns: 400 },
+    );
+  });
+
+  it('judges an update of an accepted call (task 22): any plain title, the tool of the id stays, the input it carries is judged again', () => {
+    const inputOf = fc.oneof(
+      fc.constant({ tool: null as FixerToolName | null, input: undefined as unknown }),
+      fc.tuple(fc.constantFrom('fs_read' as const, 'fs_write' as const), fc.oneof(inside, outside)).map(([tool, path]) => ({ tool: tool as FixerToolName | null, input: argsFor(tool, path) })),
+      fc.tuple(fc.constantFrom('fs_read' as const, 'fs_write' as const), fc.oneof(inside, outside)).map(([tool, path]) => ({ tool: tool as FixerToolName | null, input: { tool_id: `tool::builtin::${tool}`, arguments: argsFor(tool, path) } as unknown })),
+    );
+    const title = fc.oneof(fc.constant(null), fc.constantFrom('fs_read', 'fs_write', 'execute_bash', 'Tool Load', 'Tool Call', 'toString', 'Editing a.ts', 'Reading a.ts:1'), fc.stringMatching(/^[A-Za-z0-9 .:_-]{1,40}$/));
+    fc.assert(
+      fc.property(fc.constantFrom('fs_read' as const, 'fs_write' as const), inputOf, title, (accepted, ev, t) => {
+        const g = new FixerGuard(FOLDER);
+        expect(g.judge(call('c1', accepted, argsFor(accepted, 'services/payments/src/charge.js'))).kind).toBe('step');
+        const out = g.judge(update('c1', t, ev.input));
+        const pathsFine = pathsOf(ev.input).every((p) => isInside(FOLDER, p));
+        // No input: nothing to judge, whatever the title. An input: it must be the shape of the accepted tool, inside.
+        expect(out.kind === 'pass').toBe(ev.tool === null || (ev.tool === accepted && pathsFine));
       }),
       { numRuns: 400 },
     );

@@ -1,11 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFakeKiroFixer, type FixerObserved } from '../../../../tools/fake-kiro-cli/fixer-wrapper.mjs';
 import { FIX_ENV_NAMES, fixerPrompt } from './fix-env.js';
 import { FixerWorkdir, exportPathsOf, type FixerFolders } from './fixer-workdir.js';
-import { startFixer, type FixerRunResult } from './fixer-process.js';
+import { haltText, startFixer, type FixerRunResult } from './fixer-process.js';
 import { GitClient } from './git-client.js';
 import { DUMMY_GITHUB_TOKEN } from '../../test/support/fix.js';
 import { HEALTHY_CHARGE, makeLabRepo, type LabRepo } from '../../test/support/lab-repo.js';
@@ -36,7 +36,7 @@ describe('the fixer process, with the fake kiro-cli fixer', () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  async function run(fixture: string, over: Partial<typeof CFG> = {}, extra: { pids?: Array<[string, string, number | null]> } = {}): Promise<{ result: FixerRunResult; f: FixerFolders; observed: FixerObserved }> {
+  async function run(fixture: string, over: Partial<typeof CFG> = {}, extra: { pids?: Array<[string, string, number | null]>; stream?: string } = {}): Promise<{ result: FixerRunResult; f: FixerFolders; observed: FixerObserved }> {
     const fake = createFakeKiroFixer({ fixture, observe: true });
     cleanups.push(fake.cleanup);
     const f = await wd.create(ID, 'payments', tar);
@@ -49,6 +49,7 @@ describe('the fixer process, with the fake kiro-cli fixer', () => {
       kiroCliPath: fake.path,
       parentEnv: { HOME: tmp, LANG: 'en_US.UTF-8', GITHUB_TOKEN: DUMMY_GITHUB_TOKEN, CHAOS_TOKEN: 'secret-chaos-token-0123456789' },
       pids: extra.pids === undefined ? undefined : { write: async (id, pid) => void extra.pids?.push(['write', id, pid]), remove: async (id) => void extra.pids?.push(['remove', id, null]) },
+      stream: extra.stream === undefined ? undefined : { path: extra.stream, secrets: [DUMMY_GITHUB_TOKEN] },
     });
     const result = await handle.result;
     const observed = existsSync(fake.observePath) ? (JSON.parse(readFileSync(fake.observePath, 'utf8')) as FixerObserved) : ({ argv: [], envNames: [], cwd: '', agentSha: null, files: [], hasGit: false } as FixerObserved);
@@ -58,7 +59,7 @@ describe('the fixer process, with the fake kiro-cli fixer', () => {
 
   it('runs a good fix: the file is changed in the folder, the run finished, the Credits are the report', async () => {
     const { result, f, observed } = await run('fixer-good');
-    expect(result).toMatchObject({ started: true, finished: true, aiFailReason: null, stopDetail: null, credits: 0.6, creditsEstimated: false, toolCalls: 2 });
+    expect(result).toMatchObject({ started: true, finished: true, aiFailReason: null, stopDetail: null, halt: null, credits: 0.6, creditsEstimated: false, toolCalls: 2, writes: 1 });
     expect(written(f)).toBe(HEALTHY_CHARGE);
     // The export is untouched, and the process saw a folder with no .git, the agent copy and the allowed environment only.
     expect(readFileSync(join(f.exportDir, 'services/payments/src/charge.js'), 'utf8')).not.toBe(HEALTHY_CHARGE);
@@ -83,7 +84,8 @@ describe('the fixer process, with the fake kiro-cli fixer', () => {
 
   it('stops at a foreign tool call and names it, and a stopped run is charged the cap when no report came', async () => {
     const { result } = await run('fixer-foreign-tool');
-    expect(result).toMatchObject({ started: true, finished: false, aiFailReason: 'agent_failed', stopDetail: 'execute_bash', credits: 1.5, creditsEstimated: true, toolCalls: 1 });
+    expect(result).toMatchObject({ started: true, finished: false, aiFailReason: 'agent_failed', credits: 1.5, creditsEstimated: true, toolCalls: 1, halt: { code: 'foreign_tool' } });
+    expect(result.stopDetail).toMatch(/^execute_bash kind=other keys=\[/);
     await wd.remove(ID);
   });
 
@@ -92,6 +94,10 @@ describe('the fixer process, with the fake kiro-cli fixer', () => {
       const { result, f } = await run(fixture);
       expect(result, fixture).toMatchObject({ finished: false, aiFailReason: 'agent_failed', creditsEstimated: true });
       expect(result.stopDetail).toContain('path outside the folder');
+      expect(result.halt?.code, fixture).toBe('path_outside');
+      // The key set is named, never the path.
+      expect(result.halt?.detail).toMatch(/keys=\[command,file_text,path\]/);
+      expect(result.halt?.detail).not.toContain('/etc');
       // The fake only announces the escaping call; nothing was written outside the folder.
       expect(existsSync(join(tmp, 'escape.txt')), fixture).toBe(false);
       expect(existsSync(join(f.base, '..', '..', 'escape.txt')), fixture).toBe(false);
@@ -99,25 +105,26 @@ describe('the fixer process, with the fake kiro-cli fixer', () => {
     }
   });
 
-  it('refuses an update that gives an accepted call id to another tool', async () => {
+  it('refuses an update that gives an accepted call id the input of another tool (its title is not what decides)', async () => {
     const { result, f } = await run('fixer-reuse-id');
-    expect(result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', stopDetail: 'execute_bash' });
+    expect(result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', halt: { code: 'unknown_args' } });
+    expect(result.stopDetail).toBe('fs_read arguments not understood: unknown key command kind=none keys=[command]');
     expect(f.work).toContain(ID);
     await wd.remove(ID);
   });
 
   it('ends a run that is too long as a timeout, group killed, charged the cap', async () => {
     const { result } = await run('fixer-timeout', { timeoutMs: 1200 });
-    expect(result).toMatchObject({ started: true, finished: false, aiFailReason: 'timeout', stopDetail: 'timeout', credits: 1.5, creditsEstimated: true });
+    expect(result).toMatchObject({ started: true, finished: false, aiFailReason: 'timeout', stopDetail: 'timeout', credits: 1.5, creditsEstimated: true, halt: { code: 'timeout' } });
     await wd.remove(ID);
   }, 15_000);
 
   it('stops when the Credits reach the cap, and when there are too many tool calls', async () => {
     const over = await run('fixer-over-cap');
-    expect(over.result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', stopDetail: 'credit cap', credits: 2, creditsEstimated: false });
+    expect(over.result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', stopDetail: 'credit cap', credits: 2, creditsEstimated: false, halt: { code: 'credit_cap' } });
     await wd.remove(ID);
     const many = await run('fixer-tool-limit', { maxToolCalls: 30 });
-    expect(many.result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', stopDetail: 'tool call limit', toolCalls: 31 });
+    expect(many.result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', stopDetail: 'tool call limit', toolCalls: 31, halt: { code: 'tool_limit' } });
     await wd.remove(ID);
   });
 
@@ -126,14 +133,14 @@ describe('the fixer process, with the fake kiro-cli fixer', () => {
     expect(noReport.result).toMatchObject({ finished: true, aiFailReason: null, credits: 1.5, creditsEstimated: true });
     await wd.remove(ID);
     const failed = await run('fixer-fail-exit');
-    expect(failed.result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', stopDetail: 'exit 1', creditsEstimated: true });
+    expect(failed.result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', stopDetail: 'exit 1', creditsEstimated: true, halt: { code: 'exit_code', detail: 'exit 1' } });
     await wd.remove(ID);
   });
 
   it('charges nothing for a process that never started', async () => {
     const f = await wd.create(ID, 'payments', tar);
     const handle = startFixer({ proposalId: ID, folder: f.work, prompt: 'x', cfg: CFG, kiroCliPath: join(tmp, 'no-such-kiro-cli'), parentEnv: {} });
-    expect(await handle.result).toMatchObject({ started: false, finished: false, aiFailReason: 'agent_failed', credits: 0, creditsEstimated: false, toolCalls: 0 });
+    expect(await handle.result).toMatchObject({ started: false, finished: false, aiFailReason: 'agent_failed', credits: 0, creditsEstimated: false, toolCalls: 0, halt: { code: 'not_started' } });
     await wd.remove(ID);
   });
 
@@ -153,7 +160,60 @@ describe('the fixer process, with the fake kiro-cli fixer', () => {
     const handle = startFixer({ proposalId: ID, folder: f.work, prompt: 'x', cfg: { ...CFG, timeoutMs: 60_000 }, kiroCliPath: fake.path, parentEnv: { HOME: tmp } });
     await new Promise((r) => setTimeout(r, 400));
     handle.stop('disabled');
-    expect(await handle.result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', stopDetail: 'disabled', creditsEstimated: true });
+    expect(await handle.result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', stopDetail: 'disabled', creditsEstimated: true, halt: { code: 'stopped', detail: 'disabled' } });
     await wd.remove(ID);
   }, 15_000);
+  it('stops a stream with too many malformed lines (stream_malformed)', async () => {
+    const { result } = await run('fixer-malformed');
+    expect(result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', halt: { code: 'stream_malformed' } });
+    await wd.remove(ID);
+  });
+  it('stops at one oversized line (a Write File with an absolute path hidden past the 1 MiB cap)', async () => {
+    const { result } = await run('fixer-oversized');
+    expect(result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', halt: { code: 'stream_malformed' } });
+    await wd.remove(ID);
+  });
+
+  it('stops a file tool call that completes with arguments never seen (unjudged_input)', async () => {
+    const { result } = await run('fixer-no-input');
+    expect(result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', halt: { code: 'unjudged_input' } });
+    expect(result.halt?.detail).toMatch(/^fs_write ran \(completed\) with arguments never seen kind=none keys=none$/);
+    await wd.remove(ID);
+  });
+
+  it('stops a file tool call whose arguments it does not know (unknown_args), and names the keys only', async () => {
+    const { result } = await run('fixer-unknown-args');
+    expect(result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', halt: { code: 'unknown_args' } });
+    expect(result.halt?.detail).toContain('fs_write arguments not understood');
+    expect(result.halt?.detail).toContain('keys=[command,mode,path]');
+    expect(result.halt?.detail).not.toContain('charge.js');
+    await wd.remove(ID);
+  });
+  it('stops at an update of a call that was never announced (unknown_update)', async () => {
+    const { result } = await run('fixer-orphan-update');
+    expect(result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', halt: { code: 'unknown_update' } });
+    await wd.remove(ID);
+  });
+  it('counts a finished run with no fs_write call (the runner names it no_write)', async () => {
+    const { result } = await run('fixer-no-change');
+    expect(result).toMatchObject({ finished: true, halt: null, writes: 0 });
+    await wd.remove(ID);
+  });
+  it('keeps the reduced stream of the run in a 0600 file, with no agent text and no secret', async () => {
+    const path = join(tmp, 'streams-test', `${ID}.fixer.stream.jsonl`);
+    mkdirSync(dirname(path), { recursive: true });
+    await run('fixer-foreign-tool', {}, { stream: path });
+    const text = readFileSync(path, 'utf8');
+    const lines = text.trim().split('\n').map((l) => JSON.parse(l) as { type: string; data: { update?: { sessionUpdate?: string; title?: string } } });
+    expect(lines.some((l) => l.data.update?.sessionUpdate === 'tool_call' && l.data.update.title === 'execute_bash')).toBe(true);
+    expect(text).not.toContain('agent_message_chunk');
+    expect(text).not.toContain(DUMMY_GITHUB_TOKEN);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    await wd.remove(ID);
+  });
+  it('writes every halt as one bounded line', () => {
+    expect(haltText({ code: 'exit_code', detail: 'exit 1' })).toBe('exit_code: exit 1');
+    expect(haltText({ code: 'foreign_tool', detail: `x\u0007${'y'.repeat(400)}` })).toHaveLength(300);
+    expect(haltText({ code: 'foreign_tool', detail: 'a\nb' })).toBe('foreign_tool: a b');
+  });
 });

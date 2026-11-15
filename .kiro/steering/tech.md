@@ -10,7 +10,7 @@ Package manager: pnpm only. Runtime: Node 26. Language: TypeScript, strict mode.
 
 - `apps/web`: Vite + React + PixiJS v8 + Web Audio.
 - `apps/api`: NestJS + Prisma + PostgreSQL + SSE. No Redis, single instance.
-- `packages/exorcist-mcp`: MCP server over stdio. Tools: `query_metrics`, `search_errors`, `tail_logs`, `recent_deploys`, `diff_commit`, `submit_diagnosis`, `propose_fix`.
+- `packages/exorcist-mcp`: MCP server over stdio. Tools: `query_metrics`, `search_errors`, `tail_logs`, `recent_deploys`, `diff_commit`, `submit_diagnosis`. There is no `propose_fix` tool: the fixer is a separate server-run agent (`exorcist-fixer`, `fs_read` and `fs_write` only), and the Exorcist stays read-only.
 - `.kiro/agents/exorcist.json`: the Exorcist agent, restricted to the MCP tools.
 - `tools/sanitize-replay`: turns recorded incidents into reviewed, sanitized fixtures.
 - Lab: separate repo `haunted-lab` (gate, orders, payments, ledger + Prometheus + chaos controller).

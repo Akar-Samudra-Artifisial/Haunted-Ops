@@ -31,6 +31,7 @@ describe('parseFixConfig', () => {
       chaosToken: null,
       webOrigin: null,
       gitPath: 'git',
+      pnpmPath: null,
       model: 'claude-sonnet-5.5',
       creditCap: 1.5,
       timeoutMs: 120_000,
@@ -48,6 +49,15 @@ describe('parseFixConfig', () => {
   it('turns on with everything set and resolves git', () => {
     const c = parseFixConfig({ ...on, FIX_CREDIT_CAP: '2', FIX_TIMEOUT_MS: '60000', FIX_MAX_TOOL_CALLS: '10', FIX_REQUIRE_TESTS: 'false', FIX_WORKDIR: '/var/fix' }, hunts, deps);
     expect(c).toMatchObject({ enabled: true, githubToken: TOKEN, repo: 'Akar-Samudra-Artifisial/Haunted-Lab', chaosToken: CHAOS, gitPath: '/usr/bin/git', creditCap: 2, timeoutMs: 60_000, maxToolCalls: 10, requireTests: false, workdir: '/var/fix', webOrigin: 'http://localhost:5173' });
+  });
+
+  it('resolves pnpm like git when on, and its absence does not refuse the settings', () => {
+    const names: string[] = [];
+    const found = parseFixConfig(on, hunts, { ...deps, resolveExecutable: (name) => (names.push(name), `/usr/local/bin/${name}`) });
+    expect(found.pnpmPath).toBe('/usr/local/bin/pnpm');
+    expect(names).toContain('pnpm');
+    const none = parseFixConfig(on, hunts, { ...deps, resolveExecutable: (name) => (name === 'git' ? '/usr/bin/git' : null) });
+    expect(none.pnpmPath).toBeNull();
   });
 
   it('requires the Hunt settings, the token, the repository, the chaos token, WEB_ORIGIN and git when on', () => {

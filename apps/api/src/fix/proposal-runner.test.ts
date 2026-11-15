@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { DUMMY_GITHUB_TOKEN } from '../../test/support/fix.js';
 import { NOW, REPO, commitInLab, makeHarness, type Harness } from '../../test/support/fix-harness.js';
 import { gitIn } from '../../test/support/lab-repo.js';
-import { prTextProblems } from './pr-text.js';
+import { GitError } from './git-client.js';
+import { PR_TESTS_SKIPPED_WARNING, prTextProblems } from './pr-text.js';
 
 const live: Harness[] = [];
 const make = async (...args: Parameters<typeof makeHarness>): Promise<Harness> => {
@@ -117,8 +118,9 @@ describe('ProposalRunner: from a succeeded Hunt to a pull request', () => {
 describe('ProposalRunner: when the patch cannot be used, the revert', () => {
   const cases: Array<[string, string]> = [
     ['fixer-big', 'size'],
-    ['fixer-scope', 'scope'],
-    ['fixer-forbidden', 'forbidden_file'],
+    // A write outside services/<S>/src/ is now stopped by the guard during the run (write_outside_scope).
+    ['fixer-scope', 'agent_failed'],
+    ['fixer-forbidden', 'agent_failed'],
     ['fixer-test-edit', 'forbidden_file'],
     ['fixer-delete-test', 'forbidden_file'],
     ['fixer-symlink', 'forbidden_file'],
@@ -154,10 +156,163 @@ describe('ProposalRunner: when the patch cannot be used, the revert', () => {
     expect(await h.store.byId(id)).toMatchObject({ status: 'open', kind: 'revert', aiFailReason: 'timeout', credits: 1.5, creditsEstimated: true });
   }, 60_000);
 
+  it('keeps a good patch when kiro-cli migrated the agent file in place and left its .bak (no false agent_changed or scope)', async () => {
+    for (const fixture of ['fixer-migrated-good', 'fixer-good']) {
+      const h = await make({ fixture });
+      const rec = await h.store.byId(await propose(h, h.addHunt().id));
+      expect(rec, fixture).toMatchObject({ status: 'open', kind: 'ai_patch', aiFailReason: null, aiFailDetail: null });
+      expect(h.fake.pulls[0], fixture).toMatchObject({ state: 'open', labels: ['exorcist', 'ai_patch'] });
+    }
+  }, 120_000);
+
+  it('keeps a good patch from the dynamic shapes of kiro-cli 3.3.0 (`Reading`, `Editing` with strReplace) after the agent migration (task 20)', async () => {
+    const h = await make({ fixture: 'fixer-edit-command' });
+    const rec = await h.store.byId(await propose(h, h.addHunt().id));
+    expect(rec).toMatchObject({ status: 'open', kind: 'ai_patch', aiFailReason: null, aiFailDetail: null, agentStarted: true });
+    expect(rec?.patchFiles).toBe(1);
+    expect(h.fake.pulls[0]).toMatchObject({ state: 'open', labels: ['exorcist', 'ai_patch'] });
+  }, 60_000);
+
+  it('does not trust a .bak with other bytes: the patch fails forbidden_file and the revert is proposed', async () => {
+    const h = await make({ fixture: 'fixer-migrated-bad-bak' });
+    const rec = await h.store.byId(await propose(h, h.addHunt().id));
+    expect(rec).toMatchObject({ status: 'open', kind: 'revert', aiFailReason: 'forbidden_file' });
+  }, 60_000);
+
+  it('still stops a write to package.json with the migrated agent (generic allow rules) in place', async () => {
+    const h = await make({ fixture: 'fixer-migrated-package-json' });
+    const rec = await h.store.byId(await propose(h, h.addHunt().id));
+    expect(rec).toMatchObject({ kind: 'revert', aiFailReason: 'agent_failed' });
+    expect(rec?.aiFailDetail).toMatch(/^write_outside_scope: /);
+  }, 60_000);
+
+  it('drops the patch when the agent file changed beyond the migration, and names the key', async () => {
+    const h = await make({ fixture: 'fixer-migrated-shell-rule' });
+    const rec = await h.store.byId(await propose(h, h.addHunt().id));
+    expect(rec).toMatchObject({ kind: 'revert', aiFailReason: 'agent_failed' });
+    expect(rec?.aiFailDetail).toBe('agent_changed: the agent file in the work folder was changed at permissions.rules[5].capability');
+    expect(rec?.aiFailDetail).not.toContain('execute');
+  }, 60_000);
+
+  it('stops a fixer that writes outside services/<S>/src/ and records why in the internal detail', async () => {
+    for (const fixture of ['fixer-scope', 'fixer-forbidden']) {
+      const h = await make({ fixture });
+      const id = await propose(h, h.addHunt().id);
+      const rec = await h.store.byId(id);
+      expect(rec, fixture).toMatchObject({ status: 'open', kind: 'revert', aiFailReason: 'agent_failed' });
+      expect(rec?.aiFailDetail, fixture).toMatch(/^write_outside_scope: fs_write outside services\/payments\/src\/ kind=other keys=\[command,file_text,path\]$/);
+      expect(h.logs.some((l) => l.includes('"fixerHalt":{"code":"write_outside_scope"'))).toBe(true);
+    }
+  }, 120_000);
+
   it('keeps the patch kind a function of the checks: a patch that passes is never replaced by the revert', async () => {
     const h = await make({ fixture: 'fixer-wrapped' });
     const id = await propose(h, h.addHunt().id);
     expect(await h.store.byId(id)).toMatchObject({ status: 'open', kind: 'ai_patch', aiFailReason: null });
+  }, 60_000);
+
+  it('names a setup error before the fixer is spawned as fixer_not_started, with the class and message, and does not count the run (task 22)', async () => {
+    // No `parentEnv` under Vitest: the guard of the runner throws before anything starts (the bug of the first live run).
+    const h = await make({ fixture: 'fixer-good', runner: { parentEnv: undefined } });
+    const id = await propose(h, h.addHunt().id);
+    const rec = await h.store.byId(id);
+    expect(rec).toMatchObject({ status: 'open', kind: 'revert', aiFailReason: 'agent_failed', agentStarted: false, credits: 0 });
+    expect(rec?.aiFailDetail).toBe('fixer_not_started: Error: parentEnv is required in tests');
+    expect(h.spawned).toEqual([]);
+    expect(await h.store.fixerStartsToday(NOW)).toBe(0);
+    // The reason is in the view that the route and the live test show.
+    expect(await h.store.view(id)).toMatchObject({ aiFailReason: 'agent_failed', aiFailDetail: 'fixer_not_started: Error: parentEnv is required in tests' });
+  }, 60_000);
+
+  it('names an error after the spawn as step_error, scrubbed of paths and tokens, and counts the run (task 22)', async () => {
+    const h = await make({ fixture: 'fixer-good' });
+    h.workdir.agentCheck = async () => {
+      throw new Error(`cannot read /var/private/work/x.json with ${DUMMY_GITHUB_TOKEN} ${'y'.repeat(300)}`);
+    };
+    const id = await propose(h, h.addHunt().id);
+    const rec = await h.store.byId(id);
+    expect(rec).toMatchObject({ kind: 'revert', aiFailReason: 'agent_failed', agentStarted: true });
+    const detail = rec?.aiFailDetail ?? '';
+    expect(detail.startsWith('step_error: Error: cannot read [path] with [redacted]')).toBe(true);
+    expect(detail.length).toBeLessThanOrEqual(300);
+    for (const secret of ['/var/private', DUMMY_GITHUB_TOKEN, 'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy']) expect(detail).not.toContain(secret);
+    expect(h.logs.join('\n')).not.toContain(DUMMY_GITHUB_TOKEN);
+    expect(await h.store.fixerStartsToday(NOW)).toBe(1);
+  }, 60_000);
+
+  it('ends the Proposal with export_unsafe when the export is not plain files (the error class of the workdir, task 22)', async () => {
+    const header = Buffer.alloc(512);
+    header.write('/etc/passwd', 0, 'utf8');
+    header.write('0000644\0', 100, 'latin1');
+    header.write('00000000001\0', 124, 'latin1');
+    header.write('0', 156, 'latin1');
+    header.write('ustar\0', 257, 'latin1');
+    const tar = Buffer.concat([header, Buffer.from('x'), Buffer.alloc(511), Buffer.alloc(1024)]);
+    const h = await make({ fixture: 'fixer-good', gitWrap: (git) => Object.assign(Object.create(git) as typeof git, { archive: async () => tar }) });
+    const id = await propose(h, h.addHunt().id);
+    expect(await h.store.byId(id)).toMatchObject({ status: 'failed', failReason: 'export_unsafe', agentStarted: false });
+    expect(h.spawned).toEqual([]);
+  }, 60_000);
+
+  it('does not count a kiro-cli that could not be executed as a started run (task 22)', async () => {
+    const h = await make({ fixture: 'fixer-good' });
+    h.huntCfg.kiroCliPath = '/nonexistent/kiro-cli';
+    const id = await propose(h, h.addHunt().id);
+    expect(await h.store.byId(id)).toMatchObject({ kind: 'revert', aiFailReason: 'agent_failed', agentStarted: false });
+    expect((await h.store.byId(id))?.aiFailDetail).toMatch(/^not_started: /);
+  }, 60_000);
+});
+
+describe('ProposalRunner: a vitest service and its sandbox-green set', () => {
+  const vitest = { runnerOf: async () => 'vitest' as const };
+  const baselineWith = (included: string[]) => ({
+    testBaseline: async () => ({
+      key: 'k',
+      services: new Map([['payments' as const, { included, excluded: [{ file: 'services/payments/test/routes.test.ts', reason: 'needs_network' as const }] }]]),
+    }),
+  });
+
+  it('records the tests check as skipped with an empty set, still gates the patch, and warns in the pull request body', async () => {
+    const h = await make({ fixture: 'fixer-good', runner: { ...vitest, ...baselineWith([]) } });
+    const id = await propose(h, h.addHunt().id);
+    const rec = await h.store.byId(id);
+    expect(rec).toMatchObject({ status: 'open', kind: 'ai_patch' });
+    expect(rec?.checks.map((c) => c.name)).toEqual(['non_empty', 'scope', 'forbidden_file', 'size', 'syntax', 'tests', 'touches_culprit_files']);
+    expect(rec?.checks.find((c) => c.name === 'tests')).toEqual({ name: 'tests', ok: true, skipped: true, detail: 'no sandbox-green tests for payments' });
+    const body = h.fake.pulls[0]?.body ?? '';
+    expect(body).toContain(PR_TESTS_SKIPPED_WARNING);
+    expect(body).toContain('- tests: skipped (no sandbox-green tests for this service)');
+    expect(body).toContain('- services/payments/test/routes.test.ts (needs network)');
+    // The SSE checks payload carries it too.
+    const checks = h.events.find((e) => e.name === 'proposal.checks')?.payload as { checks: Array<{ name: string; skipped?: boolean }> };
+    expect(checks.checks.find((c) => c.name === 'tests')?.skipped).toBe(true);
+    expect(h.logs.some((l) => l.includes('"msg":"check run skipped"'))).toBe(true);
+  }, 60_000);
+
+  it('lists a test file of the candidate that the baseline at its base commit never saw as not run, with a reason (18.4)', async () => {
+    const h = await make({ fixture: 'fixer-good', runner: { ...vitest, ...baselineWith([]) } });
+    await propose(h, h.addHunt().id);
+    expect(h.fake.pulls[0]?.body ?? '').toContain('- services/payments/test/charge.test.js (not at the base commit)');
+  }, 60_000);
+
+  it('still refuses a patch that fails the gates before the tests, skipped set or not', async () => {
+    const h = await make({ fixture: 'fixer-big', runner: { ...vitest, ...baselineWith([]) } });
+    const rec = await h.store.byId(await propose(h, h.addHunt().id));
+    expect(rec).toMatchObject({ kind: 'revert', aiFailReason: 'size' });
+    expect(rec?.checks.find((c) => c.name === 'tests')?.skipped).toBe(true);
+  }, 60_000);
+
+  it('fails tests when one included file fails, falls back to the revert, and never warns', async () => {
+    // The included file runs under vitest; here the lab tree is absent, so the run fails like a failing test file.
+    const h = await make({ fixture: 'fixer-good', runner: { ...vitest, ...baselineWith(['services/payments/test/charge.test.js']) } });
+    const rec = await h.store.byId(await propose(h, h.addHunt().id));
+    expect(rec).toMatchObject({ status: 'checks_failed', aiFailReason: 'tests_failed', failReason: 'checks_failed' });
+    expect(rec?.checks).toEqual([
+      { name: 'scope', ok: true },
+      { name: 'forbidden_file', ok: true },
+      { name: 'tests', ok: false },
+    ]);
+    expect(h.fake.pulls).toHaveLength(0);
   }, 60_000);
 });
 
@@ -305,7 +460,8 @@ describe('ProposalRunner: what is merged must be what was pushed', () => {
 
 describe('ProposalRunner: the deploy', () => {
   it('ends with a fixed reason when the lab refuses, cannot be reached, or never lists the record', async () => {
-    for (const [mode, reason, calls] of [['rejected', 'deploy_rejected', 1], ['unavailable', 'deploy_unavailable', 3], ['never_record', 'deploy_unconfirmed', 1]] as const) {
+    // An unreachable lab is transient: with the confirm window at 0 it ends `deploy_unconfirmed` (task 18.3).
+    for (const [mode, reason, calls] of [['rejected', 'deploy_rejected', 1], ['unavailable', 'deploy_unconfirmed', 3], ['never_record', 'deploy_unconfirmed', 1]] as const) {
       const h = await make({ fixture: 'fixer-good' });
       h.labApi.mode = mode;
       const id = await propose(h, h.addHunt().id);
@@ -664,6 +820,56 @@ describe('ProposalRunner: the deploy after a restart, and its confirmation (13.5
     expect(h.labApi.calls).toHaveLength(1);
     clock.t += 20_000;
     h.labApi.records.push({ id: 'd-951', service: 'payments', sha: mergeSha, time: new Date(clock.t).toISOString(), actor: 'exorcist' });
+    await h.runner.tick();
+    expect((await h.store.byId(id))?.status).toBe('deployed');
+    expect(h.labApi.calls).toHaveLength(1);
+  }, 60_000);
+
+  it('keeps a merged Proposal through a transient fetch error and deploys on the next tick (18.3)', async () => {
+    let fails = 0;
+    const h = await make({
+      fixture: 'fixer-good',
+      cfg: { deployConfirmMs: 60_000 },
+      gitWrap: (git) =>
+        gitWith({
+          fetchIncidentBranch: async (dir: string, huntId: string) => {
+            if (fails > 0) throw new GitError('fetch_failed', 128);
+            return git.fetchIncidentBranch(dir, huntId);
+          },
+        })(git),
+    });
+    const id = await propose(h, h.addHunt().id);
+    h.merge(1);
+    // Every fetch fails for this tick, as a network outage would.
+    fails = 1;
+    await h.runner.tick();
+    expect(await h.store.byId(id)).toMatchObject({ status: 'merged', failReason: null });
+    expect(h.labApi.calls).toHaveLength(0);
+    expect(h.logs.some((l) => l.includes('"msg":"proposal deploy retried later"'))).toBe(true);
+    // The network is back: the next tick deploys.
+    fails = 0;
+    await h.runner.tick();
+    expect((await h.store.byId(id))?.status).toBe('deployed');
+    expect(h.labApi.calls).toHaveLength(1);
+  }, 60_000);
+
+  it('after a restart between asking and the record, looks for the record and does not ask again (18.3)', async () => {
+    const h = await make({ fixture: 'fixer-good', cfg: { deployConfirmMs: 60_000 } });
+    h.labApi.mode = 'never_record';
+    const id = await propose(h, h.addHunt().id);
+    const { mergeSha } = h.merge(1);
+    await h.runner.tick();
+    const asked = await h.store.byId(id);
+    expect(asked).toMatchObject({ status: 'merged' });
+    expect(asked?.deployAskedAt).toEqual(NOW);
+    expect(h.labApi.calls).toHaveLength(1);
+    // A new process remembers nothing in memory: only the row says the deploy was asked.
+    (h.runner as unknown as { deployAsked: Set<string> }).deployAsked.clear();
+    await h.runner.tick();
+    expect(h.labApi.calls).toHaveLength(1);
+    expect((await h.store.byId(id))?.status).toBe('merged');
+    h.labApi.records.push({ id: 'd-952', service: 'payments', sha: mergeSha, time: NOW.toISOString(), actor: 'exorcist' });
+    (h.runner as unknown as { deployAsked: Set<string> }).deployAsked.clear();
     await h.runner.tick();
     expect((await h.store.byId(id))?.status).toBe('deployed');
     expect(h.labApi.calls).toHaveLength(1);

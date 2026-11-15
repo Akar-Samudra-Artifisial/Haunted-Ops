@@ -61,7 +61,8 @@ describe('Property 1: a patch is accepted if and only if every Check passes', ()
     const all = names(p);
     const steps: Array<[string, boolean, string]> = [
       ['non_empty', all.length > 0, 'scope'],
-      ['scope', all.every(underService), 'scope'],
+          // Unreadable entries are left to forbidden_file, so the reason is honest.
+      ['scope', [...p.changed.map((f) => f.path), ...p.added.map((f) => f.path), ...p.deleted].every(underService), 'scope'],
       ['forbidden_file', p.unreadable.length === 0 && p.deleted.length === 0 && [...p.changed, ...p.added].every((f) => !forbiddenWrite(f.path)), 'forbidden_file'],
       // Uncountable lines are never read as 0: the size check fails, for the reason forbidden_file.
       ['size', !size.binary && size.files >= 1 && size.files <= MAX_PATCH_FILES && size.lines <= MAX_PATCH_LINES, size.binary ? 'forbidden_file' : 'size'],

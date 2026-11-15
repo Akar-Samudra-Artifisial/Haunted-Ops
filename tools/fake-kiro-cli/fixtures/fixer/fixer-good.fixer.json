@@ -1,6 +1,9 @@
 {
   "steps": [
     {
+      "kind": "migrate-agent"
+    },
+    {
       "kind": "read",
       "path": "services/payments/src/charge.js"
     },

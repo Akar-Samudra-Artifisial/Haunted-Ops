@@ -1,0 +1,1 @@
+{"type":"sessionUpdate","data":{"sessionId":"session-1","update":{"sessionUpdate":"tool_call","toolCallId":"call-1","title":"Reading refunds.ts:1","kind":"read","rawInput":{"operations":[{"mode":"Line","path":"services/payments/src/refunds.ts"}]},"_meta":{"kiro":{"toolName":"read"}}}}}

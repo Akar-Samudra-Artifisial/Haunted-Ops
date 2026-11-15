@@ -71,6 +71,12 @@ export async function startFakeLab(opts) {
       })();
       return;
     }
+    if (url.pathname === '/chaos/state' && req.method === 'GET') {
+      // The authenticated, side-effect-free route the API calls at startup to check its chaos token.
+      const chaosOk = chaosToken !== null && req.headers.authorization === `Bearer ${chaosToken}`;
+      if (!chaosOk) return json(res, 401, { error: { code: 'unauthorized' } });
+      return json(res, 200, { scenario: null });
+    }
     if (down) return json(res, 503, { untrusted: true, error: { code: 'unavailable', message: 'down' } });
     if (url.pathname.startsWith('/lab/')) {
       if (!authorized) return json(res, 401, { untrusted: true, error: { code: 'unauthorized', message: 'unauthorized' } });

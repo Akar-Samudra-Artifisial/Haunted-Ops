@@ -1,0 +1,10 @@
+{
+  "steps": [
+    {
+      "kind": "orphan-update",
+      "input": {
+        "path": "services/payments/src/charge.js"
+      }
+    }
+  ]
+}

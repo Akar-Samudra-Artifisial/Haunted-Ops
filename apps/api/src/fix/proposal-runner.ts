@@ -11,6 +11,7 @@ import {
   type ServiceName,
   CUID_PATTERN,
   FULL_SHA_PATTERN,
+  SERVICE_NAMES,
   fixBranch,
   incidentBranch,
 } from '@haunted-ops/shared';
@@ -25,16 +26,18 @@ import { HuntWorkdir } from '../hunts/hunt-workdir.js';
 import type { JsonLogger } from '../security/logger.js';
 import { BranchCleanup } from './branch-cleanup.js';
 import { publishBranches } from './branch-publisher.js';
-import { CHECK_TMP, checkSyntax, findTestFiles, runChecks } from './check-run.js';
+import { CHECK_TMP, checkFileSyntax, detectRunner, findTestFiles, runChecks, type CheckRunLog, type TestRunner } from './check-run.js';
 import type { FixConfig } from './fix-config.js';
 import { fixerPrompt, MAX_DIFF_BYTES } from './fix-env.js';
-import { startFixer, type FixerHandle } from './fixer-process.js';
-import { exportPathsOf, type FixerWorkdir } from './fixer-workdir.js';
+import { haltText, startFixer, type FixerHalt, type FixerHandle } from './fixer-process.js';
+import { exportPathsOf, FixerWorkdirError, type FixerWorkdir } from './fixer-workdir.js';
 import type { GitClient } from './git-client.js';
 import type { GithubClient } from './github-client.js';
 import type { FixLab } from './lab-deploy-client.js';
-import { judgePatch, readPatch, type JudgeContext, type Patch } from './patch-checks.js';
-import { ProposalError, errorCodeOf, failReasonOf } from './proposal-error.js';
+import type { LabDeps } from './lab-deps.js';
+import { exclusionText, serviceBaseline, type ServiceBaseline, type TestBaseline } from './test-baseline.js';
+import { judgePatch, readPatch, type JudgeContext, type Patch, type TestsResult } from './patch-checks.js';
+import { ProposalError, errorCodeOf, errorDetailOf, failReasonOf } from './proposal-error.js';
 import { toProposalSummary, type ProposalRecord, type ProposalStore } from './proposal-store.js';
 import { openPullRequest } from './pull-request.js';
 import { attemptRevert, judgeRevert, revertFileProblems } from './revert.js';
@@ -85,6 +88,12 @@ export interface ProposalRunnerDeps {
   parentEnv?: Readonly<Record<string, string | undefined>>;
   /** Test seam: a fake process in place of `kiro-cli`. */
   spawn?: (opts: HuntProcessOptions) => HuntProcessLike;
+  /** The lab dependency tree for services that test with vitest (absent in tests whose lab uses `node --test`). */
+  labDeps?: Pick<LabDeps, 'ensure' | 'lockHash'>;
+  /** Test seam: the runner of a service (default `detectRunner`, from its `scripts.test`). */
+  runnerOf?: (clone: string, service: ServiceName) => Promise<TestRunner>;
+  /** Test seam: the sandbox-green sets, in place of running the baseline at `main`. */
+  testBaseline?: () => Promise<TestBaseline | null>;
   /** Kills the `kiro-cli` groups a crashed API left behind; default reads the pid notes of the fix folder. */
   reapOrphans?: () => Promise<number>;
   timings?: { confirmMs?: number; confirmEveryMs?: number; deployRetries?: number; retryBackoffMs?: number };
@@ -110,6 +119,18 @@ export function aiDeniedReason(i: { spent: number; starts: number; creditCap: nu
 }
 
 const DEPLOY_LOOKBACK_MS = 7 * 24 * 3_600_000;
+/** After the merge, the reasons a retry cannot change: they end a `merged` Proposal at once. */
+export const FINAL_AFTER_MERGE: ReadonlySet<ProposalFailReason> = new Set<ProposalFailReason>(['ref_moved', 'merge_scope', 'merge_content', 'deploy_rejected', 'head_changed']);
+
+/**
+ * What an error after the merge does (pure): a reason a retry cannot change ends the Proposal with it; any other
+ * (a fetch or git timeout, GitHub or the lab not answering) is retried on the next tick while the confirm window is
+ * open, and ends it `deploy_unconfirmed` once it is over.
+ */
+export function afterMergeDecision(reason: ProposalFailReason, windowOver: boolean): { kind: 'retry' } | { kind: 'fail'; reason: ProposalFailReason } {
+  if (FINAL_AFTER_MERGE.has(reason)) return { kind: 'fail', reason };
+  return windowOver ? { kind: 'fail', reason: 'deploy_unconfirmed' } : { kind: 'retry' };
+}
 const iso = (d: Date): string => d.toISOString();
 const oneLine = (text: string, max: number): string => sanitizePrText(text.split(/(?<=[.!?])\s/)[0] ?? text, max).replaceAll('\u200b', '');
 
@@ -122,7 +143,12 @@ interface Candidate {
   patchFiles: number | null;
   patchLines: number | null;
   testsRan: boolean;
+  /** The test files that ran, and the ones left out of the sandbox-green set (for the pull request body). */
+  tests: { ran: string[]; excluded: ServiceBaseline['excluded'] };
 }
+
+/** A test run of a candidate, with the files it ran and the files the baseline left out. */
+type TestRun = TestsResult & { files: string[]; excluded: ServiceBaseline['excluded'] };
 
 /**
  * The flow of one Proposal for one succeeded Hunt. It finds the commit the lab runs for the culprit Service, runs the
@@ -143,6 +169,8 @@ export class ProposalRunner {
   /** Merged Proposals whose deploy was asked for in this process (a restart asks again only if the lab lists none). */
   private readonly deployAsked = new Set<string>();
   private current: { id: string; handle: FixerHandle | null } | null = null;
+  /** The sandbox-green test sets, per `<sha>:<lockfile hash>:<service>` (vitest services). */
+  private readonly baselines = new Map<string, ServiceBaseline>();
   private stopping = false;
   private readonly latestByService = new Map<ServiceName, ProposalSummary>();
 
@@ -160,6 +188,8 @@ export class ProposalRunner {
     const reaped = await (this.deps.reapOrphans ?? (() => new HuntWorkdir(this.cfg.workdir).reapOrphans()))().catch(() => 0);
     if (reaped > 0) this.deps.logger.log('warn', 'fixer processes reaped', { count: reaped });
     await this.deps.workdir.prepareRoot();
+    const pruned = await this.deps.workdir.pruneStreams(this.now()).catch(() => 0);
+    if (pruned > 0) this.deps.logger.log('info', 'fixer streams pruned', { count: pruned });
     const swept = await this.deps.proposals.sweepDrafting(this.now());
     if (swept > 0) this.deps.logger.log('warn', 'proposals ended by a restart', { count: swept });
     const latest = await this.deps.proposals.latestPerService().catch(() => new Map<ServiceName, ProposalSummary>());
@@ -169,6 +199,9 @@ export class ProposalRunner {
       const p = ev.payload as { huntId?: unknown; status?: unknown };
       if (p.status === 'succeeded' && typeof p.huntId === 'string') void this.request(p.huntId, 'auto').catch(() => undefined);
     });
+    // The lab's dependency tree, for services that test with vitest: installed now from `main`, in the background. It
+    // is queued like a draft, so it never fetches into the API's copy at the same time as one.
+    if (this.deps.labDeps !== undefined) this.chain = this.chain.then(() => this.prepareLabDeps()).catch(() => undefined);
     // A Proposal that was merged when the API stopped goes on to its deploy.
     for (const rec of await this.deps.proposals.listByStatus(['merged'])) void this.continueMerged(rec);
     if (this.deps.poll !== false) {
@@ -177,6 +210,19 @@ export class ProposalRunner {
       // Old proposal branches go at start and every hour (never `main`, a scenario branch or an open pull request).
       this.branchCleanup = new BranchCleanup({ github: this.deps.github, proposals: this.deps.proposals, ttlDays: this.cfg.branchTtlDays, logger: this.deps.logger, now: this.now });
       this.branchCleanup.start();
+    }
+  }
+
+  /**
+   * Fetches `main` into the API's copy, installs the lab tree for its lockfile and makes the test baseline. Failures
+   * are logged, never thrown.
+   */
+  private async prepareLabDeps(): Promise<void> {
+    try {
+      await this.deps.git.ensureMirror(this.deps.workdir.mirrorPath);
+      await this.ensureBaseline();
+    } catch (err) {
+      this.deps.logger.log('warn', 'lab deps failed', { code: errorCodeOf(err) });
     }
   }
 
@@ -315,6 +361,100 @@ export class ProposalRunner {
     }
   }
 
+  /**
+   * The test run of a candidate. A service whose `scripts.test` is vitest runs with the lab's dependency tree (installed
+   * once per lockfile); the others run under `node --test`. A failing run leaves one diagnostics line in the log.
+   */
+  private async runTests(rec: ProposalRecord, dir: string, service: ServiceName, baseSha: string, kind: ProposalKind): Promise<TestRun> {
+    const runner = await (this.deps.runnerOf ?? detectRunner)(dir, service);
+    const log = (fields: CheckRunLog): void => this.deps.logger.log('warn', 'check run failed', { proposalId: rec.id, kind, ...fields });
+    const all = await findTestFiles(dir, service);
+    if (runner !== 'vitest') {
+      const result = await runChecks({ clone: dir, testFiles: all, timeoutMs: this.cfg.testTimeoutMs, runner, service, log });
+      return { ...result, files: all, excluded: [] };
+    }
+    // A vitest service runs its sandbox-green set: the files that pass in the same sandbox at the commit the candidate
+    // starts from (`baseSha`), so the set and the candidate see the same test files.
+    const base = await this.serviceSet(service, baseSha);
+    if (base === null) {
+      log({ runner, code: 'baseline_unavailable', exitCode: null, timedOut: false, tests: 0, pass: 0, fail: 0, stderr: '' });
+      return { ok: false, ran: 0, timedOut: false, files: [], excluded: [] };
+    }
+    // A test file of the candidate the baseline never saw (a revert may bring one back) is not run, and is said so.
+    const known = new Set([...base.included, ...base.excluded.map((e) => e.file)]);
+    const set: ServiceBaseline = { included: base.included, excluded: [...base.excluded, ...all.filter((f) => !known.has(f)).map((file) => ({ file, reason: 'not_at_base' as const }))] };
+    const files = all.filter((f) => set.included.includes(f));
+    if (files.length === 0) {
+      // No sandbox-green test file for this service: the check is recorded as skipped (and the pull request says so),
+      // never as a silent pass. The patch checks before it still gate the patch.
+      this.deps.logger.log('warn', 'check run skipped', { proposalId: rec.id, kind, runner, service, reason: 'no sandbox-green tests', excluded: set.excluded });
+      return { ok: true, ran: 0, timedOut: false, skipped: true, files: [], excluded: set.excluded };
+    }
+    const deps = (await this.deps.labDeps?.ensure(this.deps.workdir.mirrorPath, baseSha).catch(() => null)) ?? null;
+    const result = await runChecks({ clone: dir, testFiles: files, timeoutMs: this.cfg.testTimeoutMs, runner, service, deps, log });
+    this.deps.logger.log('info', 'check run', { proposalId: rec.id, kind, runner, ok: result.ok, tests: result.ran, files: files.length, excluded: set.excluded.length });
+    return { ...result, files, excluded: set.excluded };
+  }
+
+  /**
+   * The sandbox-green set of one vitest service at `sha` (`test-baseline.ts`), cached per service, commit and lockfile:
+   * every test file run alone, in a clone at `sha` that is removed afterwards. Null when the lab tree cannot be had.
+   * Always called from the queue of drafts, so it never runs twice at once.
+   */
+  private async serviceSet(service: ServiceName, sha: string): Promise<ServiceBaseline | null> {
+    if (this.deps.testBaseline !== undefined) return (await this.deps.testBaseline())?.services.get(service) ?? null;
+    const labDeps = this.deps.labDeps;
+    if (labDeps === undefined) return null;
+    const mirror = this.deps.workdir.mirrorPath;
+    try {
+      const lock = await labDeps.lockHash(mirror, sha);
+      const key = `${sha}:${lock ?? 'none'}:${service}`;
+      const cached = this.baselines.get(key);
+      if (cached !== undefined) return cached;
+      const deps = await labDeps.ensure(mirror, sha);
+      if (deps === null) return null;
+      const dir = join(this.deps.workdir.path, 'baseline');
+      await rm(dir, { recursive: true, force: true });
+      try {
+        await this.deps.git.cloneAt(mirror, dir, sha);
+        const isVitest = (await (this.deps.runnerOf ?? detectRunner)(dir, service)) === 'vitest';
+        const set = isVitest ? await serviceBaseline(dir, service, deps, this.cfg.testTimeoutMs) : { included: [], excluded: [] };
+        this.baselines.set(key, set);
+        // A few commits at most: the oldest entry goes first.
+        while (this.baselines.size > 16) this.baselines.delete(this.baselines.keys().next().value as string);
+        this.deps.logger.log('info', 'test baseline', { sha: sha.slice(0, 12), service, included: set.included.length, excluded: set.excluded });
+        return set;
+      } finally {
+        await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    } catch (err) {
+      this.deps.logger.log('warn', 'test baseline failed', { code: errorCodeOf(err) });
+      return null;
+    }
+  }
+
+  /** At startup: the sets of every vitest service at `main`, so the first Proposal on `main` does not wait for them. */
+  private async ensureBaseline(): Promise<void> {
+    const mirror = this.deps.workdir.mirrorPath;
+    const main = await this.deps.git.revParse(mirror, 'main');
+    for (const service of SERVICE_NAMES) await this.serviceSet(service, main);
+  }
+
+  /** The secrets of this process, masked in the fixer stream file (the fixer never has them; this is belt and braces). */
+  private secrets(): string[] {
+    return [this.cfg.githubToken ?? '', this.cfg.chaosToken ?? ''].filter((t) => t.length >= 8);
+  }
+
+  /**
+   * Records why the fixer's run is not usable: one log line `fixerHalt: { code, detail }` and the internal column
+   * `aiFailDetail` (at most 300 characters). Neither reaches the pull request, an event or a public answer.
+   */
+  private async noteHalt(rec: ProposalRecord, halt: FixerHalt): Promise<void> {
+    const text = haltText(halt);
+    this.deps.logger.log('warn', 'fixer halted', { proposalId: rec.id, huntId: rec.huntId, fixerHalt: { code: halt.code, detail: text.slice(halt.code.length + 2) } });
+    await this.deps.proposals.patch(rec.id, 'drafting', { aiFailDetail: text }).catch(() => false);
+  }
+
   /** The commit D the lab runs for the service: the latest Deploy Record of it. */
   private async findBase(service: ServiceName): Promise<string> {
     const answer = await this.deps.lab.deploys(iso(new Date(this.now().getTime() - DEPLOY_LOOKBACK_MS)));
@@ -340,33 +480,63 @@ export class ProposalRunner {
     const d = this.deps;
     const diagnosis = hunt.diagnosis as NonNullable<HuntDetail['diagnosis']>;
     const mirror = d.workdir.mirrorPath;
+    let spawned = false;
     try {
       const tar = await d.git.archive(mirror, baseSha, exportPathsOf(service));
       const folders = await d.workdir.create(rec.id, service, tar);
       const files = await d.workdir.fileList(folders.work);
       const diff = (await d.git.hasCommit(mirror, diagnosis.culpritSha)) ? await d.git.showDiff(mirror, diagnosis.culpritSha, `services/${service}`, MAX_DIFF_BYTES).catch(() => '') : '';
       const prompt = fixerPrompt({ service, deployId: diagnosis.culpritDeploy, sha: diagnosis.culpritSha, summary: diagnosis.summary, fixHint: hunt.fixHint ?? '', files, diff });
-      await d.proposals.patch(rec.id, 'drafting', { agentStarted: true });
+      await d.workdir.pruneStreams(this.now()).catch(() => 0);
+      // Tests must pass a `parentEnv` with a temp `HOME`: the developer's real home is never a fallback there.
+      if (d.parentEnv === undefined && process.env.VITEST !== undefined) throw new Error('parentEnv is required in tests');
+      const parentEnv = d.parentEnv ?? process.env;
       const handle = startFixer({
         proposalId: rec.id,
         folder: folders.work,
+        writeScope: `services/${service}/src/`,
+        home: await d.workdir.prepareHome(parentEnv.HOME),
         prompt,
         cfg: { model: this.cfg.model, creditCap: this.cfg.creditCap, timeoutMs: this.cfg.timeoutMs, maxToolCalls: this.cfg.maxToolCalls },
         kiroCliPath: d.huntConfig.kiroCliPath,
-        parentEnv: d.parentEnv ?? process.env,
+        parentEnv,
         pids: { write: (id, pid) => writeFile(d.workdir.pidPath(id), `${JSON.stringify({ pid, pgid: pid })}\n`, { mode: 0o600 }), remove: (id) => rm(d.workdir.pidPath(id), { force: true }) },
+        stream: { path: d.workdir.streamPath(rec.id), secrets: this.secrets() },
         spawn: d.spawn,
       });
+      // Counted against the daily quota only now that the process is spawned, not on a setup error before it.
+      spawned = true;
+      await d.proposals.patch(rec.id, 'drafting', { agentStarted: true }).catch(() => false);
       if (this.current !== null) this.current.handle = handle;
       const result = await handle.result;
-      await d.proposals.patch(rec.id, 'drafting', { credits: result.credits, creditsEstimated: result.creditsEstimated });
-      if (!result.finished) return { candidate: null, aiFail: result.aiFailReason ?? 'agent_failed' };
-      if (!(await d.workdir.agentIntact(folders.work))) return { candidate: null, aiFail: 'agent_failed' };
-      const patch = await readPatch(folders.exportDir, folders.work);
-      return await this.judgeAiPatch(rec, hunt, service, baseSha, patch, culpritFiles);
+      // A `kiro-cli` that could not be executed never started: it does not count either.
+      await d.proposals.patch(rec.id, 'drafting', { credits: result.credits, creditsEstimated: result.creditsEstimated, ...(result.started ? {} : { agentStarted: false }) });
+      if (!result.finished) {
+        await this.noteHalt(rec, result.halt ?? { code: 'exit_code', detail: 'not finished' });
+        return { candidate: null, aiFail: result.aiFailReason ?? 'agent_failed' };
+      }
+      // kiro-cli migrates the agent file in place; only a change beyond that migration counts (see agent-check.ts).
+      const agent = await d.workdir.agentCheck(folders.work);
+      if (!agent.ok) {
+        await this.noteHalt(rec, { code: 'agent_changed', detail: `the agent file in the work folder was changed at ${agent.key}` });
+        return { candidate: null, aiFail: 'agent_failed' };
+      }
+      // A run with no accepted fs_write changed nothing; the patch is still read and judged (non_empty fails).
+      if (result.writes === 0) await this.noteHalt(rec, { code: 'no_write', detail: `finished with ${result.toolCalls} tool calls and no fs_write` });
+      // The `.bak` kiro-cli leaves when it migrates the agent copy is ignored only when it equals the exported agent.
+      const patch = await readPatch(folders.exportDir, folders.work, { pristineAgent: await d.workdir.pristineAgent() });
+      const judged = await this.judgeAiPatch(rec, hunt, service, baseSha, patch, culpritFiles);
+      if (judged.candidate === null && patch.changed.length + patch.added.length + patch.deleted.length + patch.unreadable.length === 0 && result.writes > 0) {
+        await this.noteHalt(rec, { code: 'empty_diff', detail: `${result.writes} fs_write calls left no change` });
+      }
+      return judged;
     } catch (err) {
-      if (err instanceof ProposalError && err.reason === 'export_unsafe') throw err;
-      d.logger.log('warn', 'fixer step failed', { proposalId: rec.id, code: errorCodeOf(err) });
+      // The workdir throws its own error class: an unsafe export ends the Proposal with that reason.
+      if ((err instanceof FixerWorkdirError && err.reason === 'export_unsafe') || (err instanceof ProposalError && err.reason === 'export_unsafe')) throw new ProposalError('export_unsafe');
+      // The class and the message (scrubbed, at most 200 characters) say what failed; before the spawn it is a setup error.
+      const detail = errorDetailOf(err);
+      d.logger.log('warn', 'fixer step failed', { proposalId: rec.id, code: errorCodeOf(err), spawned, detail });
+      await this.noteHalt(rec, { code: spawned ? 'step_error' : 'fixer_not_started', detail }).catch(() => undefined);
       return { candidate: null, aiFail: 'agent_failed' };
     } finally {
       await d.workdir.remove(rec.id).catch(() => undefined);
@@ -382,6 +552,7 @@ export class ProposalRunner {
     const written = [...patch.changed, ...patch.added];
     let size = { files: 0, lines: 0 };
     let testsRan = false;
+    let tests: Candidate['tests'] = { ran: [], excluded: [] };
     let testedTree: string | null = null;
     const ctx: JudgeContext = { service, requireTests: this.cfg.requireTests, culpritFiles };
     const judgement = await judgePatch(patch, ctx, {
@@ -396,12 +567,20 @@ export class ProposalRunner {
         return { ...size, binary: counted.binary };
       },
       syntax: async () => {
-        for (const f of written) if (/\.(js|mjs|cjs)$/.test(f.path) && !(await checkSyntax(dir, f.path))) return false;
-        return true;
+        // Every written file is checked (TypeScript after its types are stripped); a kind no checker knows is
+        // `skipped`, and the check is `skipped` only when no file at all could be checked.
+        let checked = 0;
+        for (const [i, f] of written.entries()) {
+          const r = await checkFileSyntax(dir, f.path, i);
+          if (r === 'failed') return 'failed';
+          if (r === 'ok') checked += 1;
+        }
+        return checked > 0 ? 'ok' : 'skipped';
       },
       tests: async () => {
-        const result = await runChecks({ clone: dir, testFiles: await findTestFiles(dir, service), timeoutMs: this.cfg.testTimeoutMs });
+        const result = await this.runTests(rec, dir, service, baseSha, 'ai_patch');
         testsRan = result.ran > 0;
+        tests = { ran: result.files, excluded: result.excluded };
         return result;
       },
     });
@@ -411,7 +590,7 @@ export class ProposalRunner {
     if (testedTree === null || (await d.git.stagedTree(dir)) !== testedTree) return this.treeMoved(rec, 'ai_patch');
     const fixSha = await d.git.commit(dir, this.commitMessage(rec, hunt, 'ai_patch', service, diagnosis.culpritSha));
     if ((await d.git.treeOf(dir, fixSha)) !== testedTree) return this.treeMoved(rec, 'ai_patch');
-    return { candidate: { kind: 'ai_patch', dir, baseSha, fixSha, checks: judgement.checks, patchFiles: size.files, patchLines: size.lines, testsRan }, aiFail: null };
+    return { candidate: { kind: 'ai_patch', dir, baseSha, fixSha, checks: judgement.checks, patchFiles: size.files, patchLines: size.lines, testsRan, tests }, aiFail: null };
   }
 
   /**
@@ -441,14 +620,16 @@ export class ProposalRunner {
       return { kind: 'ended' };
     }
     let testsRan = false;
+    let tests: Candidate['tests'] = { ran: [], excluded: [] };
     const testedTree = await d.git.treeOf(dir, attempt.head);
     const judgement = await judgeRevert(
       { service, files: attempt.files, requireTests: this.cfg.requireTests },
       {
         problems: () => revertFileProblems(dir, attempt.files),
         tests: async () => {
-          const result = await runChecks({ clone: dir, testFiles: await findTestFiles(dir, service), timeoutMs: this.cfg.testTimeoutMs });
+          const result = await this.runTests(rec, dir, service, baseSha, 'revert');
           testsRan = result.ran > 0;
+          tests = { ran: result.files, excluded: result.excluded };
           return result;
         },
       },
@@ -467,7 +648,7 @@ export class ProposalRunner {
       await this.endDrafting(rec, 'checks_failed', 'checks_failed', { checks, aiFailReason: aiFail, kind: null });
       return { kind: 'ended' };
     }
-    return { kind: 'ok', candidate: { kind: 'revert', dir, baseSha, fixSha: attempt.head, checks: judgement.checks, patchFiles: attempt.files.length, patchLines: null, testsRan } };
+    return { kind: 'ok', candidate: { kind: 'revert', dir, baseSha, fixSha: attempt.head, checks: judgement.checks, patchFiles: attempt.files.length, patchLines: null, testsRan, tests } };
   }
 
   /** Pushes the two branches, opens the pull request and moves the Proposal to `open`. */
@@ -493,6 +674,8 @@ export class ProposalRunner {
         evidence: hunt.evidence.filter((e) => e.cited).map((e) => ({ kind: e.kind, ref: e.ref, detail: e.detail })),
         checks: c.checks,
         testsRan: c.testsRan,
+        testFiles: c.tests.ran,
+        excludedTests: c.tests.excluded.map((e) => ({ file: e.file, why: exclusionText(e.reason) })),
         credits,
         creditsEstimated: fresh?.creditsEstimated ?? false,
       },
@@ -613,20 +796,34 @@ export class ProposalRunner {
       if (head !== rec.mergeSha) throw new ProposalError('ref_moved');
       await this.checkMergeScope(rec, service, mirror);
       await this.checkMergedContent(rec, mirror);
+      // The Deploy Record is looked for first: after a restart between asking and the record showing up, the lab is
+      // not asked again blindly. Whether the deploy was asked is kept in the row (`deployAskedAt`), not only here.
       if (await this.recordSeen(rec, service)) return await this.markDeployed(rec);
-      if (!this.deployAsked.has(rec.id)) {
+      const asked = this.deployAsked.has(rec.id) || (await d.proposals.byId(rec.id).catch(() => null))?.deployAskedAt != null;
+      if (!asked) {
         await this.askDeploy(rec, service);
         this.deployAsked.add(rec.id);
+        await d.proposals.patch(rec.id, 'merged', { deployAskedAt: this.now() }).catch(() => false);
       }
       if (await this.waitRecord(rec, service)) return await this.markDeployed(rec);
-      const since = (rec.mergedAt ?? this.now()).getTime();
-      if (this.now().getTime() - since >= this.cfg.deployConfirmMs) throw new ProposalError('deploy_unconfirmed');
+      if (this.confirmWindowOver(rec)) throw new ProposalError('deploy_unconfirmed');
       d.logger.log('info', 'proposal deploy not confirmed yet', { proposalId: rec.id });
     } catch (err) {
+      const decision = afterMergeDecision(failReasonOf(err), this.confirmWindowOver(rec));
+      if (decision.kind === 'retry') {
+        d.logger.log('warn', 'proposal deploy retried later', { proposalId: rec.id, code: errorCodeOf(err) });
+        return;
+      }
       this.deployAsked.delete(rec.id);
-      await this.endOpen(rec, 'merged', failReasonOf(err));
+      await this.endOpen(rec, 'merged', decision.reason);
       d.logger.log('warn', 'proposal deploy failed', { proposalId: rec.id, code: errorCodeOf(err) });
     }
+  }
+
+  /** `FIX_DEPLOY_CONFIRM_MS` has passed since the merge. */
+  private confirmWindowOver(rec: ProposalRecord): boolean {
+    const since = (rec.mergedAt ?? this.now()).getTime();
+    return this.now().getTime() - since >= this.cfg.deployConfirmMs;
   }
 
   /** `POST /chaos/deploy-fix` with bounded retries: a 4xx is final (`deploy_rejected`), no answer is `deploy_unavailable`. */
@@ -713,7 +910,10 @@ export class ProposalRunner {
     return rec !== null && (rec.status === 'drafting' || rec.status === 'open' || rec.status === 'merged');
   }
 
-  /** Test helper: wait for the drafts that are queued. */
+  /**
+   * Waits for the queue: the drafts, and the lab dependency tree and test baseline that `start()` queues first. The
+   * live test waits on it before it starts the clock of a proposal.
+   */
   async idle(): Promise<void> {
     await this.chain;
   }

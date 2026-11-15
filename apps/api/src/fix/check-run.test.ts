@@ -5,7 +5,49 @@ import { dirname, join } from 'node:path';
 import fc from 'fast-check';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SERVICE_NAMES } from '@haunted-ops/shared';
-import { CHECK_TMP, buildCheckArgv, buildCheckEnv, checkSyntax, findTestFiles, parseTap, runChecks } from './check-run.js';
+import { CHECK_TMP, buildCheckArgv, buildCheckEnv, checkFileSyntax, checkSyntax, findTestFiles, parseTap, runChecks } from './check-run.js';
+import { judgePatch, type Patch } from './patch-checks.js';
+
+describe('the syntax check of a TypeScript patch', () => {
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'syntax-ts-'));
+    mkdirSync(join(dir, 'services/payments/src'), { recursive: true });
+    // As in the lab: an ES module package (a `.js` file is checked in the module type of its package).
+    writeFileSync(join(dir, 'services/payments/package.json'), '{ "type": "module" }\n');
+    writeFileSync(join(dir, 'services/payments/src/good.ts'), 'export function refundTerms(id: string): { a: number } {\n  return { a: id.length };\n}\n');
+    writeFileSync(join(dir, 'services/payments/src/bad.ts'), 'export const a: number = ;\n');
+    writeFileSync(join(dir, 'services/payments/src/enum.ts'), 'enum E { A }\nexport const x = E.A;\n');
+    writeFileSync(join(dir, 'services/payments/src/ok.js'), 'export const a = 1;\n');
+    writeFileSync(join(dir, 'services/payments/src/broken.js'), 'export const = 1;\n');
+    writeFileSync(join(dir, 'services/payments/src/notes.md'), '# x\n');
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('checks .ts after stripping the types: a good file is ok, broken or non-erasable syntax fails', async () => {
+    expect(await checkFileSyntax(dir, 'services/payments/src/good.ts', 0)).toBe('ok');
+    expect(await checkFileSyntax(dir, 'services/payments/src/bad.ts', 1)).toBe('failed');
+    expect(await checkFileSyntax(dir, 'services/payments/src/enum.ts', 2)).toBe('failed');
+  }, 30_000);
+
+  it('checks JavaScript as before, and skips a kind no checker knows, never calling it ok', async () => {
+    expect(await checkFileSyntax(dir, 'services/payments/src/ok.js', 3)).toBe('ok');
+    expect(await checkFileSyntax(dir, 'services/payments/src/broken.js', 4)).toBe('failed');
+    expect(await checkFileSyntax(dir, 'services/payments/src/notes.md', 5)).toBe('skipped');
+  }, 30_000);
+
+  it('refuses a patch that nothing checked (syntax and tests both skipped) as unchecked', async () => {
+    const patch: Patch = { changed: [{ path: 'services/payments/src/refunds.ts', content: 'x' }], added: [], deleted: [], unreadable: [] };
+    const ctx = { service: 'payments' as const, requireTests: true, culpritFiles: [] };
+    const skippedTests = { ok: true, ran: 0, timedOut: false, skipped: true };
+    const both = await judgePatch(patch, ctx, { size: () => ({ files: 1, lines: 1 }), syntax: () => 'skipped', tests: () => skippedTests });
+    expect(both).toMatchObject({ accepted: false, aiFailReason: 'unchecked' });
+    expect(both.checks.find((c) => c.name === 'syntax')).toEqual({ name: 'syntax', ok: true, skipped: true, detail: 'no syntax checker for these files' });
+    // One of the two is enough to propose it, and the other stays recorded as skipped.
+    expect(await judgePatch(patch, ctx, { size: () => ({ files: 1, lines: 1 }), syntax: () => 'ok', tests: () => skippedTests })).toMatchObject({ accepted: true });
+    expect(await judgePatch(patch, ctx, { size: () => ({ files: 1, lines: 1 }), syntax: () => 'failed', tests: () => skippedTests })).toMatchObject({ accepted: false, aiFailReason: 'tests_failed' });
+  });
+});
 import { GitClient } from './git-client.js';
 import { BROKEN_CHARGE, HEALTHY_CHARGE, makeLabRepo, type LabRepo } from '../../test/support/lab-repo.js';
 

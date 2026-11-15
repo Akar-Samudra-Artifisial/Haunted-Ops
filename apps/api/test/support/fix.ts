@@ -31,6 +31,7 @@ export class MemoryProposalStore implements ProposalStore {
       status: 'drafting',
       failReason: null,
       aiFailReason: null,
+      aiFailDetail: null,
       prNumber: null,
       prUrl: null,
       branch: null,
@@ -50,6 +51,7 @@ export class MemoryProposalStore implements ProposalStore {
       updatedAt: at,
       openedAt: null,
       mergedAt: null,
+      deployAskedAt: null,
       deployedAt: null,
       finishedAt: null,
     };

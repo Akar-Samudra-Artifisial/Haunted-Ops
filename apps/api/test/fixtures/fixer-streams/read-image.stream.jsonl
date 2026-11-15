@@ -1,0 +1,2 @@
+{"type":"sessionUpdate","data":{"sessionId":"session-1","update":{"sessionUpdate":"tool_call","toolCallId":"call-1","title":"Reading diagram.png:1","kind":"read","rawInput":{"operations":[{"mode":"Image","image_paths":["services/payments/src/diagram.png"]}]},"_meta":{"kiro":{"toolName":"read"}}}}}
+{"type":"sessionUpdate","data":{"sessionId":"session-1","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-1","status":"completed","title":"Reading diagram.png:1"}}}

@@ -62,9 +62,21 @@ export interface PrFacts {
   checks: readonly ProposalCheck[];
   /** False when the `tests` check passed with no test file (only with `FIX_REQUIRE_TESTS=false`). */
   testsRan: boolean;
+  /** The test files the `tests` check ran (the sandbox-green set of the service), relative to the repository. */
+  testFiles?: readonly string[];
+  /** Test files of the service left out of the sandbox, with the fixed words of why (`needs network`, ...). */
+  excludedTests?: ReadonlyArray<{ file: string; why: string }>;
   credits: number;
   creditsEstimated: boolean;
 }
+
+/** Near the top of the body when the `tests` check was skipped: the reviewer is the only test. */
+export const PR_TESTS_SKIPPED_WARNING = 'No automated tests ran in the sandbox for this service. Review the diff carefully.';
+
+/** The most test files listed in the body, in each list. */
+export const PR_TEST_FILES_MAX = 20;
+const TEST_PATH = /^services\/[a-z]{1,20}\/[A-Za-z0-9._/@-]{1,200}$/;
+const EXCLUSION_WORDS = new Set(['needs network', 'timed out at the base commit', 'failed at the base commit', 'not at the base commit']);
 
 export class PrFactsError extends Error {
   constructor(readonly field: keyof PrFacts) {
@@ -106,6 +118,7 @@ export function prBody(f: PrFacts): string {
   lines.push(`Service: ${f.service}`);
   lines.push(`Culprit: deploy ${f.deployId}, commit https://github.com/${f.repo}/commit/${f.sha}`);
   lines.push(`Patch kind: ${f.kind}`, '');
+  if (f.checks.some((c) => c.name === 'tests' && c.skipped === true)) lines.push(PR_TESTS_SKIPPED_WARNING, '');
   lines.push('Summary', sanitizePrText(f.summary, PR_SUMMARY_MAX) || 'No summary.', '');
   lines.push('Evidence');
   const evidence = f.evidence.slice(0, PR_EVIDENCE_MAX);
@@ -113,7 +126,30 @@ export function prBody(f: PrFacts): string {
   for (const e of evidence) lines.push(`- ${sanitizePrText(e.kind, 12)} ${sanitizePrText(e.ref, PR_REF_MAX)}: ${sanitizePrText(e.detail, PR_EVIDENCE_DETAIL_MAX)}`.trimEnd());
   lines.push('', 'Checks');
   if (f.checks.length === 0) lines.push('- none ran');
-  for (const c of f.checks) lines.push(`- ${c.name}: ${c.name === 'tests' && c.ok && !f.testsRan ? 'no test ran' : c.ok ? 'passed' : 'failed'}`);
+  for (const c of f.checks) {
+    const state =
+      c.skipped === true
+        ? c.name === 'syntax'
+          ? 'skipped (no syntax checker for these files)'
+          : 'skipped (no sandbox-green tests for this service)'
+        : c.name === 'tests' && c.ok && !f.testsRan
+          ? 'no test ran'
+          : c.ok
+            ? 'passed'
+            : 'failed';
+    lines.push(`- ${c.name}: ${state}`);
+  }
+  // Only names the API built from the clone, checked again here; anything else is left out of the body.
+  const ran = (f.testFiles ?? []).filter((p) => TEST_PATH.test(p) && !p.split('/').includes('..')).slice(0, PR_TEST_FILES_MAX);
+  const left = (f.excludedTests ?? []).filter((e) => TEST_PATH.test(e.file) && !e.file.split('/').includes('..') && EXCLUSION_WORDS.has(e.why)).slice(0, PR_TEST_FILES_MAX);
+  if (ran.length > 0) {
+    lines.push('', 'Tests run in the sandbox');
+    for (const p of ran) lines.push(`- ${sanitizePrText(p, 220)}`);
+  }
+  if (left.length > 0) {
+    lines.push('', 'Not run in the sandbox');
+    for (const e of left) lines.push(`- ${sanitizePrText(e.file, 220)} (${e.why})`);
+  }
   lines.push('', `Credits spent: ${f.credits.toFixed(2)} (${f.creditsEstimated ? 'estimated' : 'exact'})`, '', PR_NOTICE);
   return lines.join('\n').slice(0, PR_BODY_MAX);
 }

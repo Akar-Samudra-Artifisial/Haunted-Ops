@@ -37,8 +37,8 @@ describe('Property 7: the kind follows the checks, and a failing candidate is ne
   const GOOD = ['fixer-good', 'fixer-wrapped'];
   const BAD: Record<string, string> = {
     'fixer-big': 'size',
-    'fixer-scope': 'scope',
-    'fixer-forbidden': 'forbidden_file',
+    'fixer-scope': 'agent_failed',
+    'fixer-forbidden': 'agent_failed',
     'fixer-delete-test': 'forbidden_file',
     'fixer-symlink': 'forbidden_file',
     'fixer-no-change': 'scope',

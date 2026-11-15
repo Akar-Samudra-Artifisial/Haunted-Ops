@@ -165,28 +165,141 @@ Everything up to and including task 9 runs with no Lab, no `kiro-cli`, no real G
   - [x] 13.12 Design notes (new reason codes and settings, the GitHub ruleset line), one `docs/KIRO_USAGE.md` line, and the checks: typecheck, lint, tests with the Test database, script tests, `check:build`, the bundle check and the e2e run
     - _Requirements: 19.1, 19.3_
 
-- [ ] 10. Live recording and opt-in live test (spends Credits, run by the orchestrator)
-  - [ ] 10.1 Record at most 2 real fixer runs on the `error-spike` scenario with `kiro-cli` 3.3.0 and the pinned model (about 1 Credit each): pin the title shapes and rules of `fs_read` and `fs_write`, write them into the design, keep one sanitized stream as `live-fixer-error-spike.stream.jsonl` (no agent messages), and check the Patch passes the Checks
+- [x] 14. Live run findings
+  - [x] 14.1 Lab dependency tree `lab-deps.ts`: the manifests of a lab commit, `pnpm install --frozen-lockfile --ignore-scripts` in `FIX_WORKDIR/deps/<lockfile hash>/` with a fixed environment and a timeout, reuse while the lockfile is unchanged, links into a candidate clone for one run only; `pnpm` found on `PATH` like `git`
+    - _Requirements: 20.1_
+  - [x] 14.2 vitest runner in `check-run.ts`: `scripts.test` picks the runner, `vitest run` with the JSON reporter and the forks pool under two `--permission` fences (main: `--allow-child-process` and `--allow-addons`; forked workers: reads and the temporary folder only), no config file allowed, the diagnostics log line (first 2 KiB of stderr, first failure, paths removed); the design says the Mac sandbox is not a boundary against addons and child processes
+    - _Requirements: 20.2, 20.5_
+  - [x] 14.3 Sandbox-green set `test-baseline.ts`: every test file of every vitest service at `main`, one at a time, at startup and when the `main` head or lockfile changes; reasons `needs_network`, `timeout`, `failed`; the `tests` Check runs only the set; the pull request lists the files that ran and the ones left out; unit tests of the selection
+    - _Requirements: 20.3, 20.4_
+  - [x] 14.4 Real-lab integration test `check-run-lab.int.test.ts` (skipped without `../haunted-lab` or `pnpm`): payments `refunds.test.ts` in the set and `routes.test.ts` out as `needs_network`; with the culprit reverted the set passes; a broken refund and the culprit fail; a forked test child keeps `--permission` without `--allow-net` (network, child processes and outside reads denied); a worker thread with its own `execArgv` leaves the permission model
+    - _Requirements: 20.2, 20.3, 20.4_
+  - [x] 14.5 Fixer diagnostics: the reduced stream in `FIX_WORKDIR/streams/<proposalId>.fixer.stream.jsonl` (0600, 7 days), a fixed halt code per stop path with a test each, `fixerHalt` in the log and `Proposal.aiFailDetail` (migration `proposal_ai_fail_detail`, not public)
+    - _Requirements: 20.6_
+  - [x] 14.6 Chaos token checked at startup with `GET /chaos/state` (`CHAOS_TOKEN rejected by the lab` on 401 or 403), `db:drift` with the shadow database from `TEST_DATABASE_URL`, `docs/DEV.md` (one fix-flow section, the chaos token must equal the lab's, `/healthz`), one `docs/KIRO_USAGE.md` line, and the checks
+    - _Requirements: 20.7, 20.8, 19.1, 19.3_
+
+- [x] 15. Fixer guard shapes and the empty sandbox-green set
+  - [x] 15.1 `fixer-guard.ts`: `Read File` is `fs_read`, `Replace in File` and `Write File` are `fs_write` (old titles kept, all else foreign), their recorded input shapes (`offset` and `limit` may be null), `path` checked against the folder, an `fs_write` outside `services/<S>/src/` stopped as `write_outside_scope`; the header names the three recordings
+    - _Requirements: 3.3, 21.1_
+  - [x] 15.2 The stop detail names the title, the event `kind` and the sorted key names of the input, no value (`fixerHalt.detail`); the stream parser keeps `kind`
+    - _Requirements: 21.2_
+  - [x] 15.3 The three recordings, sanitized with `scripts/sanitize-fixer-stream.mjs --tool-calls-only` (which now keeps the cleaned input of updates), in `apps/api/test/fixtures/fixer-streams/`; replay tests: the real first call and both probes pass, mutated copies (foreign title, `../x`, a write to `package.json`, an id reused by another title) stop
+    - _Requirements: 21.3_
+  - [x]* 15.4 Property test: any sequence of the accepted titles with in-scope paths never stops; one injected foreign title stops at that call (Property 6b)
+    - _Requirements: 3.3, 21.1_
+  - [x] 15.5 `test-baseline.ts`: a `failed` file keeps its first error line (cleaned, 200 characters) in the `test baseline` log; unit test with a missing module; the real-lab test measures every service at `main`
+    - _Requirements: 21.4_
+  - [x] 15.6 An empty set: the `tests` check is `{ name: 'tests', ok: true, skipped: true, detail }` (shared type and validator, no migration), the gates before it still apply, the pull request warning near the top, `skipped` in the stored checks and the `proposal.checks` payload, "tests skipped" in the table; runner tests for skipped, gated, and a failing included file with the revert fallback
+    - _Requirements: 21.5_
+  - [x] 15.7 `docs/DEV.md` and the design: which lab test files run in the sandbox and why, how to grow the set, the new stop code; one `docs/KIRO_USAGE.md` line; the checks
+    - _Requirements: 19.1, 19.3, 21.4, 21.5_
+
+- [x] 16. The agent copy after kiro-cli migrated it (false `agent_changed`)
+  - [x] 16.1 `agent-check.ts`: `agentUnchanged(source, copy)` replaces the byte check: source keys equal, `tools` and `allowedTools` the same two file tools in either spelling, `permissions.rules` `allow` for `fs_read`, `fs_write`, `skill` only, `kiroUpgrade` allowed, any other key or an unparsable file is a change; `FixerWorkdir.agentCheck` returns the first differing key
+    - _Requirements: 22.1_
+  - [x] 16.2 The runner logs `agent_changed` with that key (no value) in `fixerHalt.detail` and `aiFailDetail`; the committed `exorcist-fixer.json` stays unmigrated; the Hunt agent is already committed migrated and not compared, so it needs no change
+    - _Requirements: 22.2, 22.4_
+  - [x] 16.3 Fixture `apps/api/test/fixtures/fixer-agent-migrated.json` (built from the recorded migration, fake fingerprints), unit tests, a fake fixer step `migrate-agent` and runner tests: a migrated agent keeps a good patch, a `Write File` on `package.json` with the migrated agent still stops as `write_outside_scope`, an added `execute` rule drops the patch and names the key
+    - _Requirements: 22.1, 22.2, 22.3_
+  - [x]* 16.4 Property test: generated migrations are accepted; any one widening (another tool, an `execute` or `shell` rule, a `deny` swap, a `toolsSettings` or `prompt` change, an unknown key) is rejected (Property 16)
+    - _Requirements: 22.1, 22.2_
+  - [x] 16.5 Design: "Security: the migrated agent file and the real fences"; one `docs/KIRO_USAGE.md` line; the checks
+    - _Requirements: 22.3, 19.3_
+
+- [x] 17. The agent backup file of the kiro-cli migration (false `scope`)
+  - [x] 17.1 `readPatch` leaves out `.kiro/agents/exorcist-fixer.json.bak` only when it is a regular, single-link file byte-equal to the exported agent (`pristineAgent`, from `FixerWorkdir.pristineAgent`); otherwise it stays unreadable; it is never applied or pushed
+    - _Requirements: 23.1_
+  - [x] 17.2 `judgePatch`: the `scope` Check looks at readable paths only, so an unreadable entry fails `forbidden_file`; accepted iff every Check passes (Property 1 oracle updated)
+    - _Requirements: 23.2, 5.6_
+  - [x] 17.3 Tests: the migrated agent plus a pristine `.bak` and one edit gives exactly that edit and passes the gates; a `.bak` with other bytes, a symlinked or hard-linked `.bak`, and `.kiro/agents/other.json` are unreadable and fail `forbidden_file`; the fake fixer's `migrate-agent` step writes the `.bak`, `fixer-good` now migrates, and runner tests open an `ai_patch` pull request and refuse a bad `.bak`
+    - _Requirements: 23.1, 23.2_
+  - [x] 17.4 Design paragraph on the agent backup; one `docs/KIRO_USAGE.md` line; the checks
+    - _Requirements: 19.3_
+
+- [x] 18. Second review fixes
+  - [x] 18.1 Fixer stream fails closed: one malformed or oversized line stops the run (`stream_malformed`); a file-tool call whose arguments were never judged stops at its first update past `pending` (`unjudged_input`); unknown ids with `title: null` stay refused; tests with an oversized `Write File` line with an absolute path, a call with no input that completes, and the recorded 3.3.0 streams (Property 17)
+    - _Requirements: 24.1, 24.2, 3.3_
+  - [x] 18.2 Honest checks for TypeScript: `syntax` strips the types (`module.stripTypeScriptTypes`) and `node --check`s the result in sandboxed children; a kind no checker knows is `skipped`; `syntax` and `tests` both skipped refuse the AI patch as `unchecked`; tests for a broken and a good `.ts` file and the both-skipped case
+    - _Requirements: 24.3, 5.5_
+  - [x] 18.3 Transient errors after the merge keep the Proposal `merged` until `FIX_DEPLOY_CONFIRM_MS`, then `deploy_unconfirmed`; only `ref_moved`, `merge_*`, `head_changed` and `deploy_rejected` end it at once; `deployAskedAt` (migration `proposal_deploy_asked`) so a restart looks for the record and does not ask again; tests for a transient fetch error then success and a restart after asking (Property 18)
+    - _Requirements: 24.4, 24.5, 12.3_
+  - [x] 18.4 Hardening: the export read-only once filled; the agent folders and copy left out only in their expected kind, the copy read with `O_NOFOLLOW`; the sandbox-green set made at the candidate's base commit per service and commit, with `not_at_base` for a file it never saw; the fixer's own 0700 `HOME` with only the kiro-cli data folder linked in; the lab install with a temporary `HOME` and the store named; the Security section of the design and `security.md`
+    - _Requirements: 24.6, 24.7, 24.8, 6.4_
+  - [x]* 18.5 Property tests: a malformed or oversized line, or a call run with arguments never seen, stops the run at that line (Property 17); an error after the merge ends the Proposal early only for the final reasons (Property 18)
+    - _Requirements: 24.1, 24.2, 24.4_
+  - [x] 18.6 Live notes in `## Notes`; 10.1, 11.1 to 11.3 and 12.1 to 12.3 ticked; one `docs/KIRO_USAGE.md` line; the checks
+    - _Requirements: 19.3, 18.1_
+
+- [x] 19. Batch read shape of kiro-cli 3.3.0
+  - [x] 19.1 Guard: the tool is named by `_meta.kiro.toolName` first (`read` is `fs_read`, `write` is `fs_write`, anything else `foreign_tool`), then by the title (the recorded titles and `Reading <text>` on a `tool_call` of kind `read`); a title and a `toolName` that disagree are refused; `fs_read` accepts `{ path, offset?, limit? }` and `{ operations }` with 1 to 8 entries `{ mode, path, ... }` (`Line`, `Directory`, `Search`, each path through `isInside`); `Image`, `image_paths`, an unknown mode or key, an empty list and a ninth entry are `unknown_args`; a repeated call id keeps its tool; the parser carries `toolName`
+    - _Requirements: 25.1, 25.2, 25.3, 3.3, 3.4_
+  - [x] 19.2 Fixture `fixer-streams/read-operations.stream.jsonl` made with `scripts/sanitize-fixer-stream.mjs` (which now keeps `_meta.kiro.toolName`), the shape in `scripts/fixer-stream-shapes.mjs`, and tests: the recorded event passes; each of an outside path, `..`, an absolute path, `Image`, 9 entries, an unknown key, `toolName` `shell` and a title/`toolName` mismatch is refused; the existing fixtures still pass
+    - _Requirements: 25.4_
+  - [x]* 19.3 Property test for the batch read: 1 to 8 inside entries never stop; an outside path in any entry, more than 8 entries, any other `toolName` or an unknown key stops (extends Property 6)
+    - _Requirements: 25.1, 25.2_
+  - [x] 19.4 Design and requirements updated; one `docs/KIRO_USAGE.md` line; the checks
+    - _Requirements: 19.3_
+
+- [x] 20. Dynamic edit shape of kiro-cli 3.3.0
+  - [x] 20.1 Guard: the title `Editing <file>` (one line, no control character) is accepted on kind `edit` as `fs_write`, with `toolName` `write` first when present; such a call takes only `{ command: "strReplace", path, oldStr, newStr, replace_all? }` (path through `isInside`, strings within the file size cap); a missing or other `command`, an unknown key and a title/`toolName` mismatch are refused; the older shapes are unchanged; a repeated id keeps its tool and `title: null` follows it
+    - _Requirements: 26.1, 26.2, 26.3, 3.3, 3.4_
+  - [x] 20.2 Fixture `fixer-streams/edit-command.stream.jsonl` made with `scripts/sanitize-fixer-stream.mjs`, the shape in `scripts/fixer-stream-shapes.mjs`, and tests: the recorded event passes and its update follows it; another `command`, no `command`, a path outside, `..`, an absolute path, `oldStr` not text, an unknown key, `toolName` `shell`, `Editing x` with `toolName` `read` and a repeated id naming another tool are refused; the fake `kiro-cli` step `edit-command` gives an `ai_patch` Proposal end to end
+    - _Requirements: 26.4_
+  - [x]* 20.3 Property test for the edit shape: `strReplace` with an inside path and text passes; any other command, a missing command, an unknown key, an outside path, a non-text string or another `toolName` stops (extends Property 6)
+    - _Requirements: 26.1, 26.2_
+  - [x] 20.4 The migrated agent file (tools `read` and `write`) with the `Reading` and `Editing` flow: `agentUnchanged` and the `.bak` rule still pass (tests only; nothing needed a fix)
+    - _Requirements: 26.5_
+  - [x] 20.5 Design and requirements updated; one `docs/KIRO_USAGE.md` line; the checks
+    - _Requirements: 19.3_
+
+- [x] 21. Permission changes never follow links
+  - [x] 21.1 `fixer-workdir.ts`: `walk` skips symlinks, `makeReadOnly` and `makeWritable` change only real files and folders and refuse a folder that is itself a link; `prepareHome` unlinks the links, then removes the old home, and calls `chmod` on `home` only; unit tests (repeated runs keep the mode of the linked folder and its files)
+    - _Requirements: 27.1, 27.2, 27.3_
+  - [x] 21.2 `proposal-runner.ts` has no fallback to the real `HOME` under tests (`VITEST` without `parentEnv` throws); the integration guard test runs the fix flow twice in one `FIX_WORKDIR` with a temp parent home holding `Library/Application Support/kiro-cli` (0700, a 0600 file) and the modes stay
+    - _Requirements: 27.4, 27.5_
+  - [x]* 21.3 Property test: a random tree of files, folders and links to targets outside it with random modes; `makeReadOnly` then `makeWritable` never change the mode of a target and never throw for a link (Property 19)
+    - _Requirements: 27.1, 27.6_
+  - [x] 21.4 Design, `.kiro/steering/security.md` and requirements updated; one `docs/KIRO_USAGE.md` line; the checks
+    - _Requirements: 19.3_
+- [x] 22. One hardening pass before the live test
+  - [x] 22.1 Live test wiring: `test-live/live-app.ts` builds the app for `fix.live.ts` and for the parity test (`parentEnv` always `{ HOME, LANG }`, the startup check and `ProposalRunner.start()` as `main.ts` does); the live test is the one exception to the `parentEnv` guard of the runner, which stays for every other test; the live test stops the API before it deletes the branches
+    - _Requirements: 28.1_
+  - [x] 22.2 Visible failure reason: `step_error` and the new `fixer_not_started` carry the class and message (one line, at most 200 characters, paths as `[path]`, token-like text as `[redacted]`); `agentStarted` is set after the spawn (and cleared when `kiro-cli` could not be executed); an unsafe export ends the Proposal `export_unsafe`; `ProposalView` gets `aiFailDetail` (scrubbed, validated, at most 300 characters) next to `aiFailReason`; `fix.live.ts` prints the proposal fields and the last 40 matching log lines before its first assertion, and the `kiro-cli` version and the stream file name at its start; tests for each
+    - _Requirements: 28.2, 28.3, 28.10_
+  - [x] 22.3 Guard (`fixer-guard.ts`): `_meta.kiro.toolName` is the identity when present (the title only one clean line); an update of an accepted id keeps its tool whatever its title or `_meta` say and has its input judged again; `write` takes `create`, `strReplace` and `insert` with the schema keys (and the older snake_case family), `read` takes `Line` and `Directory` (`depth` 0 to 5, `exclude_patterns`), `Image` is refused as `image_read`; the stop detail names the refused tool name, command or key
+    - _Requirements: 28.4, 28.5, 28.6, 28.7_
+  - [x] 22.4 Sanitized schema-derived fixtures (`create`, `insert` with and without `insertLine`, `strReplace` with `replaceAll`, `Directory` with `depth`, `Image`, a changed title, no `_meta`) made with `scripts/sanitize-fixer-stream.mjs`, marked in `scripts/fixer-stream-shapes.mjs` as not recorded; unit tests for every accepted shape and every refusal (outside the scope, `..`, absolute path, wrong type, unknown key, missing key, `Image`, `delete`, `toolName` `shell`); Property 6e over all accepted shapes (generated valid arguments pass; one mutated key or an outside path stops)
+    - _Requirements: 28.6, 28.7, 28.8_
+  - [x] 22.5 Deadline and progress in the live test: it waits for the lab dependencies and the test baseline (`ProposalRunner.idle()`) before the clock of the proposal starts, gives it `FIX_TIMEOUT_MS` plus 60 seconds, and prints one line per status change
+    - _Requirements: 28.10_
+  - [x] 22.6 Parity test without Credits (`test/fix.live-parity.int.test.ts`): the app of the live helper, a fake GitHub and lab, a temporary home with a `kiro-cli` folder, and a fake `kiro-cli` that replays every fixture that edits `refunds.ts` and applies its edit; each run ends `ai_patch` with the checks passing, the `Image` stream ends as a revert with its reason in the view, and the mode of the `kiro-cli` folder is unchanged; a test that the helper always sets `parentEnv`
+    - _Requirements: 28.1, 28.9_
+  - [x] 22.7 Pre-flight script `scripts/fix-live-preflight.mjs` (`pnpm --filter @haunted-ops/api preflight:live`) with tests on a fake binary; `docs/DEV.md` (run it first, then the live test twice); design, requirements and `.kiro/steering/security.md` updated (tool identity rule, accepted write and read schema, `Image` refused); one `docs/KIRO_USAGE.md` line; the checks
+    - _Requirements: 28.11, 19.3_
+
+- [x] 10. Live recording and opt-in live test (spends Credits, run by the orchestrator)
+  - [x] 10.1 Record at most 2 real fixer runs on the `error-spike` scenario with `kiro-cli` 3.3.0 and the pinned model (about 1 Credit each): pin the title shapes and rules of `fs_read` and `fs_write`, write them into the design, keep one sanitized stream as `live-fixer-error-spike.stream.jsonl` (no agent messages), and check the Patch passes the Checks
     - _Requirements: 3.1, 3.2, 3.3_
-  - [ ] 10.2 Opt-in live test `FIX_LIVE=1 pnpm --filter @haunted-ops/api test:live`: one real fixer, one real pull request on the lab repo, then the test closes the pull request and deletes its branches through its own REST helper; skipped without `FIX_LIVE=1`
+  - [x] 10.2 Opt-in live test `FIX_LIVE=1 pnpm --filter @haunted-ops/api test:live`: one real fixer, one real pull request on the lab repo, then the test closes the pull request and deletes its branches through its own REST helper; skipped without `FIX_LIVE=1`
     - _Requirements: 3.1, 8.1, 10.5_
 
-- [ ] 11. Gate G-MVP
-  - [ ] 11.1 `scripts/gmvp-fix.mjs`: apply the scenario, wait for the Hunt and the `open` Proposal, print the pull request URL, wait up to 15 minutes for a human merge (never merges), wait for `deployed` and the Incident close, print the table, reset the lab also on failure and Ctrl-C
+- [x] 11. Gate G-MVP
+  - [x] 11.1 `scripts/gmvp-fix.mjs`: apply the scenario, wait for the Hunt and the `open` Proposal, print the pull request URL, wait up to 15 minutes for a human merge (never merges), wait for `deployed` and the Incident close, print the table, reset the lab also on failure and Ctrl-C
     - _Requirements: 18.1, 18.2, 18.3_
-  - [ ] 11.2 `node:test` tests of the pure parts (settings, phase judgement, timeouts, table), the chaos token only to the chaos URL and never printed
+  - [x] 11.2 `node:test` tests of the pure parts (settings, phase judgement, timeouts, table), the chaos token only to the chaos URL and never printed
     - _Requirements: 18.4_
-  - [ ] 11.3 Live gate run by the orchestrator with a human merging (needs the lab `fix-deploy` route); result written into the Notes
+  - [x] 11.3 Live gate run by the orchestrator with a human merging (needs the lab `fix-deploy` route); result written into the Notes
     - _Requirements: 18.1, 18.2, 18.3_
 
-- [ ] 12. Documents, steering and verification
-  - [ ] 12.1 `docs/DEV.md`: the fine-grained token (one repository, Contents and Pull requests read and write, a short expiry, a ruleset that blocks pushes to `main` and `scenario/*`), `FIX_ENABLED` and the caps, what runs where, the isolation limits of the test run on the Mac and on EC2, how to run the gate
+- [x] 12. Documents, steering and verification
+  - [x] 12.1 `docs/DEV.md`: the fine-grained token (one repository, Contents and Pull requests read and write, a short expiry, a ruleset that blocks pushes to `main` and `scenario/*`), `FIX_ENABLED` and the caps, what runs where, the isolation limits of the test run on the Mac and on EC2, how to run the gate
     - _Requirements: 6.4, 19.1_
-  - [ ] 12.2 `.kiro/steering/security.md` (GitHub token rules, fixer boundaries, the `propose_fix` line replaced), `.kiro/steering/structure.md` (new folders), a note in `.kiro/steering/tech.md` on `propose_fix`
+  - [x] 12.2 `.kiro/steering/security.md` (GitHub token rules, fixer boundaries, the `propose_fix` line replaced), `.kiro/steering/structure.md` (new folders), a note in `.kiro/steering/tech.md` on `propose_fix`
     - _Requirements: 19.2_
-  - [ ] 12.3 `docs/KIRO_USAGE.md`: one line per finished task
+  - [x] 12.3 `docs/KIRO_USAGE.md`: one line per finished task
     - _Requirements: 19.3_
-  - [ ] 12.4 `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:scripts`, `pnpm build`, `pnpm check:build` and the bundle check pass; `prisma migrate diff` shows no drift; a scan finds no secret, home path or forbidden word in any tracked file
+  - [x] 12.4 `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:scripts`, `pnpm build`, `pnpm check:build` and the bundle check pass; `prisma migrate diff` shows no drift; a scan finds no secret, home path or forbidden word in any tracked file
     - _Requirements: 19.1, 19.3_
 
 ## Task Dependency Graph
@@ -205,11 +318,22 @@ graph TD
   T7 --> T9[9 Web table and scene]
   T8 --> T13[13 Review fixes]
   T9 --> T13
-  T13 --> T10[10 Live recording]
+  T13 --> T14[14 Live run findings]
+  T14 --> T15[15 Guard shapes and empty set]
+  T15 --> T16[16 Migrated agent copy]
+  T16 --> T17[17 Agent backup file]
+  T17 --> T18[18 Second review fixes]
+  T18 --> T19[19 Batch read shape]
+  T19 --> T20[20 Dynamic edit shape]
+  T20 --> T21[21 No chmod through links]
+  T21 --> T22[22 Hardening before the live test]
+  T22 --> T10[10 Live recording]
   T8 --> T11[11 Gate G-MVP]
   T10 --> T11
+  T22 --> T11
   T9 --> T12[12 Docs and verification]
   T11 --> T12
+  T22 --> T12
 ```
 
 ```json
@@ -222,16 +346,30 @@ graph TD
     { "id": 4, "tasks": ["7"] },
     { "id": 5, "tasks": ["8", "9"] },
     { "id": 6, "tasks": ["13"] },
-    { "id": 7, "tasks": ["10"] },
-    { "id": 8, "tasks": ["11"] },
-    { "id": 9, "tasks": ["12"] }
+    { "id": 7, "tasks": ["14"] },
+    { "id": 8, "tasks": ["15"] },
+    { "id": 9, "tasks": ["16"] },
+    { "id": 10, "tasks": ["17"] },
+    { "id": 11, "tasks": ["18"] },
+    { "id": 12, "tasks": ["19"] },
+    { "id": 13, "tasks": ["20"] },
+    { "id": 14, "tasks": ["21"] },
+    { "id": 15, "tasks": ["22"] },
+    { "id": 16, "tasks": ["10"] },
+    { "id": 17, "tasks": ["11"] },
+    { "id": 18, "tasks": ["12"] }
   ]
 }
 ```
 
 ## Notes
 
-- Sub-tasks marked `*` are property-based tests. They are required: every correctness property (1 to 15) has one: Property 1 in 6.3, 2 in 1.2 and 3.5, 3 in 3.5 and 7.9, 4 in 4.2, 5 in 2.3, 6 in 5.5, 7 in 7.2, 8 in 8.3, 9 in 7.4, 10 in 8.6, 11 in 8.4, 12 in 6.5, 13 in 9.4, 14 in 7.7, 15 in 1.4.
+Live results (2026-11-14):
+- Gate G-MVP PASS: error-spike, PR #6, kind `ai_patch`, checks 7/7 ok, merged by yhoyoex, credits 0.99, hunt 35.9 s, draft 28.5 s, merge wait 8.5 s, deploy 4.4 s, Incidents closed.
+- Revert path PASS earlier: PR #2 (kind `revert`, credits 0.92).
+- Live findings fixed by tasks 14–17: lab tests use vitest; tool titles `Read File` / `Replace in File` / `Write File`; kiro-cli 3.3.0 rewrites the agent file on first use and writes a `.bak`; an orders sandbox baseline is empty.
+
+- Sub-tasks marked `*` are property-based tests. They are required: every correctness property (1 to 18) has one: Property 1 in 6.3, 2 in 1.2 and 3.5, 3 in 3.5 and 7.9, 4 in 4.2, 5 in 2.3, 6 in 5.5 and 15.4, 7 in 7.2, 8 in 8.3, 9 in 7.4, 10 in 8.6, 11 in 8.4, 12 in 6.5, 13 in 9.4, 14 in 7.7, 15 in 1.4, 16 in 16.4, 17 and 18 in 18.5. The batch read of task 19 extends Property 6 (19.3), and the edit shape of task 20 extends it too (20.3). Task 22 extends Property 6 over every accepted shape of the schema (Property 6e, 22.4) and adds Property 20 (failure reasons and the live `parentEnv`, tested in 22.1, 22.2 and 22.6).
 - Binding decisions of the user: the fix is an AI patch with a revert fallback; human approval is the merge of the pull request on GitHub; nobody approves through the Haunted Ops API or UI, and the API never merges.
 - The lab side (`POST /chaos/deploy-fix`, branch fetch, chain rule, Deploy Record with `actor: "exorcist"`) is the separate spec `fix-deploy` in `haunted-lab`. G-MVP needs it implemented before task 11.3. Until then every task here uses the fake route.
 - The Check run needs tests in the lab services. If a lab service has none, the `tests` Check fails and the revert fails with it, so the Proposal ends `checks_failed`. Either the lab adds a small test per service (preferred), or the operator sets `FIX_REQUIRE_TESTS=false` for the demo and the pull request body says "no test ran".

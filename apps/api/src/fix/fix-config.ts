@@ -30,6 +30,12 @@ export interface FixConfig {
   readonly webOrigin: string | null;
   /** An absolute path to `git` when enabled; the name otherwise. */
   readonly gitPath: string;
+  /**
+   * An absolute path to `pnpm` when enabled and found on `PATH`, else null. The API installs the lab's dependency tree
+   * with it (`FIX_WORKDIR/deps/`) so that a service tested with vitest can run its tests. Absent in configs built by
+   * hand in tests (no vitest service there).
+   */
+  readonly pnpmPath?: string | null;
   readonly model: string;
   readonly creditCap: number;
   readonly timeoutMs: number;
@@ -105,8 +111,11 @@ export const isGithubToken = (value: string): boolean => GITHUB_TOKEN_PATTERN.te
 export const isRepo = (value: string): boolean => REPO_PATTERN.test(value) && value.split('/').every((p) => p !== '.' && p !== '..' && !p.endsWith('.git'));
 
 export class FixConfigError extends Error {
-  constructor(readonly variables: readonly FixVar[]) {
-    super(`Invalid configuration: ${variables.join(', ')}`);
+  constructor(
+    readonly variables: readonly FixVar[],
+    message?: string,
+  ) {
+    super(message ?? `Invalid configuration: ${variables.join(', ')}`);
     this.name = 'FixConfigError';
   }
 }
@@ -222,6 +231,9 @@ export function parseFixConfig(env: Readonly<Record<string, string | undefined>>
     if (resolved === null) bad.add('FIX_ENABLED');
     else gitPath = resolved;
   }
+  // pnpm is looked up like git, but its absence does not stop the API: the services that test with vitest then fail
+  // their `tests` check, and the startup log says why.
+  const pnpmPath = enabled ? (deps.resolveExecutable ?? resolveExecutable)('pnpm', env.PATH) : null;
 
   if (bad.size > 0) throw new FixConfigError(FIX_VARS.filter((v) => bad.has(v)));
   return Object.freeze({
@@ -232,6 +244,7 @@ export function parseFixConfig(env: Readonly<Record<string, string | undefined>>
     chaosToken,
     webOrigin,
     gitPath,
+    pnpmPath,
     model: modelRaw,
     creditCap: creditCap as number,
     timeoutMs,
