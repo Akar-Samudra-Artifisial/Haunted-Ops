@@ -25,7 +25,8 @@ async function main(): Promise<void> {
     handles,
     ledger,
     now: Date.now,
-    secrets: [cfg.labToken],
+    // The Kiro API key reaches this process when the Hunt has one (kiro-cli passes its environment on); it is masked like the lab token.
+    secrets: [cfg.labToken, ...(process.env.KIRO_API_KEY ? [process.env.KIRO_API_KEY] : [])],
   });
   await server.connect(new StdioServerTransport());
 }

@@ -56,6 +56,28 @@ describe('the built server over stdio', () => {
     expect(lines.map((l) => (l.type === 'handle' ? l.handle : l.type))[0]).toBe('deploy:d-101');
   });
 
+  it('never prints or returns the Kiro API key it may inherit, in results, errors, stderr or the ledger', async () => {
+    const SENTINEL = 'kiro-test-SENTINEL-0123456789abcdefghij';
+    const ledger = join(dir, 'ledgers', `${ID}.jsonl`);
+    rmSync(ledger, { force: true });
+    const transport = new StdioClientTransport({ command: bin, args: [], env: env({ KIRO_API_KEY: SENTINEL }), stderr: 'pipe' });
+    let stderr = '';
+    transport.stderr?.on('data', (c: Buffer) => (stderr += c.toString()));
+    const client = new Client({ name: 'smoke', version: '0' });
+    await client.connect(transport);
+    const since = new Date(Date.now() - 3_600_000).toISOString();
+    const results = [
+      await client.listTools(),
+      await client.callTool({ name: 'recent_deploys', arguments: { since } }),
+      await client.callTool({ name: 'tail_logs', arguments: { service: 'payments', limit: 5 } }),
+      await client.callTool({ name: 'diff_commit', arguments: { sha: 'not-a-sha' } }),
+      await client.callTool({ name: 'no_such_tool', arguments: { env: SENTINEL } }).catch((err: unknown) => String(err)),
+    ];
+    await client.close();
+    expect(JSON.stringify(results)).not.toContain(SENTINEL);
+    expect(stderr).not.toContain(SENTINEL);
+    expect(readFileSync(ledger, 'utf8')).not.toContain(SENTINEL);
+  });
   it('exits 2 before the handshake on a bad environment, naming variables only', () => {
     let status = 0;
     let stderr = '';

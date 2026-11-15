@@ -115,6 +115,33 @@ test('the lab profile', () => {
   assert.deepEqual(checkEnv(without(VALID_LAB, 'CHAOS_TOKEN'), 'lab'), ['CHAOS_TOKEN']);
 });
 
+test('the kiro profile: one variable, KIRO_API_KEY, printable ASCII of 20 to 512 characters; names only in the output', () => {
+  // Obvious fakes, never a real key.
+  const key = 'kiro-test-SENTINEL-0123456789abcdefghij';
+  assert.deepEqual(checkEnvText(`KIRO_API_KEY=${key}\n`, 'kiro'), []);
+  assert.deepEqual(checkEnvText(`# the key\nKIRO_API_KEY="${key}"\n`, 'kiro'), []);
+  assert.deepEqual(checkEnvText('KIRO_API_KEY=\n', 'kiro'), ['KIRO_API_KEY'], 'empty');
+  assert.deepEqual(checkEnvText('', 'kiro'), ['KIRO_API_KEY'], 'no key line');
+  assert.deepEqual(checkEnvText('KIRO_API_KEY=short\n', 'kiro'), ['KIRO_API_KEY'], 'too short');
+  assert.deepEqual(checkEnvText(`KIRO_API_KEY=${'a'.repeat(513)}\n`, 'kiro'), ['KIRO_API_KEY'], 'too long');
+  assert.deepEqual(checkEnvText(`KIRO_API_KEY=${'a'.repeat(512)}\n`, 'kiro'), []);
+  assert.deepEqual(checkEnvText(`KIRO_API_KEY=${key} with spaces\n`, 'kiro'), ['KIRO_API_KEY'], 'whitespace');
+  assert.deepEqual(checkEnvText(`KIRO_API_KEY=${key}é\n`, 'kiro'), ['KIRO_API_KEY'], 'not ASCII');
+  assert.deepEqual(checkEnvText(`KIRO_API_KEY=${key}\nGITHUB_TOKEN=x\nOTHER=1\n`, 'kiro'), ['GITHUB_TOKEN', 'OTHER'], 'unknown names');
+  assert.deepEqual(checkEnvText(`KIRO_API_KEY=${key}\nnot a line\n`, 'kiro'), ['line 2']);
+  // The CLI: exit codes, and the value is in no output.
+  const ok = run(`KIRO_API_KEY=${key}\n`, 'kiro');
+  assert.equal(ok.status, 0);
+  assert.equal(ok.stdout.trim(), 'demo-env-check: ok (kiro)');
+  const bad = run(`KIRO_API_KEY=bad key ${key}\nEXTRA=${key}\n`, 'kiro');
+  assert.equal(bad.status, 1);
+  assert.equal(bad.stderr.trim(), 'demo-env-check: refused: KIRO_API_KEY, EXTRA');
+  for (const r of [ok, bad]) assert.ok(!r.stdout.includes(key) && !r.stderr.includes(key), 'no value in the output');
+  // The file is optional: a missing one is accepted, for this profile only.
+  const missing = spawnSync(process.execPath, [SCRIPT, join(dir, 'no-kiro.env'), 'kiro'], { encoding: 'utf8' });
+  assert.equal(missing.status, 0);
+  assert.equal(missing.stdout.trim(), 'demo-env-check: ok (kiro, no file)');
+});
 test('parsing follows systemd: comments, quotes, duplicates, bad lines', () => {
   const { vars, badLines } = parseEnvText(['# comment', '; other', '', 'A=1', 'B="two words"', "C='x'", 'A=2', '  D = spaced ', 'not a line', '=novalue', '1BAD=x'].join('\n'));
   assert.equal(vars.A, '2');

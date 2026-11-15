@@ -255,6 +255,17 @@ fi
 [ "$(env_value /etc/haunted/api.env WEB_ORIGIN)" = "https://${HAUNTED_DOMAIN}" ] || fail "/etc/haunted/api.env names another domain; edit WEB_ORIGIN there first"
 node "$REL_DIR/scripts/demo-env-check.mjs" /etc/haunted/api.env api
 node "$REL_DIR/scripts/demo-env-check.mjs" /etc/haunted/lab.env lab
+# The Kiro API key file is optional (docs/DEPLOY.md). This script never creates, writes or prints it: if it exists, only its
+# owner and mode are fixed (root:root 0600), and the guard checks its format (names only).
+if [ -f /etc/haunted/kiro.env ] && [ ! -L /etc/haunted/kiro.env ]; then
+  if [ "$(stat -c '%U:%G %a' /etc/haunted/kiro.env)" != "root:root 600" ]; then
+    chmod 0600 /etc/haunted/kiro.env
+    chown root:root /etc/haunted/kiro.env
+    CHANGED=$((CHANGED + 1))
+    log "fixed owner and mode of /etc/haunted/kiro.env"
+  fi
+  node "$REL_DIR/scripts/demo-env-check.mjs" /etc/haunted/kiro.env kiro
+fi
 printf 'HAUNTED_DOMAIN=%s\n' "$HAUNTED_DOMAIN" >"$WORK/caddy.env"
 put "$WORK/caddy.env" /etc/caddy/haunted.env 0644 root:root
 [ "$PUT_CHANGED" -eq 1 ] && RELOAD_CADDY=1
@@ -395,6 +406,16 @@ put "$SRC/systemd/dropins/prometheus.service.d/haunted.conf" /etc/systemd/system
   RELOAD_UNITS=1
   RESTART_PROMETHEUS=1
 }
+# Prometheus writes its query log and its data under --storage.tsdb.path of the drop-in. The package leaves that folder owned
+# by root, so the service panics at start: the folder belongs to the prometheus user, mode 0750, on every run.
+PROM_DIR="$(sed -n 's|^.*--storage\.tsdb\.path=\([^ ]*\).*$|\1|p' "$SRC/systemd/dropins/prometheus.service.d/haunted.conf" | head -n 1)"
+case "$PROM_DIR" in /var/lib/?*) ;; *) fail "no storage path under /var/lib in the Prometheus drop-in" ;; esac
+if [ ! -d "$PROM_DIR" ] || [ "$(stat -c '%U:%G %a' "$PROM_DIR")" != "prometheus:prometheus 750" ]; then
+  install -d -m 0750 -o prometheus -g prometheus "$PROM_DIR"
+  RESTART_PROMETHEUS=1
+  CHANGED=$((CHANGED + 1))
+  log "storage folder $PROM_DIR belongs to prometheus"
+fi
 put "$SRC/systemd/dropins/caddy.service.d/haunted.conf" /etc/systemd/system/caddy.service.d/haunted.conf 0644 root:root
 [ "$PUT_CHANGED" -eq 1 ] && {
   RELOAD_UNITS=1
@@ -418,7 +439,6 @@ if [ "$RELOAD_NFT" -eq 1 ]; then
   CHANGED=$((CHANGED + 1))
   log "firewall loaded"
 fi
-systemctl enable nftables >/dev/null 2>&1
 if [ "$RELOAD_CADDY" -eq 1 ]; then
   (
     set -a
@@ -431,7 +451,9 @@ fi
 
 # ---------------------------------------------------------------- start
 stage "start"
-systemctl enable prometheus caddy haunted-lab haunted-api haunted-scenario.timer >/dev/null 2>&1
+systemctl enable nftables prometheus caddy haunted-lab haunted-api haunted-scenario.timer >/dev/null 2>&1
+# nft -f above loads the table but does not start the unit; the unit loads the same /etc/nftables.conf, so the result is the same.
+if [ "$RELOAD_NFT" -eq 1 ]; then systemctl restart nftables; else systemctl start nftables; fi
 if [ "$RESTART_PROMETHEUS" -eq 1 ]; then systemctl restart prometheus; else systemctl start prometheus; fi
 if [ "$RESTART_LAB" -eq 1 ]; then systemctl restart haunted-lab; else systemctl start haunted-lab; fi
 if [ "$RESTART_API" -eq 1 ]; then systemctl restart haunted-api; else systemctl start haunted-api; fi

@@ -84,6 +84,9 @@ export const HUNT_ENV_NAMES = [
   'HUNT_LEDGER_PATH',
 ] as const;
 
+/** Present only when the API has a value for it: the Kiro API key, for the hunt child and for no other child. */
+export const HUNT_OPTIONAL_ENV_NAMES = ['KIRO_API_KEY'] as const;
+
 export interface HuntEnvInput {
   cfg: Pick<HuntConfig, 'labUrl' | 'labReadToken' | 'labAllowRemote' | 'kiroCliPath'>;
   prometheusUrl: string;
@@ -92,24 +95,29 @@ export interface HuntEnvInput {
   ledgerPath: string;
   /** The folder with the `haunted-exorcist-mcp` launcher. */
   mcpBinDir: string;
-  /** The environment of the API process: only `HOME` and `LANG` are read from it. */
+  /** The environment of the API process: only `HOME`, `LANG` and `KIRO_API_KEY` are read from it. */
   parentEnv: Readonly<Record<string, string | undefined>>;
   nodeDir?: string;
 }
 
 const SYSTEM_PATH = ['/usr/bin', '/bin'];
 
-/** The environment of a Hunt process: exactly the names in `HUNT_ENV_NAMES`, nothing inherited. */
+/**
+ * The environment of a Hunt process: exactly the names in `HUNT_ENV_NAMES`, nothing inherited, plus `KIRO_API_KEY` when the
+ * parent has a non-empty one (without it, the login state in `HOME` is used). The value is never logged or stored.
+ */
 export function buildHuntEnv(i: HuntEnvInput): Record<string, string> {
   const path = [i.mcpBinDir, i.nodeDir ?? dirname(process.execPath), dirname(i.cfg.kiroCliPath), ...SYSTEM_PATH];
   const home = i.parentEnv.HOME !== undefined && i.parentEnv.HOME !== '' ? i.parentEnv.HOME : homedir();
   const lang = i.parentEnv.LANG !== undefined && /^[A-Za-z0-9_.@-]{1,40}$/.test(i.parentEnv.LANG) ? i.parentEnv.LANG : 'en_US.UTF-8';
+  const apiKey = i.parentEnv.KIRO_API_KEY;
   return {
     PATH: [...new Set(path.filter((p) => p !== '' && p !== '.'))].join(':'),
     HOME: home,
     LANG: lang,
     TERM: 'dumb',
     NO_COLOR: '1',
+    ...(apiKey !== undefined && apiKey !== '' ? { KIRO_API_KEY: apiKey } : {}),
     LAB_URL: i.cfg.labUrl,
     LAB_READ_TOKEN: i.cfg.labReadToken ?? '',
     LAB_ALLOW_REMOTE: i.cfg.labAllowRemote ? 'true' : 'false',

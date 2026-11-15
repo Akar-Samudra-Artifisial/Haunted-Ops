@@ -26,6 +26,7 @@ inclusion: always
 ## Demo server
 
 - One EC2 `t3.small` (`deploy-demo`, runbook in `docs/DEPLOY.md`), reached only through AWS SSM: no SSH, port 22 closed, instance role with `AmazonSSMManagedInstanceCore` only, IMDSv2 with hop limit 1, and nftables refuses the metadata address to every user but root.
+- The Kiro API key (`KIRO_API_KEY`, optional, so scheduled hunts survive an expired login) lives only in `/etc/haunted/kiro.env` (`root:root`, mode 0600), loaded by `haunted-api.service` alone. The API gives it to the hunt child only, never to the fixer or any other child. It is validated at start by name only, never logged, stored or returned, and never put on the server through `aws ssm send-command` (SSM keeps command parameters): use an interactive `aws ssm start-session`.
 - `FIX_ENABLED=false` and no `GITHUB_TOKEN` on the server, enforced by `scripts/demo-env-check.mjs` at install and at every start of the API. Fix proposals are recorded on the Mac for the video.
 - The internet may only read: Caddy answers 405 to any method but `GET` and `HEAD` on `/api/*`. Admin calls (`HUNT_ADMIN_TOKEN`) happen on the server, on `127.0.0.1`.
 - Hunts start only from the lab scenario timer (three a day), with `HUNT_DAILY_MAX=3`, `HUNT_CREDIT_CAP=1.5` and `HUNT_DAILY_CREDIT_CAP=4.5`.

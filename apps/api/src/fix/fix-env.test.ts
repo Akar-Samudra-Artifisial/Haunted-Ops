@@ -50,6 +50,13 @@ describe('the fixer process settings', () => {
     expect(JSON.stringify(env)).not.toContain(DUMMY_GITHUB_TOKEN);
   });
 
+  it('never gives the fixer the Kiro API key, even when the parent has it', () => {
+    const KEY = 'kiro-test-SENTINEL-0123456789abcdefghij';
+    expect(FIX_ENV_NAMES as readonly string[]).not.toContain('KIRO_API_KEY');
+    const env = buildFixEnv({ cfg: { kiroCliPath: '/opt/kiro/bin/kiro-cli' }, parentEnv: { HOME: '/home/someone', KIRO_API_KEY: KEY }, nodeDir: '/opt/node/bin' });
+    expect(Object.keys(env).sort()).toEqual([...FIX_ENV_NAMES].sort());
+    expect(JSON.stringify(env)).not.toContain(KEY);
+  });
   it('holds for any parent environment: only whitelisted names, no secret value', () => {
     fc.assert(
       fc.property(fc.dictionary(fc.stringMatching(/^[A-Z_]{3,20}$/), fc.string({ maxLength: 30 }), { maxKeys: 20 }), (parentEnv) => {

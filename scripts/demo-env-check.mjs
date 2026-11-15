@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Env guard of the demo server: refuses an environment file that breaks a rule of the deployment.
-//   node scripts/demo-env-check.mjs <file> [api|lab]        (default profile: api)
-// Exit 0: accepted. Exit 1: refused. Exit 2: usage error or unreadable file.
+//   node scripts/demo-env-check.mjs <file> [api|lab|kiro]   (default profile: api)
+// Exit 0: accepted. Exit 1: refused. Exit 2: usage error or unreadable file. The `kiro` file is optional: a missing one is accepted.
 // It prints variable names (and the number of a line it cannot read), never a value.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 /** The caps decided for the demo server. */
 export const DECIDED_CAPS = Object.freeze({ HUNT_DAILY_MAX: 3, HUNT_CREDIT_CAP: 1.5, HUNT_DAILY_CREDIT_CAP: 4.5 });
 export const MIN_TOKEN_LENGTH = 24;
-export const PROFILES = Object.freeze(['api', 'lab']);
+export const PROFILES = Object.freeze(['api', 'lab', 'kiro']);
 
 const LOOPBACK_HOSTS = ['127.0.0.1', '[::1]', '::1', 'localhost'];
 const KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -93,6 +93,10 @@ function isAbsolutePath(v) {
   return v !== undefined && v.startsWith('/') && !v.includes('\0') && v.length <= 500;
 }
 
+/** The Kiro API key: printable ASCII with no space, 20 to 512 characters (the rule of the API at start). @param {string | undefined} v */
+export function isKiroApiKey(v) {
+  return v !== undefined && /^[\x21-\x7e]{20,512}$/.test(v);
+}
 /** @param {string | undefined} v */
 function isStrongToken(v) {
   return v !== undefined && v.length >= MIN_TOKEN_LENGTH && !v.includes('CHANGE_ME');
@@ -101,7 +105,7 @@ function isStrongToken(v) {
 /**
  * Returns the names of the variables that break a rule, in a fixed order. No values.
  * @param {Record<string, string>} vars
- * @param {'api' | 'lab'} [profile]
+ * @param {'api' | 'lab' | 'kiro'} [profile]
  * @returns {string[]}
  */
 export function checkEnv(vars, profile = 'api') {
@@ -111,6 +115,12 @@ export function checkEnv(vars, profile = 'api') {
   const rule = (/** @type {string} */ name, /** @type {boolean} */ ok) => {
     if (!ok) bad.push(name);
   };
+  if (profile === 'kiro') {
+    // `/etc/haunted/kiro.env`: one variable, KIRO_API_KEY. Any other name is refused (by name, never its value).
+    rule('KIRO_API_KEY', isKiroApiKey(v('KIRO_API_KEY')));
+    for (const name of Object.keys(vars)) if (name !== 'KIRO_API_KEY') bad.push(name);
+    return bad;
+  }
   if (profile === 'lab') {
     rule('NODE_ENV', v('NODE_ENV') === 'production');
     rule('FIX_RUN_AS_USER', !has(vars, 'FIX_RUN_AS_USER'));
@@ -145,7 +155,7 @@ export function checkEnv(vars, profile = 'api') {
 /**
  * Checks the text of one file. Returns the refusal names; a line it cannot read counts as `line <n>`.
  * @param {string} text
- * @param {'api' | 'lab'} [profile]
+ * @param {'api' | 'lab' | 'kiro'} [profile]
  */
 export function checkEnvText(text, profile = 'api') {
   const { vars, badLines } = parseEnvText(text);
@@ -160,17 +170,22 @@ export function formatResult(refused, profile) {
 function main() {
   const [file, profile = 'api', ...rest] = process.argv.slice(2);
   if (!file || rest.length > 0 || !PROFILES.includes(profile)) {
-    process.stderr.write('usage: demo-env-check.mjs <file> [api|lab]\n');
+    process.stderr.write('usage: demo-env-check.mjs <file> [api|lab|kiro]\n');
     process.exit(2);
   }
   let text;
   try {
     text = readFileSync(file, 'utf8');
-  } catch {
+  } catch (err) {
+    // The Kiro API key file is optional: without it the login of hops is used.
+    if (profile === 'kiro' && /** @type {{ code?: string }} */ (err).code === 'ENOENT') {
+      process.stdout.write('demo-env-check: ok (kiro, no file)\n');
+      return;
+    }
     process.stderr.write('demo-env-check: cannot read the file\n');
     process.exit(2);
   }
-  const refused = checkEnvText(text, /** @type {'api' | 'lab'} */ (profile));
+  const refused = checkEnvText(text, /** @type {'api' | 'lab' | 'kiro'} */ (profile));
   if (refused.length === 0) {
     process.stdout.write(`${formatResult(refused, profile)}\n`);
     return;

@@ -47,6 +47,7 @@ export const HUNT_VARS = [
   'HUNT_DAILY_MAX',
   'HUNT_MAX_TOOL_CALLS',
   'HUNT_WORKDIR',
+  'KIRO_API_KEY',
 ] as const;
 export type HuntVar = (typeof HUNT_VARS)[number];
 
@@ -108,6 +109,8 @@ export function resolveExecutable(nameOrPath: string, pathEnv: string | undefine
 export const isTokenValid = (value: string): boolean =>
   value.length >= MIN_TOKEN_LENGTH && !/\s/.test(value) && !value.toLowerCase().startsWith(PLACEHOLDER_PREFIX);
 
+/** The Kiro API key: printable ASCII with no space, 20 to 512 characters. Only its name is ever reported. */
+export const isKiroApiKeyValid = (value: string): boolean => /^[\x21-\x7e]{20,512}$/.test(value);
 const MODEL_PATTERN = /^[a-z0-9][a-z0-9.-]{1,63}$/;
 const DECIMAL = /^\d{1,6}(\.\d{1,3})?$/;
 
@@ -241,6 +244,9 @@ export function parseHuntConfig(env: Readonly<Record<string, string | undefined>
     }
   }
 
+  // Optional, and checked as given (not trimmed): the hunt child gets the same value, so a key with a space is refused.
+  const apiKey = env.KIRO_API_KEY;
+  if (apiKey !== undefined && apiKey !== '' && !isKiroApiKeyValid(apiKey)) bad.add('KIRO_API_KEY');
   if (bad.size > 0) throw new HuntConfigError(HUNT_VARS.filter((v) => bad.has(v)));
 
   return Object.freeze({

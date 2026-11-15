@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { HAUNT_REASON_KINDS, HUNT_TOOLS, SERVICE_NAMES } from '@haunted-ops/shared';
-import { HUNT_ENV_NAMES, PromptFactsError, TRUSTED_TOOL_NAMES, buildHuntArgv, buildHuntEnv, huntPrompt, type PromptFacts } from './hunt-env.js';
+import { HUNT_ENV_NAMES, HUNT_OPTIONAL_ENV_NAMES, PromptFactsError, TRUSTED_TOOL_NAMES, buildHuntArgv, buildHuntEnv, huntPrompt, type PromptFacts } from './hunt-env.js';
 
 const RUNS = { numRuns: 200 };
 const cuid = fc.stringMatching(/^[a-z0-9]{25}$/);
@@ -14,7 +14,7 @@ const factsArb: fc.Arbitrary<PromptFacts> = fc.record({
 });
 const modelArb = fc.stringMatching(/^[a-z0-9][a-z0-9.-]{1,40}$/);
 
-const FORBIDDEN = ['DATABASE_URL', 'TEST_DATABASE_URL', 'HUNT_ADMIN_TOKEN', 'CHAOS_TOKEN', 'GITHUB_TOKEN', 'GH_TOKEN', 'KIRO_API_KEY', 'AWS_SECRET_ACCESS_KEY', 'PORT', 'WEB_ORIGIN'];
+const FORBIDDEN = ['DATABASE_URL', 'TEST_DATABASE_URL', 'HUNT_ADMIN_TOKEN', 'CHAOS_TOKEN', 'GITHUB_TOKEN', 'GH_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'PORT', 'WEB_ORIGIN'];
 const PROMPT = /^Incident [a-z0-9]{25} on service (gate|orders|payments|ledger): haunt level [234], reason (error_rate|p95|down|unknown), opened at \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\. The services call each other in a chain: gate calls orders, orders calls payments, payments calls ledger\. The cause may be a recent deploy of (gate or of orders, payments, ledger|orders or of payments, ledger|payments or of ledger|ledger)\. Investigate it and call submit_diagnosis once\.$/;
 
 // Feature: exorcist-agent, Property 11
@@ -60,7 +60,7 @@ describe('Property 11: the hunt process gets a fixed argument vector and a minim
 
   it('gives exactly the allowed environment names for any parent environment, and none of its secrets', () => {
     const parentArb = fc.dictionary(
-      fc.oneof(fc.constantFrom(...FORBIDDEN, 'PATH', 'HOME', 'LANG', 'NODE_OPTIONS', 'LD_PRELOAD', 'KIRO_CLI_PATH', 'HUNT_ID'), fc.stringMatching(/^[A-Z][A-Z0-9_]{1,20}$/)),
+      fc.oneof(fc.constantFrom(...FORBIDDEN, 'KIRO_API_KEY', 'PATH', 'HOME', 'LANG', 'NODE_OPTIONS', 'LD_PRELOAD', 'KIRO_CLI_PATH', 'HUNT_ID'), fc.stringMatching(/^[A-Z][A-Z0-9_]{1,20}$/)),
       fc.stringMatching(/^SECRET[A-Za-z0-9]{12,30}$/),
       { maxKeys: 30 },
     );
@@ -76,11 +76,13 @@ describe('Property 11: the hunt process gets a fixed argument vector and a minim
           parentEnv: parent,
           nodeDir: '/usr/local/node/bin',
         });
-        expect(Object.keys(env).sort()).toEqual([...HUNT_ENV_NAMES].sort());
+        const hasKey = parent.KIRO_API_KEY !== undefined && parent.KIRO_API_KEY !== '';
+        expect(Object.keys(env).sort()).toEqual([...HUNT_ENV_NAMES, ...(hasKey ? HUNT_OPTIONAL_ENV_NAMES : [])].sort());
+        if (hasKey) expect(env.KIRO_API_KEY).toBe(parent.KIRO_API_KEY);
         for (const name of FORBIDDEN) expect(name in env).toBe(false);
         const text = JSON.stringify(env);
         for (const [name, value] of Object.entries(parent)) {
-          if (name === 'HOME' || name === 'LANG') continue;
+          if (name === 'HOME' || name === 'LANG' || name === 'KIRO_API_KEY') continue;
           expect(text.includes(value), name).toBe(false);
         }
         expect(env.LAB_ALLOW_REMOTE).toBe(labRemote ? 'true' : 'false');

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeAll, expect, it } from 'vitest';
+import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { validateHuntDetail, validateServiceStates, type HuntDetail } from '@haunted-ops/shared';
 import { startFakeLab, type FakeLab, type FakeLabOptions } from '../../../tools/fake-kiro-cli/fake-lab.mjs';
 import { FAKE_KIRO_CLI } from '../../../tools/fake-kiro-cli/wrapper.mjs';
@@ -30,6 +30,8 @@ interface RigOptions {
   lab?: Partial<FakeLabOptions>;
   env?: Record<string, string>;
   cfg?: Partial<HuntConfig>;
+  /** The fake kiro-cli writes the NAMES of its environment to `<root>/observed.json`. */
+  observe?: boolean;
 }
 
 interface Rig {
@@ -58,7 +60,8 @@ async function startRig(o: RigOptions = {}): Promise<Rig> {
   const cli = join(root, 'kiro-cli');
   const fixtureFile = join(root, 'fixture');
   writeFileSync(fixtureFile, 'error-spike');
-  writeFileSync(cli, `#!/bin/sh\nFAKE_KIRO_FIXTURE="$(cat '${fixtureFile}')"\nexport FAKE_KIRO_FIXTURE\nexec '${process.execPath}' '${FAKE_KIRO_CLI}' "$@"\n`, { mode: 0o755 });
+  const observe = o.observe ? `FAKE_KIRO_OBSERVE='${join(root, 'observed.json')}'\nexport FAKE_KIRO_OBSERVE\n` : '';
+  writeFileSync(cli, `#!/bin/sh\nFAKE_KIRO_FIXTURE="$(cat '${fixtureFile}')"\nexport FAKE_KIRO_FIXTURE\n${observe}exec '${process.execPath}' '${FAKE_KIRO_CLI}' "$@"\n`, { mode: 0o755 });
   chmodSync(cli, 0o755);
   mkdirSync(join(root, 'hunts'));
 
@@ -146,6 +149,7 @@ beforeAll(() => {
 });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const r of rigs.splice(0)) await r.close();
 });
 
@@ -200,6 +204,41 @@ describeDb('Hunts end to end (Test database, fake kiro-cli, fake lab)', () => {
     expect(detail).toMatchObject({ status: 'succeeded', credits: 0.922, diagnosis: { culpritSha: SHAS['error-spike'] } });
   });
 
+  it('gives KIRO_API_KEY to the hunt child and never writes its value anywhere', async () => {
+    // A sentinel: an obvious fake that cannot be mistaken for a real key.
+    const SENTINEL = 'kiro-test-SENTINEL-0123456789abcdefghij';
+    vi.stubEnv('KIRO_API_KEY', SENTINEL);
+    const rig = await startRig({ observe: true, env: { KIRO_API_KEY: SENTINEL } });
+    await rig.open('payments');
+    rig.fixture('error-spike');
+    const { id, detail } = await rig.hunt('payments');
+    expect(detail.status).toBe('succeeded');
+    // The child had the variable (the fake records names only); every name is one the Hunt environment allows.
+    const observed = JSON.parse(readFileSync(join(rig.root, 'observed.json'), 'utf8')) as { envNames: string[] };
+    expect(observed.envNames).toContain('KIRO_API_KEY');
+    expect(observed.envNames).not.toContain('GITHUB_TOKEN');
+    // The value is in no log line, event, answer, file of the working folder, stream or database row.
+    const texts = [...rig.server.logs, JSON.stringify(rig.events), JSON.stringify(detail), await (await rig.get(`/api/hunts/${id}`)).text(), await (await rig.get('/api/hunts')).text(), await (await rig.get('/api/services')).text()];
+    const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [readFileSync(join(dir, e.name), 'utf8')]));
+    texts.push(...walk(rig.root));
+    const prisma = rig.server.app.get(PrismaService).client;
+    for (const table of ['Proposal', 'Evidence', 'HuntStep', 'Hunt', 'Incident', 'Signal', 'Service']) {
+      texts.push(...(await prisma.$queryRawUnsafe<Array<{ row: string }>>(`SELECT row_to_json(t)::text AS row FROM "${table}" t`)).map((r) => r.row));
+    }
+    expect(texts.length).toBeGreaterThan(10);
+    for (const t of texts) expect(t).not.toContain(SENTINEL);
+    expect(texts.some((t) => t.includes('succeeded'))).toBe(true);
+  });
+  it('gives no KIRO_API_KEY to the hunt child when the API has none', async () => {
+    vi.stubEnv('KIRO_API_KEY', '');
+    const rig = await startRig({ observe: true });
+    await rig.open('payments');
+    rig.fixture('error-spike');
+    const { detail } = await rig.hunt('payments');
+    expect(detail.status).toBe('succeeded');
+    const observed = JSON.parse(readFileSync(join(rig.root, 'observed.json'), 'utf8')) as { envNames: string[] };
+    expect(observed.envNames).not.toContain('KIRO_API_KEY');
+  });
   const FAILS: Array<[string, string, string, string | null, Partial<RigOptions>?]> = [
     ['no-diagnosis', 'failed', 'no_diagnosis', null],
     ['bad-sha', 'failed', 'invalid_diagnosis', 'sha_mismatch'],

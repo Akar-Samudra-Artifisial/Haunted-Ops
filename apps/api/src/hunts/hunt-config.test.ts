@@ -5,6 +5,7 @@ import {
   HUNT_DEFAULTS,
   HUNT_VARS,
   HuntConfigError,
+  isKiroApiKeyValid,
   isSafeWorkdir,
   isTokenValid,
   parseHuntConfig,
@@ -152,6 +153,19 @@ describe('parseHuntConfig', () => {
     });
   });
 
+  it('accepts an absent, empty or well-formed KIRO_API_KEY and refuses a bad one by name only', () => {
+    const good = 'kiro-test-SENTINEL-0123456789abcdefghij';
+    for (const v of [undefined, '', good, 'a'.repeat(20), 'a'.repeat(512)]) expect(() => parseHuntConfig({ ...on, KIRO_API_KEY: v }, deps), String(v?.length)).not.toThrow();
+    for (const bad of [' ', 'a'.repeat(19), 'a'.repeat(513), `${good} `, `${good}\n`, `kiro test ${good}`, `${good}\tx`, `${good}\u0000`, `${good}é`, `${good}\u007f`]) {
+      const e = errorOf({ ...on, KIRO_API_KEY: bad });
+      expect(e.variables, JSON.stringify(bad)).toEqual(['KIRO_API_KEY']);
+      expect(e.message).toBe('Invalid configuration: KIRO_API_KEY');
+    }
+    expect(isKiroApiKeyValid(good)).toBe(true);
+    expect(isKiroApiKeyValid('short')).toBe(false);
+    // Off or on, the same rule: a bad key stops the start even when hunts are off.
+    expect(errorOf({ KIRO_API_KEY: 'bad key with spaces inside it' }).variables).toEqual(['KIRO_API_KEY']);
+  });
   it('lists every bad variable in a stable order and never a value', () => {
     const e = errorOf({ HUNTS_ENABLED: 'maybe', LAB_URL: 'ftp://secret-host', HUNT_TIMEOUT_MS: 'abc', EXORCIST_MODEL: 'auto' });
     expect(e.variables).toEqual(['LAB_URL', 'HUNTS_ENABLED', 'EXORCIST_MODEL', 'HUNT_TIMEOUT_MS']);

@@ -40,6 +40,13 @@ caddy_valid() (
   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 )
 check "Caddyfile is valid" caddy_valid
+caddy_recent() { # `caddy version` prints "v2.6.2 h1:..."; the installed version must be at least CADDY_MIN_VERSION of versions.env
+  local want have
+  want="$(sed -n 's/^CADDY_MIN_VERSION=//p' "$(dirname "${BASH_SOURCE[0]}")/versions.env" | tail -n 1)"
+  have="$(caddy version | awk '{ sub(/^v/, "", $1); print $1 }')"
+  [ -n "$want" ] && [ -n "$have" ] && [ "$(printf '%s\n%s\n' "$want" "$have" | sort -V | head -n 1)" = "$want" ]
+}
+check "Caddy is at least the version of the Caddyfile" caddy_recent
 check "systemd units are valid" systemd-analyze verify /etc/systemd/system/haunted-api.service /etc/systemd/system/haunted-lab.service /etc/systemd/system/haunted-scenario.service /etc/systemd/system/haunted-scenario.timer
 check "env guard accepts api.env" node "$CURRENT/scripts/demo-env-check.mjs" /etc/haunted/api.env api
 check "env guard accepts lab.env" node "$CURRENT/scripts/demo-env-check.mjs" /etc/haunted/lab.env lab
@@ -52,7 +59,25 @@ same_read_token() {
   '
 }
 check "api.env and lab.env share LAB_READ_TOKEN" same_read_token
-check "kiro-cli is logged in for hops" runuser -u hops -- env HOME=/var/lib/hops /usr/local/bin/kiro-cli whoami
+KIRO_ENV=/etc/haunted/kiro.env
+kiro_env_mode() { [ -f "$KIRO_ENV" ] && [ ! -L "$KIRO_ENV" ] && [ "$(stat -c '%U:%G %a' "$KIRO_ENV")" = "root:root 600" ]; }
+kiro_whoami_key() ( # the key is read by root and handed to kiro-cli through the environment (never an argument, never printed)
+  key="$(sed -n 's/^KIRO_API_KEY=//p' "$KIRO_ENV" | tail -n 1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")"
+  [ -n "$key" ] || exit 1
+  export KIRO_API_KEY="$key"
+  runuser -u hops -- env HOME=/var/lib/hops /usr/local/bin/kiro-cli whoami
+)
+kiro_whoami_login() { runuser -u hops -- env -u KIRO_API_KEY HOME=/var/lib/hops /usr/local/bin/kiro-cli whoami; }
+# "kiro-cli can authenticate for hops": with the key file, the API key must work (and the file must be root:root 0600);
+# without it, the login of hops must. The line names the method, never a value.
+if [ -e "$KIRO_ENV" ]; then
+  check "kiro.env is root:root 0600" kiro_env_mode
+  check "env guard accepts kiro.env" node "$CURRENT/scripts/demo-env-check.mjs" "$KIRO_ENV" kiro
+  check "kiro-cli can authenticate for hops (api key)" kiro_whoami_key
+else
+  check "kiro-cli can authenticate for hops (login)" kiro_whoami_login
+fi
+check "Prometheus answers /-/ready" curl --fail --silent --max-time 5 http://127.0.0.1:9090/-/ready
 check "the API answers /healthz" curl --fail --silent --max-time 5 http://127.0.0.1:3000/healthz
 
 if [ "$FAILED" -ne 0 ]; then

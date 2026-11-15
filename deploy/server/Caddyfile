@@ -27,14 +27,17 @@
 		}
 	}
 
-	# Security headers on every response. The ">" prefix sets them after the API answered, so they replace its own.
+	# Security headers on every response. Written for Caddy 2.6 (CADDY_MIN_VERSION in versions.env): the "defer" subdirective
+	# runs the operations when the response is written to the client, after the API answered, so these values replace the
+	# API's own. Field names are plain: Caddy 2.6 has no ">" prefix (it would become part of the field name).
 	header {
-		>Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
-		>X-Content-Type-Options "nosniff"
-		>Referrer-Policy "no-referrer"
-		>Strict-Transport-Security "max-age=31536000"
-		>X-Frame-Options "DENY"
-		>Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+		defer
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Strict-Transport-Security "max-age=31536000"
+		X-Frame-Options "DENY"
+		Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
 		-Server
 	}
 

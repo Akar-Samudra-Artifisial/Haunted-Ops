@@ -127,6 +127,7 @@ When an Incident opens at level 2 or higher, the API can run a Hunt: a headless 
 | `LAB_ALLOW_REMOTE` | `false` | allow a `LAB_URL` that is not loopback |
 | `HUNT_ADMIN_TOKEN` | none | bearer for `POST /api/hunts` and `POST /api/hunts/kill-switch`, 24+ characters, required when hunts are on. Compared in constant time |
 | `KIRO_CLI_PATH` | `kiro-cli` | the `kiro-cli` to run; with hunts on it must resolve to an executable file. Point it at a fake to run with no Credits (below) |
+| `KIRO_API_KEY` | unset | optional Kiro API key for the hunt process only (printable ASCII, no space, 20 to 512 characters; a bad one stops the start, naming the variable). Unset: the `kiro-cli` login of `HOME` is used. The fixer and every other child never get it. The demo server sets it through `/etc/haunted/kiro.env` (`docs/DEPLOY.md`) |
 | `EXORCIST_MODEL` | `claude-sonnet-5.5` | pinned model; `auto` is refused |
 | `HUNT_CREDIT_CAP` | `1.5` | per Hunt. `kiro-cli` reports Credits once per turn, so the cap acts when the report arrives (after the run); the tool limit and the timeout bound a run |
 | `HUNT_DAILY_CREDIT_CAP` | `30` | per UTC day. A Hunt starts only if the day's total plus `HUNT_CREDIT_CAP` fits |

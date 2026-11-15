@@ -26,6 +26,7 @@ Nothing in this repository creates cloud resources. The steps below are run by a
 | `/opt/haunted-ops/releases/<id>/` | one unpacked release; `/opt/haunted-ops/current` and `previous` are links to releases |
 | `/opt/haunted-lab/` | the lab repository at the pinned commit, owned by `hlab`, read-only at run time |
 | `/etc/haunted/api.env`, `lab.env` | environment files, mode 0640, group `hops` and `hlab`; made once from `deploy/server/env/*.example` with generated tokens |
+| `/etc/haunted/kiro.env` | optional, `root:root` 0600, one line `KIRO_API_KEY=...`; loaded by `haunted-api.service` only; never created by `install.sh` |
 | `/var/lib/hops/` | home of `hops`: the hunt folder `hunts/` (0700) and the kiro-cli state folder of `hops` |
 | `/var/lib/haunted-lab/` | lab data, git mirror and worktrees |
 | `/var/lib/haunted/scenario-next` | position in the scenario rotation |
@@ -55,15 +56,44 @@ Do these in order.
    LAB_COMMIT=<40 hex commit of the lab main> \
    bash deploy/server/install.sh
    ```
+   `AWS-RunShellScript` runs the command with `/bin/sh`, which is dash on Debian. Start the install with `bash` explicitly, as written above: `install.sh` has a bash shebang but is not executed directly by the command. Any wrapper (a script, a Run Command document, a one-line command) must not use bash syntax in the command itself (no `[[ ]]`, arrays, `<(...)`, `${var//x/y}` or `source`); put such code in a file and run it with `bash file`.
+
    It creates the swapfile, installs Node 26 (pinned version and sha256 in `deploy/server/versions.env`), pnpm (the version of `packageManager`, from a tarball checked against a pinned sha256), Caddy, PostgreSQL, Prometheus and nftables, creates the users `hops` and `hlab`, writes the env files once with tokens from `openssl rand`, verifies the release sha256, installs the dependencies of the API as `hops` (see "Installs on the server"), runs `prisma migrate deploy`, seeds the four services, clones the lab at the pinned commit (its `main` and `scenario/*` branches on GitHub are never changed), installs the units, the Caddyfile, the Prometheus files and the firewall, and starts everything. A second run with the same release prints `0 change(s)`.
 8. **Log `hops` into kiro-cli.** In an interactive SSM session as root:
    ```sh
    runuser -u hops -- env HOME=/var/lib/hops kiro-cli login --use-device-flow
    ```
-   Open the printed URL on your own machine and enter the code. The login lives in the kiro-cli state folder of `hops`, under `/var/lib/hops`.
-9. **Pre-flight on the server**, as root: `bash /opt/haunted-ops/current/deploy/server/preflight.sh`. It checks that the units are active, swap is on, memory and disk are free, the firewall is loaded, the Caddyfile and the units are valid, the env guard accepts both files, `kiro-cli whoami` succeeds for `hops` (its output is not shown), and the API answers. Every line must say `ok`.
+   Open the printed URL on your own machine and enter the code. The login lives in the kiro-cli state folder of `hops`, under `/var/lib/hops`. A device-flow session can expire with nobody watching, and then every scheduled hunt fails. For a server that runs unattended until the deadline, use an API key instead (next section); the login stays as the fallback.
+9. **Pre-flight on the server**, as root: `bash /opt/haunted-ops/current/deploy/server/preflight.sh`. It checks that the units are active, swap is on, memory and disk are free, the firewall is loaded (and the `nftables` unit is active), Prometheus answers `/-/ready`, Caddy is at least the version in `versions.env` (`CADDY_MIN_VERSION`, 2.6.2) and the Caddyfile and the units are valid, the env guard accepts both files, "kiro-cli can authenticate for hops" (`kiro-cli whoami` as `hops`, its output is not shown; the line says `(api key)` when `/etc/haunted/kiro.env` exists, `(login)` otherwise, and with a key file it also checks that the file is `root:root 0600`), and the API answers. Every line must say `ok`.
 10. **Smoke test from the Mac**: `node scripts/demo-smoke.mjs https://<a-b-c-d>.sslip.io`. It checks the page, the `/hunts/x` fallback, `?demo=1`, `/healthz`, `GET /api/services`, the event stream, that `POST /api/hunts` and the kill switch answer 405, that `/.vite/manifest.json` is 404, and the security headers. It prints a table and exits 0 only when all pass.
 11. Put the link in the README line "Live demo".
+
+## kiro-cli auth with an API key
+
+kiro-cli 3.3.0 reads an API key from the environment variable `KIRO_API_KEY` (with only that variable set and an empty home, `kiro-cli whoami` prints `Authenticated with API key`). The API passes it to the hunt process and to no other process: not to the fixer, the test runs, git, the lab install or Prisma. The key is optional; without it the login of `hops` is used. While the variable is set, `kiro-cli logout` refuses.
+
+**Put the key on the server** in an interactive `aws ssm start-session`, as root. Paste the key, then press Ctrl-D:
+
+```sh
+install -m 600 -o root -g root /dev/stdin /etc/haunted/kiro.env
+```
+
+The file has one line, `KIRO_API_KEY=<key>` (printable ASCII, no space, 20 to 512 characters). Then restart and check:
+
+```sh
+systemctl restart haunted-api
+bash /opt/haunted-ops/current/deploy/server/preflight.sh
+```
+
+The Pre-flight line must say `kiro-cli can authenticate for hops (api key)`.
+
+**Never pass the key in `aws ssm send-command` parameters** (or any Run Command document, or the install variables). SSM keeps command parameters in the command history, so the key would be stored there in clear text. Use the interactive session only, and do not paste the key into a shell command line (`echo`, `export`), which ends up in the shell history.
+
+**Rotate:** replace the file the same way (`install -m 600 -o root -g root /dev/stdin /etc/haunted/kiro.env`, paste, Ctrl-D), `systemctl restart haunted-api`, run the Pre-flight. Revoke the old key in the Kiro account.
+
+**Remove:** `rm /etc/haunted/kiro.env`, `systemctl restart haunted-api`. The login method is used again; log `hops` in again (step 8) if the session expired.
+
+How it is held: `/etc/haunted/kiro.env` is `root:root` 0600, so `hops` cannot read it; systemd reads it as root and gives the variable to `haunted-api` only (`EnvironmentFile=-/etc/haunted/kiro.env` after `api.env`). `haunted-lab.service` and `haunted-scenario.service` do not load it. The unit runs `demo-env-check.mjs` on the file at every start (as root, a missing file is fine, any other variable name or a bad key format refuses the start; it prints names, never values). `install.sh` never creates, writes or prints the file: if it exists, it only sets `root:root` 0600. The key is in no log line, event, answer, stored stream, database row or `RELEASE-INFO`. kiro-cli passes its environment to the MCP server it starts, so `exorcist-mcp` masks the key if it ever met it in a result, and never prints or returns its environment.
 
 ## Installs on the server
 
@@ -73,6 +103,7 @@ Do these in order.
 - **No `prisma generate` on the server.** The compiled client is already inside `apps/api/dist` (the API build compiles it), so a generate step would only write unused files into `src/generated`.
 - **Who runs what.** The install, `prisma migrate deploy` and the seed run as `hops` (`runuser -u hops`), never as root. The release folder is owned by `hops` while the install runs, then set to owner `root`, group `hops`, nobody can write; Caddy reads the web files as "other". The lab's production install runs as root (the firewall holds `hlab` to loopback), also with scripts off, and the tree is handed to `hlab` afterwards.
 
+- **Debian package settings.** The package leaves `/var/lib/prometheus` owned by root; the install hands it to `prometheus:prometheus` (0750) on every run, because the drop-in sets `--storage.tsdb.path` there and Prometheus cannot open its query log otherwise. The install also starts the `nftables` unit (the rules are loaded with `nft -f`, which does not start it). Debian 13 ships Caddy 2.6.2, so the Caddyfile uses the `defer` subdirective of `header` and no `>` prefix; the Pre-flight fails on an older Caddy.
 ## IPv6
 
 The firewall keeps IPv6 working on the default Debian network setup instead of turning it off: it accepts ICMPv6 errors and neighbour discovery, and the DHCPv6 reply (UDP source 547, destination 546) from a link-local address (`fe80::/10`). Every other inbound IPv6 packet is dropped like IPv4.
@@ -103,7 +134,7 @@ Three layers, from the quickest to the most lasting. All are run on the server, 
 
 1. Stop the timer and the services (`systemctl stop haunted-scenario.timer haunted-api haunted-lab`).
 2. Terminate the instance, release the Elastic IP, delete the disk if it was kept, the instance profile and role, the security group and the published tarball.
-3. Revoke the kiro-cli login of `hops` in the Kiro account if the account allows it.
+3. Revoke the kiro-cli login of `hops` and the API key in the Kiro account if the account allows it.
 4. Remove the link from the README.
 
 ## Notes

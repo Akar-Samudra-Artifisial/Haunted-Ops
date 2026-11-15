@@ -12,6 +12,8 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DEPLOY = join(ROOT, 'deploy');
 const SERVER = join(DEPLOY, 'server');
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
+/** The commands of a shell file: whole-line comments and trailing comments removed. */
+const commands = (rel) => read(rel).replace(/^\s*#.*$/gm, '').replace(/\s#\s.*$/gm, '');
 
 function walk(dir) {
   return readdirSync(dir)
@@ -72,12 +74,21 @@ test('the API unit: user hops, production, env file, guard first, 1G, 256 tasks,
   const unit = parseUnit(read('deploy/server/systemd/haunted-api.service'));
   assert.equal(one(unit, 'Service', 'User'), 'hops');
   assert.ok(values(unit, 'Service', 'Environment').includes('NODE_ENV=production'));
-  assert.equal(one(unit, 'Service', 'EnvironmentFile'), '/etc/haunted/api.env');
+  // api.env first, then the optional Kiro API key file (the "-" makes it optional). Only the API unit loads it.
+  assert.deepEqual(values(unit, 'Service', 'EnvironmentFile'), ['/etc/haunted/api.env', '-/etc/haunted/kiro.env']);
+  for (const other of ['haunted-lab.service', 'haunted-scenario.service']) {
+    assert.ok(!read(`deploy/server/systemd/${other}`).includes('kiro.env'), `${other} does not load the key file`);
+    assert.ok(!values(parseUnit(read(`deploy/server/systemd/${other}`)), 'Service', 'EnvironmentFile').some((f) => f.includes('kiro')), `${other}: EnvironmentFile`);
+  }
   assert.equal(one(unit, 'Service', 'MemoryMax'), '1G');
   assert.equal(one(unit, 'Service', 'TasksMax'), '256');
   assert.equal(one(unit, 'Service', 'Restart'), 'on-failure');
   assert.deepEqual(values(unit, 'Service', 'ReadWritePaths'), ['/var/lib/hops']);
-  assert.match(one(unit, 'Service', 'ExecStartPre') ?? '', /demo-env-check\.mjs \/etc\/haunted\/api\.env api$/);
+  const pre = values(unit, 'Service', 'ExecStartPre');
+  assert.equal(pre.length, 2);
+  assert.match(pre[0] ?? '', /^\/usr\/local\/bin\/node \S+\/demo-env-check\.mjs \/etc\/haunted\/api\.env api$/);
+  // The key file is root:root 0600, so its guard runs as root ("+"); hops could not read it.
+  assert.match(pre[1] ?? '', /^\+\/usr\/local\/bin\/node \S+\/demo-env-check\.mjs \/etc\/haunted\/kiro\.env kiro$/);
   assert.match(one(unit, 'Service', 'ExecStart') ?? '', /apps\/api\/dist\/main\.js$/);
   const home = values(unit, 'Service', 'Environment').find((e) => e.startsWith('HOME='));
   assert.equal(home, 'HOME=/var/lib/hops');
@@ -152,8 +163,8 @@ test('the Caddyfile: method block, SSE proxy, fallback, no browse, headers, log 
   assert.match(caddy, /root \* \/opt\/haunted-ops\/current\/apps\/web\/dist/);
   assert.ok(!/\bbrowse\b/.test(caddy.replace(/#.*$/gm, '')), 'no directory listing');
   assert.match(caddy, /@hidden path \/\.vite \/\.vite\/\*/);
-  for (const h of ['Content-Security-Policy', 'X-Content-Type-Options', 'Referrer-Policy', 'Strict-Transport-Security']) {
-    assert.match(caddy, new RegExp(`>${h} "`), h);
+  for (const h of ['Content-Security-Policy', 'X-Content-Type-Options', 'Referrer-Policy', 'Strict-Transport-Security', 'X-Frame-Options', 'Permissions-Policy']) {
+    assert.match(caddy, new RegExp(`^\\t\\t${h} "`, 'm'), h);
   }
   assert.match(caddy, /request>uri regexp `\\\?\.\*` ""/);
   assert.match(caddy, /request>headers delete/);
@@ -161,6 +172,68 @@ test('the Caddyfile: method block, SSE proxy, fallback, no browse, headers, log 
   assert.ok(caddy.indexOf('handle @write') < caddy.indexOf('handle @api'));
 });
 
+test('the Caddyfile header block: Caddy 2.6 form (defer, plain field names, no ">" prefix) and the pinned minimum version', () => {
+  const caddy = read('deploy/server/Caddyfile');
+  const block = /^\theader \{\n([\s\S]*?)\n\t\}$/m.exec(caddy)?.[1];
+  assert.ok(block, 'the header block is found');
+  const lines = block.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+  assert.equal(lines[0], 'defer', 'the header operations are deferred, so they replace the headers of the API');
+  for (const line of lines) assert.ok(!line.startsWith('>'), `no ">" prefix (Caddy 2.6 does not know it): ${line}`);
+  assert.ok(lines.includes('-Server'));
+  assert.equal(lines.filter((l) => /^[A-Z][A-Za-z-]+ "/.test(l)).length, 6, 'the six security headers');
+  const min = parseEnvText(read('deploy/server/versions.env')).vars.CADDY_MIN_VERSION ?? '';
+  assert.match(min, /^2\.6\.\d+$/, 'versions.env names the Caddy version the Caddyfile is written for');
+  const pre = commands('deploy/server/preflight.sh');
+  assert.match(pre, /CADDY_MIN_VERSION/);
+  assert.match(pre, /caddy version/);
+  assert.match(pre, /check "Caddy is at least the version of the Caddyfile" caddy_recent/);
+});
+test('Prometheus: the storage path of the drop-in is the folder install.sh hands to the prometheus user, on every run', () => {
+  const dropin = read('deploy/server/systemd/dropins/prometheus.service.d/haunted.conf');
+  const path = /--storage\.tsdb\.path=(\/var\/lib\/[^\s]+)/.exec(dropin)?.[1];
+  assert.ok(path, 'the drop-in names a storage path');
+  const sh = commands('deploy/server/install.sh');
+  // install.sh reads the path from the drop-in itself, so the two cannot differ.
+  assert.match(sh, /PROM_DIR="\$\(sed -n 's\|\^\.\*--storage\\\.tsdb\\\.path=.*"\$SRC\/systemd\/dropins\/prometheus\.service\.d\/haunted\.conf"/);
+  assert.match(sh, /install -d -m 0750 -o prometheus -g prometheus "\$PROM_DIR"/);
+  assert.match(sh, /"\$\(stat -c '%U:%G %a' "\$PROM_DIR"\)" != "prometheus:prometheus 750"/);
+  assert.ok(sh.indexOf('install -d -m 0750 -o prometheus') < sh.indexOf('systemctl restart prometheus'), 'the folder is handed over before Prometheus starts');
+  // The sed of install.sh gives the same answer as the test reads from the drop-in.
+  const res = spawnSync('sed', ['-n', 's|^.*--storage\\.tsdb\\.path=\\([^ ]*\\).*$|\\1|p', join(SERVER, 'systemd/dropins/prometheus.service.d/haunted.conf')], { encoding: 'utf8' });
+  assert.equal(res.stdout.trim(), path);
+  assert.match(commands('deploy/server/preflight.sh'), /check "Prometheus answers \/-\/ready" curl --fail --silent --max-time 5 http:\/\/127\.0\.0\.1:9090\/-\/ready/);
+});
+test('Kiro API key file: install.sh only fixes owner and mode, never writes or prints it; preflight checks the method and the mode', () => {
+  const sh = commands('deploy/server/install.sh');
+  const block = /if \[ -f \/etc\/haunted\/kiro\.env \][\s\S]*?\nfi\n/.exec(sh)?.[0] ?? '';
+  assert.ok(block, 'install.sh has a block for kiro.env that runs only when the file exists');
+  assert.match(block, /chmod 0600 \/etc\/haunted\/kiro\.env/);
+  assert.match(block, /chown root:root \/etc\/haunted\/kiro\.env/);
+  assert.match(block, /demo-env-check\.mjs" \/etc\/haunted\/kiro\.env kiro/);
+  // No write, copy, redirect into, echo or template of the file anywhere in the script.
+  assert.ok(!/>\s*\/etc\/haunted\/kiro\.env|put [^\n]*kiro\.env|install [^\n]*kiro\.env|tee [^\n]*kiro\.env|cp [^\n]*kiro\.env|KIRO_API_KEY=/.test(sh), 'install.sh never writes the key file');
+  assert.ok(!/cat [^\n]*kiro\.env|echo [^\n]*KIRO_API_KEY|printf [^\n]*KIRO_API_KEY/.test(sh), 'install.sh never prints the key');
+  const pre = commands('deploy/server/preflight.sh');
+  assert.match(pre, /check "kiro\.env is root:root 0600" kiro_env_mode/);
+  assert.match(pre, /check "kiro-cli can authenticate for hops \(api key\)" kiro_whoami_key/);
+  assert.match(pre, /check "kiro-cli can authenticate for hops \(login\)" kiro_whoami_login/);
+  assert.match(pre, /stat -c '%U:%G %a' "\$KIRO_ENV"\)" = "root:root 600"/);
+  assert.match(pre, /export KIRO_API_KEY="\$key"/);
+  assert.ok(!/echo [^\n]*\$key|printf [^\n]*\$key|-x\b/.test(pre), 'the key is not echoed and the script does not trace');
+  assert.ok(!/env [^\n]*KIRO_API_KEY=/.test(pre), 'the key is never an argument (ps would show it)');
+});
+test('install.sh: the nftables unit is enabled and started (restart when the file changed, start otherwise), after nft -c', () => {
+  const sh = commands('deploy/server/install.sh');
+  assert.match(sh, /systemctl enable nftables /);
+  assert.match(sh, /if \[ "\$RELOAD_NFT" -eq 1 \]; then systemctl restart nftables; else systemctl start nftables; fi/);
+  assert.ok(sh.indexOf('nft -c -f /etc/nftables.conf') < sh.indexOf('systemctl restart nftables'), 'the file is checked first');
+});
+test('docs/DEPLOY.md: SSM runs commands with /bin/sh, so install.sh is started with bash and a wrapper has no bash syntax', () => {
+  const doc = read('docs/DEPLOY.md');
+  assert.match(doc, /\/bin\/sh/);
+  assert.match(doc, /dash/);
+  assert.match(doc, /bash deploy\/server\/install\.sh/);
+});
 test('nftables: inbound 80 and 443 only, no port 22, IMDS dropped for non-root users, users held to loopback', () => {
   const nft = read('deploy/server/nftables.conf');
   const rules = nft.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
@@ -272,8 +345,6 @@ test('build-release.sh: refuses a dirty tree, builds in demo mode, checks the bu
   assert.match(read('.gitignore'), /^deploy\/out\/$/m);
 });
 
-/** The commands of a shell file: whole-line comments and trailing comments removed. */
-const commands = (rel) => read(rel).replace(/^\s*#.*$/gm, '').replace(/\s#\s.*$/gm, '');
 test('install.sh: no npm, npx or pipe to a shell; every download is checked against a pinned sha256 before use', () => {
   const sh = commands('deploy/server/install.sh');
   assert.ok(!/\bnpm\b/.test(sh), 'no npm');

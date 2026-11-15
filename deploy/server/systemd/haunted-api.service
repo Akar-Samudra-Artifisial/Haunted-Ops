@@ -14,9 +14,13 @@ Group=hops
 Environment=NODE_ENV=production
 Environment=HOME=/var/lib/hops
 EnvironmentFile=/etc/haunted/api.env
+# Optional (the "-"): the Kiro API key, root:root 0600, read by systemd as root. Only this unit loads it.
+EnvironmentFile=-/etc/haunted/kiro.env
 WorkingDirectory=/opt/haunted-ops/current/apps/api
 # The env guard refuses an unsafe file before the API starts (it prints names, never values).
 ExecStartPre=/usr/local/bin/node /opt/haunted-ops/current/scripts/demo-env-check.mjs /etc/haunted/api.env api
+# The same guard for the key file (a missing file is accepted). hops cannot read that file, so this one line runs as root ("+").
+ExecStartPre=+/usr/local/bin/node /opt/haunted-ops/current/scripts/demo-env-check.mjs /etc/haunted/kiro.env kiro
 ExecStart=/usr/local/bin/node /opt/haunted-ops/current/apps/api/dist/main.js
 Restart=on-failure
 RestartSec=5

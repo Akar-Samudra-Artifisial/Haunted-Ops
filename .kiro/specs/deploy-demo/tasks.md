@@ -1,6 +1,6 @@
 # Implementation Plan: deploy-demo
 ## Overview
-Write the files that turn a bare Debian instance into the Demo server, and the local tests that keep them honest: a release bundle with a check, an environment guard, systemd units and a timer, a firewall, Caddy, an install script, a smoke test and a pre-flight, and the documents. It is 10 top-level tasks (task 10 holds the fixes found by the check and the review). Each task ships with its tests. Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: deploy-demo, Property N`. Nothing here touches AWS, a server, GitHub or the real `kiro-cli`.
+Write the files that turn a bare Debian instance into the Demo server, and the local tests that keep them honest: a release bundle with a check, an environment guard, systemd units and a timer, a firewall, Caddy, an install script, a smoke test and a pre-flight, and the documents. It is 12 top-level tasks (task 10 holds the fixes found by the check and the review, task 11 the fixes of the first real install, task 12 the Kiro API key). Each task ships with its tests. Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: deploy-demo, Property N`. Nothing here touches AWS, a server, GitHub or the real `kiro-cli`.
 ## Tasks
 - [x] 1. Release bundle
   - [x] 1.1 Add `scripts/release-check.mjs` (`checkTree`, a CLI): native binaries, `.env` files, `spike/`, `spikes/`, `.agents/`, source maps, `.vite/`, home paths and token patterns; findings hold a path and a kind, never the matched text
@@ -70,6 +70,25 @@ Write the files that turn a bare Debian instance into the Demo server, and the l
     - _Requirements: 9.1, 9.7_
   - [x] 10.8 Fake token text built at run time from parts in `scripts/demo-env-check.test.mjs`
     - _Requirements: 9.5, 9.7_
+- [x] 11. First install fixes
+  - [x] 11.1 Prometheus storage folder: `install.sh` hands the `--storage.tsdb.path` of the drop-in to `prometheus:prometheus` (0750) on every run, counted as a change only when it changed; `preflight.sh` checks `/-/ready`; test that the path of the drop-in is the one the script hands over
+    - _Requirements: 2.9, 7.3, 9.2_
+  - [x] 11.2 `nftables.service` active: `install.sh` enables the unit and restarts it when the rules changed, starts it otherwise, after `nft -c -f`; test that the script enables and starts the unit
+    - _Requirements: 2.10, 9.2_
+  - [x] 11.3 Caddy 2.6.2 security headers: the `header` block uses `defer` and plain field names (no `>` prefix); CSP checked against the built web (unchanged); `CADDY_MIN_VERSION` in `versions.env` and a Pre-flight check; test that fails on a `>` prefix in the block
+    - _Requirements: 5.5, 5.7, 7.3, 9.2_
+  - [x] 11.4 `built_at` is the commit time (test: two builds of one commit in a temporary repository give the same sha256); `docs/DEPLOY.md` says SSM runs `/bin/sh` and `install.sh` is started with `bash`; run the checks of requirement 9.6 and add the `docs/KIRO_USAGE.md` line
+    - _Requirements: 1.7, 8.5, 8.6, 9.6_
+
+- [x] 12. Kiro API key for the hunt process
+  - [x] 12.1 API: `buildHuntEnv` gives the hunt child `KIRO_API_KEY` when the parent has a non-empty one; `parseHuntConfig` refuses a bad format with `Invalid configuration: KIRO_API_KEY`; the fixer and every other child never get it; the value is in no log, event, answer, stream, database row or `RELEASE-INFO` (sentinel test through the fake-`kiro-cli` hunt flow); report whether `kiro-cli` passes its environment to the MCP server, and keep `exorcist-mcp` from printing or returning its environment (test)
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.10_
+  - [x] 12.2 Server files: `EnvironmentFile=-/etc/haunted/kiro.env` in `haunted-api.service` only; `install.sh` only fixes owner and mode of an existing file and runs the guard; `preflight.sh` "kiro-cli can authenticate for hops" names the method; Env guard profile `kiro` with tests (good, empty, bad format, unknown name, missing file); static checks of the unit, the script and the pre-flight
+    - _Requirements: 10.5, 10.6, 10.7, 10.8, 10.10_
+  - [x] 12.3 Docs and steering: the section "kiro-cli auth with an API key" in `docs/DEPLOY.md` (interactive session, never `send-command`, rotation, removal), one rule in `.kiro/steering/security.md`, the `.env.example` line, the `docs/KIRO_USAGE.md` line with the MCP finding; run the checks of requirement 9.6
+    - _Requirements: 8.6, 9.6, 10.9_
+  - [x]* 12.4 Property test: the Kiro API key reaches the hunt process only (Property 4)
+    - _Requirements: 10.1, 10.3_
 ## Task Dependency Graph
 ```mermaid
 graph TD
@@ -85,6 +104,8 @@ graph TD
   T7 --> T8[8 Documents]
   T8 --> T9[9 Checks]
   T9 --> T10[10 Review fixes]
+  T10 --> T11[11 First install fixes]
+  T11 --> T12[12 Kiro API key]
 ```
 ```json
 {
@@ -96,7 +117,9 @@ graph TD
     { "id": 4, "tasks": ["7"] },
     { "id": 5, "tasks": ["8"] },
     { "id": 6, "tasks": ["9"] },
-    { "id": 7, "tasks": ["10"] }
+    { "id": 7, "tasks": ["10"] },
+    { "id": 8, "tasks": ["11"] },
+    { "id": 9, "tasks": ["12"] }
   ]
 }
 ```
@@ -110,4 +133,4 @@ graph TD
 - The orchestrator runs `caddy validate`, `nft -c` and `systemd-analyze verify` on the server (none exists on the Mac), then the Install script, the Pre-flight and the Smoke test.
 - Bundle, 15 Nov 2026: entry 90.0 KiB gzip before and after (the same file `index-DXy91ZIp.js`, budget 92 KiB), SceneCanvas file 97.3 KiB, scene 158.6 KiB. The deploy adds no web code.
 - `deploy/build-release.sh` was run once and stopped at the clean-tree check, as designed: the work of this spec is not committed (no commit was allowed), so no clean tree existed. The release check was run on the built `dist` folders, the server files and the root files that go into the release, with no finding (the `.vite/` folder of the web build is found, and the script removes it before the check).
-- Out of scope: the fixer and fix deploys on the server, a GitHub token, containers, backups, a CDN, CI, any change to the API or the Web.
+- Out of scope: the fixer and fix deploys on the server, a GitHub token, containers, backups, a CDN, CI, any change to the API or the Web (except the optional `KIRO_API_KEY` of the hunt process, task 12).
