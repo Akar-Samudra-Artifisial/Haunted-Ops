@@ -1,7 +1,7 @@
 import { Application, Container, Graphics, Particle, ParticleContainer, Sprite, Text, Texture } from 'pixi.js';
 import type { ServiceName } from '@haunted-ops/shared';
 import { MAX_PULSES, MAX_ROOMS } from './animator.js';
-import { FIGURE_H, FIGURE_W } from './layout.js';
+import { FIGURE_H, FIGURE_H_SPRITE, FIGURE_MIN_PX_NARROW, FIGURE_W, NARROW_BELOW } from './layout.js';
 import { MAX_MARKS } from './model.js';
 import { clamp } from './math.js';
 import type { Pt, RoomLayout, SceneLayout } from './layout.js';
@@ -122,6 +122,9 @@ const SPARK_COUNT = 6;
 /** The objects of one room's hunt, made once. */
 interface HuntArt {
   container: Container;
+  /** The dark pill behind the marks and the empty rings: both are shown only while the room has a hunt. */
+  marksBack: Graphics;
+  marksOff: Graphics;
   marksOn: Graphics;
   result: Graphics;
   seal: Graphics;
@@ -161,6 +164,8 @@ interface Layers {
   corridors: Container;
   rooms: Container;
   texts: Container;
+  /** The Exorcist figures: above the ghosts, below the chips. */
+  figures: Container;
   ui: Container;
   ring: Graphics;
 }
@@ -240,7 +245,7 @@ export class PixiSurface implements Surface {
     ui.addChild(ring);
     const moon = new Container();
     moon.addChild(new Sprite(this.textures.get('glow') as Texture), new Graphics());
-    const layers: Layers = { background: new Graphics(), farStars: new Graphics(), nearStars: new Graphics(), moon, house: new Graphics(), roof: new Graphics(), corridors: new Container(), rooms: new Container(), texts: new Container(), ui, ring };
+    const layers: Layers = { background: new Graphics(), farStars: new Graphics(), nearStars: new Graphics(), moon, house: new Graphics(), roof: new Graphics(), corridors: new Container(), rooms: new Container(), texts: new Container(), figures: new Container(), ui, ring };
     this.layers = layers;
 
     const tex = (n: TextureName): Texture => this.textures.get(n) as Texture;
@@ -268,10 +273,11 @@ export class PixiSurface implements Surface {
       pools.fog.container,
       pools.motes.container,
       pools.pulses.container,
-      // The ring runs along the silhouette, through the front corner: the chip stays on top of it.
+      // The ring runs along the silhouette, through the front corner. Then the ghosts, the Exorcist above them, and the chips on top of everything.
       layers.ui,
-      layers.texts,
       ...pools.ghosts.map((g) => g.container),
+      layers.figures,
+      layers.texts,
     );
 
     const onLost = (e: Event): void => {
@@ -334,16 +340,17 @@ export class PixiSurface implements Surface {
     g.clear();
     if (layout.house) {
       const art = buildHouseArt(layout.house, layout.scale);
-      // The roof and chimney are the first two shapes: they are drawn on their own layer.
-      for (const poly of art.polys.slice(art.roof.polys.length)) g.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
-      g.circle(art.window.center.x, art.window.center.y, art.window.radius).fill({ color: num(art.window.fill), alpha: art.window.alpha });
-      for (const line of [...art.window.bars, ...art.lines.slice(art.roof.lines.length)]) {
+      // A room with a sprite has its own wall caps: the procedural roof is not drawn over it.
+      const roofed = !layout.rooms.some((r) => this.sprites?.rooms[r.name]);
+      // The roof and chimney are the first two shapes: they are drawn on their own layer. With sprites the two back walls and
+      // their corner line (behind the pictures) and the attic window (on the roof peak) are not drawn: they belong to the procedural house.
+      for (const poly of art.polys.slice(art.roof.polys.length + (roofed ? 0 : 2))) g.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
+      if (roofed) g.circle(art.window.center.x, art.window.center.y, art.window.radius).fill({ color: num(art.window.fill), alpha: art.window.alpha });
+      for (const line of [...(roofed ? art.window.bars : []), ...art.lines.slice(art.roof.lines.length + (roofed ? 0 : 1))]) {
         g.poly(flat(line.points), false).stroke({ color: num(line.color), alpha: line.alpha, width: line.width, join: 'round', cap: 'round' });
       }
       const roof = layers.roof;
       roof.clear();
-      // A room with a sprite has its own wall caps: the procedural roof is not drawn over it.
-      const roofed = !layout.rooms.some((r) => this.sprites?.rooms[r.name]);
       for (const poly of roofed ? art.roof.polys : []) roof.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
       for (const line of roofed ? art.roof.lines : []) roof.poly(flat(line.points), false).stroke({ color: num(line.color), alpha: line.alpha, width: line.width, join: 'round', cap: 'round' });
     }
@@ -360,6 +367,7 @@ export class PixiSurface implements Surface {
 
     for (const child of layers.rooms.removeChildren()) child.destroy({ children: true });
     for (const child of layers.texts.removeChildren()) child.destroy({ children: true });
+    for (const child of layers.figures.removeChildren()) child.destroy({ children: true });
     this.views.clear();
     const ordered = [...layout.rooms].sort((a, b) => a.grid.x + a.grid.y - (b.grid.x + b.grid.y) || a.grid.x - b.grid.x);
     for (const room of ordered) {
@@ -367,6 +375,7 @@ export class PixiSurface implements Surface {
       this.views.set(room.name, view);
       layers.rooms.addChild(view.root);
       layers.texts.addChild(view.texts);
+      layers.figures.addChild(view.huntArt.figure);
     }
     if (this.model) this.applyModel(this.model);
     this.ringFor = null;
@@ -473,7 +482,11 @@ export class PixiSurface implements Surface {
     const step = (slot.w * 0.85) / MAX_MARKS;
     const markX = (i: number): number => slot.x + step * (i + 0.5);
 
+    const marksBack = new Graphics();
+    marksBack.roundRect(slot.x, slot.y, slot.w, slot.h, slot.h / 2).fill({ color: num(PALETTE.pill), alpha: PILL_ALPHA });
+    marksBack.visible = false;
     const marksOff = new Graphics();
+    marksOff.visible = false;
     for (let i = 0; i < MAX_MARKS; i++) marksOff.circle(markX(i), midY, r).stroke({ color: num(PALETTE.trim), alpha: 0.55, width: Math.max(1, r * 0.35) });
     const marksOn = new Graphics();
     const result = new Graphics();
@@ -489,8 +502,9 @@ export class PixiSurface implements Surface {
 
     const figure = new Container();
     const w = FIGURE_W * s;
-    const h = FIGURE_H * s;
     const poses = this.sprites ? this.sprites.exorcist : null;
+    // The illustrated figure is taller, and at least 28 px under 40rem.
+    const h = poses ? Math.max(FIGURE_H_SPRITE * s, layout.width < NARROW_BELOW ? FIGURE_MIN_PX_NARROW : 0) : FIGURE_H * s;
     // The illustrated figure stands on its feet (anchor at the bottom centre) and is `h` high; its lantern is on the left of the picture.
     let figureSprite: Sprite | null = null;
     let body: Graphics | Sprite;
@@ -524,7 +538,16 @@ export class PixiSurface implements Surface {
       spark.visible = false;
       sparks.push(spark);
     }
-    figure.addChild(body, lanternGlow, lantern, ...sparks);
+    // A soft mint glow behind the figure: static (no animation, so Reduced motion and Low quality keep it).
+    const figureGlow = new Sprite(this.textures.get('glow') as Texture);
+    figureGlow.anchor.set(0.5);
+    figureGlow.position.set(0, -h * 0.5);
+    figureGlow.width = h * 1.1;
+    figureGlow.height = h * 1.3;
+    figureGlow.blendMode = 'add';
+    figureGlow.tint = num(PALETTE.ecto);
+    figureGlow.alpha = 0.5;
+    figure.addChild(figureGlow, body, lanternGlow, lantern, ...sparks);
     figure.visible = false;
     figure.position.set(room.doors.px.x, room.doors.px.y);
 
@@ -558,9 +581,12 @@ export class PixiSurface implements Surface {
     sweep.position.set(room.center.x, room.center.y);
     sweep.visible = false;
 
-    container.addChild(marksOff, marksOn, result, figure, scroll);
+    // The figure is not in this container: it has its own layer above the ghosts.
+    container.addChild(marksBack, marksOff, marksOn, result, scroll);
     return {
       container,
+      marksBack,
+      marksOff,
       marksOn,
       result,
       seal,
@@ -599,6 +625,9 @@ export class PixiSurface implements Surface {
   private paintTexts(view: RoomView, v: RoomVisual, layout: SceneLayout): void {
     view.label.text = `${v.levelMark} ${v.label}`;
     view.bang.visible = v.incident.open;
+    // The marks and their rings show only while the room has a hunt.
+    view.huntArt.marksBack.visible = v.hunt !== null;
+    view.huntArt.marksOff.visible = v.hunt !== null;
 
     view.clock.clear();
     for (const hand of clockHands(v.clock, view.art.clock.center, view.art.clock.radius)) {

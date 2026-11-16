@@ -4,7 +4,7 @@ import { GHOST_KIND_MAX, GHOST_MAX, ghostKind } from './particles.js';
 
 const assets = vi.hoisted(() => ({ load: vi.fn(), unload: vi.fn() }));
 vi.mock('pixi.js', () => ({ Assets: assets }));
-const { LOAD_TIMEOUT_MS, ROOM_BOX, ROOM_SPRITE, SPRITE_KEYS, SPRITE_MANIFEST, loadSprites, roomSpriteFit, spriteBrightness, spriteSilhouette } = await import('./sprites.js');
+const { LOAD_TIMEOUT_MS, ROOM_BOX, ROOM_SPRITE, ROOM_SPRITE_SCALE, SPRITE_KEYS, SPRITE_MANIFEST, loadSprites, roomSpriteFit, spriteBrightness, spriteSilhouette } = await import('./sprites.js');
 
 const picture = { width: 256, height: 256 };
 afterEach(() => {
@@ -15,25 +15,46 @@ afterEach(() => {
 
 describe('roomSpriteFit', () => {
   const layout = scene(house(), FULL).layout;
-  it('makes the content box as wide as the floor and puts its bottom centre on the front corner', () => {
+  it('makes the content box ROOM_SPRITE_SCALE times as wide as the floor and keeps its bottom centre on the front corner', () => {
+    expect(ROOM_SPRITE_SCALE).toBeLessThanOrEqual(0.9);
     expect(layout.rooms.length).toBeGreaterThan(0);
     for (const room of layout.rooms) {
       const fit = roomSpriteFit(room.floor);
       const [, right, bottom, left] = room.floor;
       const boxW = (ROOM_BOX.x1 - ROOM_BOX.x0) * fit.width;
-      expect(boxW).toBeCloseTo(right.x - left.x, 6);
+      expect(boxW).toBeCloseTo(ROOM_SPRITE_SCALE * (right.x - left.x), 6);
       expect(fit.x + ((ROOM_BOX.x0 + ROOM_BOX.x1) / 2) * fit.width).toBeCloseTo(bottom.x, 6);
       expect(fit.y + ROOM_BOX.y1 * fit.height).toBeCloseTo(bottom.y, 6);
       expect(fit.width).toBe(fit.height);
     }
   });
-  it('draws the outline of the picture through the left and right floor corners and the front corner', () => {
+  it('draws the outline of the picture inside the floor width, centred on the front corner', () => {
     const room = layout.rooms[0]!;
     const hex = spriteSilhouette(roomSpriteFit(room.floor));
+    const [, right, bottom, left] = room.floor;
     expect(hex).toHaveLength(6);
-    expect(hex[0]!.x).toBeCloseTo(room.floor[3].x, 6);
-    expect(hex[4]!.x).toBeCloseTo(room.floor[1].x, 6);
+    expect(hex[4]!.x - hex[0]!.x).toBeCloseTo(ROOM_SPRITE_SCALE * (right.x - left.x), 6);
+    expect((hex[0]!.x + hex[4]!.x) / 2).toBeCloseTo(bottom.x, 6);
+    expect(hex[5]!.x).toBeCloseTo(bottom.x, 6);
     expect(hex[5]!.y).toBeCloseTo(room.floor[2].y, 6);
+  });
+  it('keeps the picture of a front room off the front corner of the floor of every room behind it (demo layout, three widths)', () => {
+    for (const width of [1440, 390, 1000]) {
+      const { layout: l } = scene(house(), FULL, { width, height: 800, dpr: 1 });
+      expect(l.rooms).toHaveLength(4);
+      for (const front of l.rooms) {
+        const fit = roomSpriteFit(front.floor);
+        const bottom = front.floor[2];
+        const half = ((ROOM_BOX.x1 - ROOM_BOX.x0) / 2) * fit.width;
+        const top = bottom.y - (ROOM_BOX.y1 - ROOM_BOX.y0) * fit.height;
+        for (const back of l.rooms) {
+          if (back.grid.x + back.grid.y >= front.grid.x + front.grid.y) continue;
+          const corner = back.floor[2];
+          const inside = corner.x >= bottom.x - half && corner.x <= bottom.x + half && corner.y >= top && corner.y <= bottom.y;
+          expect(inside, `${front.name} over ${back.name} at ${width}`).toBe(false);
+        }
+      }
+    }
   });
 });
 
@@ -77,8 +98,11 @@ describe('loadSprites', () => {
 });
 
 describe('spriteBrightness', () => {
-  it('is dim for a lantern-only room, full for a possessed one and near black for a dark one', () => {
-    expect(spriteBrightness(0.25, 0)).toBeLessThan(0.55);
+  it('is dim for a lantern-only room (0.40 at most), 0.80 or more for haunted, full for a possessed one and near black for a dark one', () => {
+    expect(spriteBrightness(0.25, 0)).toBeLessThanOrEqual(0.4);
+    expect(spriteBrightness(0.7, 0)).toBeGreaterThanOrEqual(0.8);
+    expect(spriteBrightness(0.4, 0)).toBeGreaterThan(spriteBrightness(0.25, 0));
+    expect(spriteBrightness(0.4, 0)).toBeLessThan(spriteBrightness(0.7, 0));
     expect(spriteBrightness(1, 0)).toBe(1);
     expect(spriteBrightness(0, 0.92)).toBeLessThan(0.05);
   });

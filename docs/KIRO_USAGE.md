@@ -159,3 +159,11 @@ One line per finished task: date | spec/task | what Kiro did.
 2026-11-17 | visual-refresh/31 | budget measured: entry 93.0 of 94 KiB, scene chunk 175.9 of 180, scene file 92.4 of 119, replay 6581 of 6800 bytes, assets 285.5 of 400 KiB, hooks.ts untouched
 2026-11-17 | visual-refresh/32 | typecheck, lint, the created or changed test files, e2e/scene.spec.ts once, the build with the bundle check and the spec validator pass; no full suite
 2026-11-17 | visual-refresh/33 | steering (scene-rendering, tech, security) and the README Art section state the team sprites with the procedural fallback; usage lines
+2026-11-17 | visual-refresh/34 | ROOM_SPRITE_SCALE 0.82 in sprites.ts (0.83 still covers the gate floor corner), roomSpriteFit pivots on the front corner; layout constants unchanged
+2026-11-17 | visual-refresh/35 | hunt marks, rings and a dark pill only while a room has a hunt; attic window, back walls and corner line only without sprites; list in the design
+2026-11-17 | visual-refresh/36 | spriteBrightness = min(1, 0.05 + 1.3 light) (1 - dim): calm 0.375, haunted 0.96, possessed 1, dark 0.004; Property 9 bounds
+2026-11-17 | visual-refresh/37 | FIGURE_H_SPRITE 1.15 (28 px under 40rem), figures layer above the ghost pools and below the chips, static mint glow alpha 0.5; Property 11
+2026-11-17 | visual-refresh/38 | tests updated to the new rules (fit, outline, brightness, pool slice, lantern glow) and added (demo-layout geometry, marks and pill, figure height, Property 11)
+2026-11-17 | visual-refresh/39 | budget measured: entry 93.0 of 94 KiB, scene chunk 176.1 of 180, scene file 92.6 of 119, replay 6581 bytes, assets 285.5 of 400 KiB, hooks.ts untouched
+2026-11-17 | visual-refresh/40 | typecheck, lint, the changed test files, e2e/scene.spec.ts and e2e/layout.spec.ts once, the build with the bundle check and the spec validator pass; no full suite
+2026-11-17 | visual-refresh/41 | records of part 5: usage lines

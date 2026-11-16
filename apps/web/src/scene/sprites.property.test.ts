@@ -27,6 +27,12 @@ describe('Property 9: the picture of a room is brighter as the trouble grows, an
         expect(rooms[4]!.dark).toBe(true);
         for (let i = 0; i <= 3; i++) expect(b[4]!).toBeLessThan(b[i]!);
         expect(b[4]!).toBeLessThan(0.05);
+        // The part 5 bounds: calm 0.40 at most, uneasy between calm and haunted, haunted 0.80 at least, possessed 1.
+        expect(b[0]!).toBeLessThanOrEqual(0.4);
+        expect(b[1]!).toBeGreaterThanOrEqual(b[0]!);
+        expect(b[1]!).toBeLessThanOrEqual(b[2]!);
+        expect(b[2]!).toBeGreaterThanOrEqual(0.8);
+        expect(b[3]!).toBe(1);
       }),
       RUNS,
     );

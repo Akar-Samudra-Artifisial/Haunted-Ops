@@ -352,6 +352,9 @@ function housePoints(h: HouseLayout): Pt[] {
 /** Size of the figure in iso units, and its gap to the text boxes. */
 export const FIGURE_W = 0.3;
 export const FIGURE_H = 0.85;
+/** The height of the illustrated figure, in iso units (the procedural one keeps `FIGURE_H`), and its least height in px under 40rem. */
+export const FIGURE_H_SPRITE = 1.15;
+export const FIGURE_MIN_PX_NARROW = 28;
 export const FIGURE_GAP = 0.05;
 /** The clock on the right wall, relative to the floor centre (see `buildRoomArt`). */
 const CLOCK_BOX = { x0: 1.03, x1: 1.47, bottom: -0.78 };

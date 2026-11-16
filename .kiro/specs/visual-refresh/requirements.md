@@ -281,3 +281,31 @@ The spec adds no dependency, no server code, no API change and no network call. 
 2. THE README SHALL get a short "Art" section with the same credit sentence.
 3. `docs/KIRO_USAGE.md` SHALL get one line per finished task, in the form `2026-11-17 | visual-refresh/N | …`, ending with a newline.
 4. THE work SHALL add no dependency, no secret, no home path and no forbidden retro-client word; the ten files SHALL be unchanged; and while part 4 is built, ONLY the checks named in the design SHALL be run.
+### Requirement 31: The rooms no longer cover each other
+**User Story:** As a visitor, I want every room picture to show its own floor and the floors of its neighbours, so that the house reads as four rooms and not one pile.
+#### Acceptance Criteria
+1. `ROOM_STRIDE`, `ROOM_SIZE` and `computeLayout` SHALL not change. `sprites.ts` SHALL export one constant `ROOM_SPRITE_SCALE`, at most 0.9, and `roomSpriteFit` SHALL draw the content box of the picture `ROOM_SPRITE_SCALE` times as wide as the floor diamond, pivoting on the front corner of the floor (the bottom centre of the box stays where it was). The outline hexagon (`spriteSilhouette`) follows the new fit.
+2. IN the demo layout (the four rooms, at any viewport width), THE content box of the picture of a room SHALL not contain the front corner of the floor diamond of any room behind it. `ROOM_SPRITE_SCALE` SHALL be the largest value, at most 0.9, for which this holds; the chosen value and its limit SHALL be written in the design.
+### Requirement 32: No procedural leftovers over the pictures
+**User Story:** As a visitor, I want the pictures free of rings and half discs that belong to the procedural house.
+#### Acceptance Criteria
+1. THE empty rings of the hunt marks SHALL be drawn only while the room has a hunt (queued, running, or finished); a room with no hunt SHALL show no ring, no lit mark and no result mark. A dark pill (the chip pill colour and alpha) SHALL sit behind the marks so they read on the picture and on the procedural wall. The same SHALL hold without sprites.
+2. THE attic window SHALL be drawn only when sprites are off.
+3. THE other decorations of the house and the roof SHALL be checked, and each one that only makes sense for the procedural house SHALL be skipped with sprites and listed in the design.
+### Requirement 33: A calm room is darker than a room in trouble
+**User Story:** As an on-call engineer, I want the calm rooms dim, so that the room in trouble stands out, also on a phone.
+#### Acceptance Criteria
+1. WITH sprites, `spriteBrightness` SHALL give at most 0.40 for a calm room, a value for an uneasy room between calm and haunted, at least 0.80 for a haunted room, 1 for a possessed room and under 0.05 for a dark room, and SHALL stay non-decreasing in the light and non-increasing in the dark overlay (Property 9, extended with these bounds).
+2. THE fog, the hunt mist, the lamp glow and the other layers SHALL not change.
+### Requirement 34: The Exorcist can be seen
+**User Story:** As a visitor, I want to see the Exorcist at work, above the ghosts and with a light of its own.
+#### Acceptance Criteria
+1. WITH sprites, THE figure SHALL be `FIGURE_H_SPRITE` (1.15) iso units high, and at least 28 px on screen under 40rem; the procedural figure SHALL keep `FIGURE_H` (0.85).
+2. THE figure SHALL be drawn above every ghost pool and below the chips, and the chips SHALL be the top layer of the stage (Property 11).
+3. A soft glow in the Exorcist colour (`#9BF2C4`, the `ecto` token) SHALL sit behind the figure, from the existing glow texture, at alpha 0.5. It SHALL be static: the same under Reduced motion and in Low quality, with no animation.
+### Requirement 35: Tests, budget and records of part 5
+**User Story:** As the maintainer, I want the new rules tested, the old tests kept and the budget respected.
+#### Acceptance Criteria
+1. THE tests that locked an old number or order SHALL be updated to the new rule, none deleted: the fit and outline tests (`sprites.test.ts`), the brightness unit test and Property 9 (`sprites.test.ts`, `sprites.property.test.ts`), and the layer order, the ghost pool slice and the lantern glow of `pixi-surface.test.ts`. NEW tests SHALL cover the geometry of the demo layout (Requirement 31.2), the marks and pill shown only with a hunt, the figure height (also under 40rem) and Property 11.
+2. THE scene chunk SHALL stay at most 180 KiB gzip (175.9 KiB before part 5), and the other budgets SHALL not change. The part adds no dependency, no texture file and no change to `apps/web/public/scene/`.
+3. `docs/KIRO_USAGE.md` SHALL get one line per finished task, in the form `2026-11-17 | visual-refresh/N | …`, ending with a newline. While part 5 is built, ONLY the checks named in the design SHALL be run.

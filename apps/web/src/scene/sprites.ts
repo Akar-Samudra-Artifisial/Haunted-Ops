@@ -33,6 +33,12 @@ export const ROOM_SPRITE: Readonly<Partial<Record<ServiceName, SpriteKey>>> = {
 /** The content box of a room image (768 by 768), as a fraction of the image; the same for the four room files. */
 export const ROOM_BOX = { x0: 0.0605, x1: 0.941, y0: 0.078, y1: 0.93 } as const;
 export const ROOM_IMAGE_PX = 768;
+/**
+ * How much smaller than the floor diamond the content box is drawn, pivoting on the front corner of the floor (the bottom
+ * centre stays). 0.82 is the largest value under 0.9 for which the back walls of a front room no longer cover the front
+ * corner of the floor of the room behind it in the demo layout (0.83 still does).
+ */
+export const ROOM_SPRITE_SCALE = 0.82;
 
 /** Time allowed for all the files together. */
 export const LOAD_TIMEOUT_MS = 8000;
@@ -53,12 +59,12 @@ export interface SpriteFit {
 }
 
 /**
- * Where the room image goes (top left, size) so its content box is as wide as the floor diamond and the bottom centre
- * of the box sits on the front corner of the floor. Pure. `floor` is top, right, bottom, left.
+ * Where the room image goes (top left, size) so its content box is `ROOM_SPRITE_SCALE` times as wide as the floor diamond and
+ * the bottom centre of the box sits on the front corner of the floor. Pure. `floor` is top, right, bottom, left.
  */
 export function roomSpriteFit(floor: readonly [Pt, Pt, Pt, Pt]): SpriteFit {
   const [, right, bottom, left] = floor;
-  const boxW = right.x - left.x;
+  const boxW = (right.x - left.x) * ROOM_SPRITE_SCALE;
   const size = boxW / (ROOM_BOX.x1 - ROOM_BOX.x0);
   const cx = (ROOM_BOX.x0 + ROOM_BOX.x1) / 2;
   return { x: bottom.x - cx * size, y: bottom.y - ROOM_BOX.y1 * size, width: size, height: size };
@@ -78,16 +84,15 @@ export function spriteSilhouette(fit: SpriteFit): Pt[] {
 }
 
 /**
- * How bright the room picture is, 0 to 1 (the sprite is tinted with this grey): a floor of 0.32 for a lantern-only room,
- * rising with the displayed light to 1 for a possessed one, and times what the dark overlay leaves (`dim` is 0 lit, up
- * to 0.92 dark). Pure: non-decreasing in `light`, non-increasing in `dim`.
+ * How bright the room picture is, 0 to 1 (the sprite is tinted with this grey): 0.05 plus 1.3 times the displayed light,
+ * at most 1, so a calm room (0.25) is 0.375, a haunted one (0.7) 0.96 and a possessed one 1; times what the dark overlay
+ * leaves (`dim` is 0 lit, up to 0.92 dark). Pure: non-decreasing in `light`, non-increasing in `dim`.
  */
 export function spriteBrightness(light: number, dim: number): number {
   const l = Math.min(1, Math.max(0, light));
   const d = Math.min(1, Math.max(0, dim));
-  return (0.32 + 0.68 * l) * (1 - d);
+  return Math.min(1, 0.05 + 1.3 * l) * (1 - d);
 }
-
 /** True when the value is a texture that decoded to a picture. */
 function decoded(t: unknown): t is Texture {
   const tex = t as { width?: unknown; height?: unknown } | null | undefined;

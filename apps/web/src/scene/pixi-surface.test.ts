@@ -1,8 +1,10 @@
+import fc from 'fast-check';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { FULL, NOW, REDUCED, house, scene } from '../test/scene-fakes.js';
 import { huntOf } from '../test/hunt-arbs.js';
 import { MAX_ROOMS, createAnimator } from './animator.js';
 import { GHOST_KIND_MAX, GHOST_MAX, PARTICLE_CAP } from './particles.js';
+import { FIGURE_H_SPRITE } from './layout.js';
 import { ROOM_SPRITE, SPRITE_KEYS, roomSpriteFit } from './sprites.js';
 import { SceneInitError } from './surface.js';
 import type * as TexturesModule from './textures.js';
@@ -379,7 +381,7 @@ describe('PixiSurface', () => {
   });
 
   describe('the illustrated sprites (Feature: visual-refresh, part 4)', () => {
-    type Node = { children: Node[]; particles?: Array<{ alpha: number }>; ops?: number; texture?: { path?: string }; visible?: boolean; width: number; height: number; position: { x: number; y: number }; scale: { x: number; y: number }; blendMode?: string; tint: number };
+    type Node = { children: Node[]; alpha: number; particles?: Array<{ alpha: number }>; ops?: number; texture?: { path?: string }; visible?: boolean; width: number; height: number; position: { x: number; y: number }; scale: { x: number; y: number }; blendMode?: string; tint: number };
     const stageOf = (): Node => pixi.state.apps[pixi.state.apps.length - 1]!.stage as unknown as Node;
     const ROOMS_AT = 7;
     const ROOF_AT = 5;
@@ -447,7 +449,8 @@ describe('PixiSurface', () => {
 
     it('splits the ghosts over three pools without passing a pool size, the room size or the total cap', async () => {
       const { surface, a } = await start(true);
-      const pools = stageOf().children.slice(-3);
+      // The last layers are the three ghost pools, the figures and the chips.
+      const pools = stageOf().children.slice(-5, -2);
       expect(pools).toHaveLength(3);
       for (let t = 1; t <= 200; t++) {
         const frame = a.step(16, t * 16);
@@ -498,8 +501,93 @@ describe('PixiSurface', () => {
       };
       const glows = glowOf(stageOf());
       expect(glows.length).toBeGreaterThan(0);
-      expect(Math.sign(glows[0]!.position.x)).toBe(dir);
+      // The first glow is the mint one behind the figure (static, alpha 0.5); the last is the lantern's.
+      expect(glows[0]!.tint).toBe(0x9bf2c4);
+      expect(glows[0]!.alpha).toBe(0.5);
+      expect(Math.sign(glows[glows.length - 1]!.position.x)).toBe(dir);
+      // The picture is FIGURE_H_SPRITE high on screen (28 px at least under 40rem).
+      // (the stand-in picture is 256 high)
+      expect(figure[0]!.scale.y * 256).toBeCloseTo(FIGURE_H_SPRITE * s.layout.scale, 3);
       surface.destroy();
+    });
+    // Feature: visual-refresh, Property 11
+    it('Property 11: with a hunt in progress, the figure is above every pool and below the chips', async () => {
+      const running = huntOf({ status: 'running', startedAt: NOW - 20_000, stepCount: 3 });
+      const reasons = { kind: 'error_rate' as const, value: 0.4 };
+      const hasGlow = (n: Node): boolean => n.children.some((c) => c.blendMode === 'add' && c.tint === 0x9bf2c4);
+      const sub = (n: Node, test: (x: Node) => boolean): boolean => test(n) || n.children.some((c) => sub(c, test));
+      let ran = 0;
+      await fc.assert(
+        fc.asyncProperty(fc.boolean(), fc.constantFrom(0, 1, 2, 3 as const), fc.constantFrom('payments', 'orders', 'ledger', 'gate' as const), async (withSprites, level, name) => {
+          pixi.state.sprites = withSprites;
+          pixi.state.webgl = true;
+          const s = scene(house({ [name]: { hauntLevel: level as 0 | 1 | 2 | 3, reason: reasons, metrics, openIncident: incident, hunt: running } }), FULL);
+          const surface = new PixiSurface();
+          await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
+          surface.applyLayout(s.layout);
+          surface.applyModel(s.model);
+          const layers = stageOf().children;
+          const figureAt = layers.findIndex((l) => l.children.length > 0 && l.children.every((c) => hasGlow(c)));
+          expect(figureAt).toBeGreaterThan(-1);
+          layers.forEach((l, i) => {
+            if (l.particles) expect(i).toBeLessThan(figureAt);
+          });
+          const chipsAt = layers.length - 1;
+          expect(sub(layers[chipsAt]!, (x) => typeof (x as unknown as { text?: unknown }).text === 'string')).toBe(true);
+          expect(chipsAt).toBeGreaterThan(figureAt);
+          ran += 1;
+          surface.destroy();
+        }),
+        { numRuns: 20 },
+      );
+      expect(ran).toBe(20);
+    });
+    it('draws the figure at least 28 px high under 40rem', async () => {
+      pixi.state.sprites = true;
+      pixi.state.webgl = true;
+      const running = huntOf({ status: 'running', startedAt: NOW - 20_000, stepCount: 3 });
+      const s = scene(house({ payments: { hauntLevel: 3, reason: { kind: 'error_rate', value: 0.4 }, metrics, openIncident: incident, hunt: running } }), FULL, { width: 320, height: 568, dpr: 1 });
+      const surface = new PixiSurface();
+      await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
+      surface.applyLayout(s.layout);
+      surface.applyModel(s.model);
+      const a = createAnimator();
+      a.setLayout(s.layout);
+      a.setModel(s.model);
+      for (let t = 1; t <= 200; t++) surface.draw(a.step(16, t * 16));
+      const out: Node[] = [];
+      const walk = (n: Node): void => {
+        if (n.visible === false) return;
+        if (n.texture?.path?.includes('exorcist')) out.push(n);
+        n.children.forEach(walk);
+      };
+      walk(stageOf());
+      expect(out).toHaveLength(1);
+      expect(out[0]!.scale.y * 256).toBeGreaterThanOrEqual(28 - 1e-6);
+      surface.destroy();
+    });
+    it('the marks, their rings and the dark pill behind them show only in a room with a hunt', async () => {
+      for (const sprites of [true, false]) {
+        pixi.state.sprites = sprites;
+        pixi.state.webgl = true;
+        const running = huntOf({ status: 'running', startedAt: NOW - 20_000, stepCount: 3 });
+        const s = scene(house({ payments: { hauntLevel: 2, reason: { kind: 'error_rate', value: 0.4 }, metrics, openIncident: incident, hunt: running } }), FULL);
+        const surface = new PixiSurface();
+        await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
+        surface.applyLayout(s.layout);
+        surface.applyModel(s.model);
+        // The hunt container holds the pill, the rings, the lit marks, the result and the scroll.
+        const hunts: Node[] = [];
+        const walk = (n: Node): void => {
+          if (n.children.length === 5 && n.children.slice(0, 4).every((c) => c.children.length === 0 && typeof c.visible === 'boolean')) hunts.push(n);
+          n.children.forEach(walk);
+        };
+        walk(stageOf());
+        expect(hunts).toHaveLength(s.layout.rooms.length);
+        expect(hunts.filter((h) => h.children[0]!.visible === true && h.children[1]!.visible === true)).toHaveLength(1);
+        expect(hunts.filter((h) => h.children[0]!.visible === false && h.children[1]!.visible === false)).toHaveLength(s.layout.rooms.length - 1);
+        surface.destroy();
+      }
     });
   });
   it('reuses the incident mark texts on every model change', async () => {
