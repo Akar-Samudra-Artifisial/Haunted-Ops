@@ -80,7 +80,10 @@ describe('Animator transitions', () => {
     expect(frame.ghosts.count + frame.fog.count + frame.fogBank.count + frame.motes.count).toBe(0);
     expect(frame.rooms[0]).toMatchObject({ dark: true });
     expect(frame.rooms[0]!.light).toBe(0);
-    expect(frame.rooms[0]!.outlineAlpha).toBeGreaterThan(0.95);
+    // A dark room has a thin cold outline (the edge), not the quiet trim, and no tint or danger outline.
+    expect(frame.rooms[0]!.edge).toBeGreaterThan(0.95);
+    expect(frame.rooms[0]!.outlineAlpha).toBe(0);
+    expect([frame.rooms[0]!.tint, frame.rooms[0]!.alarm]).toEqual([0, 0]);
   });
 
   it('shows ghosts for errors and fog for latency in lit rooms', () => {
@@ -227,7 +230,8 @@ describe('Animator motion', () => {
     const lit = animator();
     const frame = run(lit.a, 2000).frame;
     expect(frame.pulses.count).toBe(9);
-    expect(frame.corridors.every((c) => c.lit > 0.9)).toBe(true);
+    // A calm room keeps a dim lantern: the corridor between calm rooms is as lit as the dimmest room.
+    expect(frame.corridors.every((c) => c.lit > 0.2 && c.lit <= 0.26)).toBe(true);
     const dark = animator(house({ orders: { hauntLevel: 4 }, payments: { hauntLevel: 4 } }));
     const dim = run(dark.a, 3000).frame;
     expect(dim.corridors.map((c) => c.lit > 0.01)).toEqual([false, false, false]);

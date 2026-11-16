@@ -14,8 +14,24 @@ export interface Line {
   width: number;
   alpha: number;
 }
+export interface Disc {
+  center: Pt;
+  radius: number;
+  fill: string;
+  alpha: number;
+}
+/** A small icon drawn on the back wall of a room. */
+export interface RoomIcon {
+  polys: Poly[];
+  lines: Line[];
+  discs: Disc[];
+}
 export interface RoomArt {
   polys: Poly[];
+  /** Floor gradient strips and the darker inner wall panels: drawn right after the floor, before the rug. */
+  detail: Poly[];
+  /** The icon of the service, or null for a service with no icon. */
+  icon: RoomIcon | null;
   lines: Line[];
   /** Where the lamp light starts, and the size of its glow. */
   lampTop: Pt;
@@ -36,7 +52,7 @@ export function wallHeightPx(scale: number): number {
 }
 
 /** Floor, two back walls, a rug, the lamp and the outline of one room. */
-export function buildRoomArt(room: RoomLayout, scale: number): RoomArt {
+export function buildRoomArt(room: RoomLayout, scale: number, name: string = room.name): RoomArt {
   const [top, right, bottom, left] = room.floor;
   const h = wallHeightPx(scale);
   const leftUp = add(left, 0, -h);
@@ -49,7 +65,20 @@ export function buildRoomArt(room: RoomLayout, scale: number): RoomArt {
   const shade: Pt[] = [add(lampTop, -0.14 * scale, 0.02 * scale), add(lampTop, 0.14 * scale, 0.02 * scale), add(lampTop, 0.08 * scale, -0.16 * scale), add(lampTop, -0.08 * scale, -0.16 * scale)];
   const wallCentre = lerp(lerp(top, right, 0.5), lerp(topUp, rightUp, 0.5), 0.5);
 
+  // The floor fades from the back edge to the front: three strips of the far colour, from strong to faint.
+  const strip = (v0: number, v1: number, alpha: number): Poly => ({ points: [onFloor(room, 0, v0), onFloor(room, 1, v0), onFloor(room, 1, v1), onFloor(room, 0, v1)], fill: PALETTE.floorFar, alpha });
+  // A darker panel set into each back wall.
+  const panel = (a: Pt, b: Pt, bUp: Pt, aUp: Pt): Poly => {
+    const m = 0.1;
+    const lo = (p: Pt, q: Pt): Pt => lerp(p, q, m);
+    const hi = (p: Pt, q: Pt): Pt => lerp(p, q, 1 - m);
+    return { points: [lerp(lo(a, b), lo(aUp, bUp), 0.12), lerp(hi(a, b), hi(aUp, bUp), 0.12), lerp(hi(a, b), hi(aUp, bUp), 0.78), lerp(lo(a, b), lo(aUp, bUp), 0.78)], fill: PALETTE.wallInner, alpha: 0.55 };
+  };
+  const detail: Poly[] = [strip(0, 0.34, 0.7), strip(0.34, 0.67, 0.4), strip(0.67, 1, 0.15), panel(left, top, topUp, leftUp), panel(top, right, rightUp, topUp)];
+
   return {
+    detail,
+    icon: serviceIcon(name, lerp(lerp(top, right, 0.5), lerp(topUp, rightUp, 0.5), 0.5), scale),
     polys: [
       { points: [left, leftUp, topUp, top], fill: PALETTE.wallLeft, alpha: 1 },
       { points: [top, topUp, rightUp, right], fill: PALETTE.wallRight, alpha: 1 },
@@ -69,6 +98,56 @@ export function buildRoomArt(room: RoomLayout, scale: number): RoomArt {
   };
 }
 
+const ring = (c: Pt, r: number, n = 14): Pt[] => Array.from({ length: n + 1 }, (_, i) => ({ x: c.x + r * Math.cos((i / n) * Math.PI * 2), y: c.y + r * Math.sin((i / n) * Math.PI * 2) }));
+const rect = (x: number, y: number, w: number, h: number): Pt[] => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
+
+/**
+ * One small icon per service, drawn on the back wall from simple shapes: payments a coin, orders a box,
+ * ledger a book, gate a gate arch. Any other name has no icon. `wall` is the centre of the right back wall.
+ */
+export function serviceIcon(name: string, wall: Pt, scale: number): RoomIcon | null {
+  const c = add(wall, -0.5 * scale, 0);
+  const u = 0.2 * scale;
+  const w = Math.max(1, 0.035 * scale);
+  const line = (points: Pt[], color: string = PALETTE.lampWarm, alpha = 0.9): Line => ({ points, color, width: w, alpha });
+  switch (name) {
+    case 'payments':
+      return {
+        polys: [{ points: rect(c.x - u * 0.09, c.y - u * 0.45, u * 0.18, u * 0.9), fill: PALETTE.nightDeep, alpha: 0.7 }],
+        lines: [line(ring(c, u * 0.72))],
+        discs: [{ center: c, radius: u, fill: PALETTE.lampWarm, alpha: 0.75 }],
+      };
+    case 'orders':
+      return {
+        polys: [
+          { points: rect(c.x - u, c.y - u * 0.55, 2 * u, 1.55 * u), fill: PALETTE.lampWarm, alpha: 0.7 },
+          { points: rect(c.x - u * 1.12, c.y - u * 0.85, 2.24 * u, 0.4 * u), fill: PALETTE.trim, alpha: 0.9 },
+        ],
+        lines: [line([{ x: c.x, y: c.y - u * 0.85 }, { x: c.x, y: c.y + u }], PALETTE.nightDeep, 0.8)],
+        discs: [],
+      };
+    case 'ledger':
+      return {
+        polys: [
+          { points: rect(c.x - u, c.y - u * 0.9, u, 1.8 * u), fill: PALETTE.lampWarm, alpha: 0.75 },
+          { points: rect(c.x, c.y - u * 0.9, u, 1.8 * u), fill: PALETTE.lampWarm, alpha: 0.6 },
+        ],
+        lines: [line([{ x: c.x, y: c.y - u * 0.9 }, { x: c.x, y: c.y + u * 0.9 }], PALETTE.nightDeep, 0.9), line([{ x: c.x - u * 0.7, y: c.y - u * 0.4 }, { x: c.x - u * 0.2, y: c.y - u * 0.4 }], PALETTE.nightDeep, 0.6), line([{ x: c.x + u * 0.2, y: c.y - u * 0.4 }, { x: c.x + u * 0.7, y: c.y - u * 0.4 }], PALETTE.nightDeep, 0.6)],
+        discs: [],
+      };
+    case 'gate': {
+      const arch: Pt[] = Array.from({ length: 13 }, (_, i) => ({ x: c.x + u * Math.cos(Math.PI + (i / 12) * Math.PI), y: c.y - u * 0.2 + u * Math.sin(Math.PI + (i / 12) * Math.PI) }));
+      return {
+        polys: [{ points: [{ x: c.x - u, y: c.y + u }, { x: c.x - u, y: c.y - u * 0.2 }, ...arch, { x: c.x + u, y: c.y + u }], fill: PALETTE.nightDeep, alpha: 0.8 }],
+        lines: [line([{ x: c.x - u, y: c.y + u }, { x: c.x - u, y: c.y - u * 0.2 }, ...arch, { x: c.x + u, y: c.y + u }]), line([{ x: c.x, y: c.y - u * 1.2 }, { x: c.x, y: c.y + u }], PALETTE.lampWarm, 0.5)],
+        discs: [],
+      };
+    }
+    default:
+      return null;
+  }
+}
+
 /** Corridor strokes: the idle line is clearly visible, the lit overlay and its pulses are brighter. */
 export const CORRIDOR_STYLE = {
   /** Alpha of the idle trim line (at least 0.5). */
@@ -84,6 +163,8 @@ export const CORRIDOR_STYLE = {
 export interface HouseArt {
   polys: Poly[];
   lines: Line[];
+  /** The roof and the chimney: solid shapes that fade out when a room is focused. Not part of `polys`. */
+  roof: { polys: Poly[]; lines: Line[] };
   /** The attic window: a lit disc with a cross of bars. */
   window: { center: Pt; radius: number; fill: string; alpha: number; bars: Line[] };
 }
@@ -92,21 +173,24 @@ export interface HouseArt {
 export function buildHouseArt(house: HouseLayout, scale: number): HouseArt {
   const w = Math.max(1, 0.04 * scale);
   const { center, radius } = house.atticWindow;
-  return {
-    polys: [
+  const polys: Poly[] = [
       { points: house.roof, fill: PALETTE.wallRight, alpha: 1 },
       { points: house.chimney, fill: PALETTE.wallLeft, alpha: 1 },
       { points: house.backLeft, fill: PALETTE.wallLeft, alpha: 0.75 },
       { points: house.backRight, fill: PALETTE.wallRight, alpha: 0.75 },
       { points: house.footprint, fill: PALETTE.nightDeep, alpha: 0.8 },
       { points: house.plinth, fill: PALETTE.wallRight, alpha: 1 },
-    ],
-    lines: [
+  ];
+  const lines: Line[] = [
       { points: house.roof, color: PALETTE.trim, width: Math.max(1.5, 0.06 * scale), alpha: 0.85 },
       { points: house.chimney, color: PALETTE.trim, width: w, alpha: 0.7 },
       { points: [house.backLeft[1] as Pt, house.backLeft[2] as Pt, house.backRight[2] as Pt], color: PALETTE.trim, width: w, alpha: 0.5 },
       { points: house.groundLine, color: PALETTE.trim, width: Math.max(1.5, 0.05 * scale), alpha: 0.8 },
-    ],
+  ];
+  return {
+    polys,
+    lines,
+    roof: { polys: polys.slice(0, 2), lines: lines.slice(0, 2) },
     window: {
       center,
       radius,
@@ -132,14 +216,14 @@ export function clockHands(clock: { hour: number; minute: number }, center: Pt, 
 }
 
 /** A fixed set of stars for the night sky: positions are a pure function of the size. */
-export function starField(width: number, height: number, count = 48): Array<Pt & { r: number; alpha: number }> {
+export function starField(width: number, height: number, count = 48, seed = 7): Array<Pt & { r: number; alpha: number }> {
   const out: Array<Pt & { r: number; alpha: number }> = [];
   for (let i = 0; i < count; i++) {
     out.push({
-      x: unit(7, i, 1) * width,
-      y: unit(7, i, 2) * height,
-      r: 0.5 + unit(7, i, 3) * 1.1,
-      alpha: 0.25 + unit(7, i, 4) * 0.5,
+      x: unit(seed, i, 1) * width,
+      y: unit(seed, i, 2) * height,
+      r: 0.5 + unit(seed, i, 3) * 1.1,
+      alpha: 0.25 + unit(seed, i, 4) * 0.5,
     });
   }
   return out;

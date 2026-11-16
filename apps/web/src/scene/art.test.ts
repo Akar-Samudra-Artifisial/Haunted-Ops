@@ -153,10 +153,82 @@ describe('shapes', () => {
   });
 });
 
+describe('room art of the lantern look', () => {
+  it('has a floor gradient and darker inner walls inside the room, and keeps the floor and the rug at their places', () => {
+    for (const room of layout.rooms) {
+      const art = buildRoomArt(room, layout.scale);
+      expect(art.detail.length).toBeGreaterThanOrEqual(5);
+      const xs = room.silhouette.map((p) => p.x);
+      const ys = room.silhouette.map((p) => p.y);
+      for (const poly of art.detail) {
+        for (const p of poly.points) {
+          expect(p.x).toBeGreaterThanOrEqual(Math.min(...xs) - 1e-6);
+          expect(p.x).toBeLessThanOrEqual(Math.max(...xs) + 1e-6);
+          expect(p.y).toBeGreaterThanOrEqual(Math.min(...ys) - 1e-6);
+          expect(p.y).toBeLessThanOrEqual(Math.max(...ys) + 1e-6);
+        }
+      }
+      // The first three strips lie on the floor.
+      for (const poly of art.detail.slice(0, 3)) for (const p of poly.points) expect(insideDiamond(room.floor, p)).toBeGreaterThan(-1e-6);
+      const palette = new Set(Object.values(PALETTE));
+      for (const poly of art.detail) expect(palette.has(poly.fill as never)).toBe(true);
+      // The floor strips fade from the back to the front.
+      const strips = art.detail.slice(0, 3).map((p) => p.alpha);
+      expect([...strips].sort((a, b) => b - a)).toEqual(strips);
+    }
+  });
+
+  it('draws one icon per known service on the back wall (coin, box, book, gate arch) and none for an unknown one', () => {
+    const room = layout.rooms[0]!;
+    const shapeCount = (name: string) => {
+      const icon = buildRoomArt(room, layout.scale, name).icon;
+      return icon === null ? null : icon.polys.length + icon.lines.length + icon.discs.length;
+    };
+    expect(buildRoomArt(room, layout.scale, 'payments').icon!.discs).toHaveLength(1);
+    expect(buildRoomArt(room, layout.scale, 'orders').icon!.polys).toHaveLength(2);
+    expect(buildRoomArt(room, layout.scale, 'ledger').icon!.polys).toHaveLength(2);
+    expect(buildRoomArt(room, layout.scale, 'gate').icon!.lines.length).toBeGreaterThanOrEqual(2);
+    for (const name of ['payments', 'orders', 'ledger', 'gate']) expect(shapeCount(name)).toBeGreaterThan(0);
+    expect(buildRoomArt(room, layout.scale, 'unknown-service').icon).toBeNull();
+    for (const l of layout.rooms) expect(buildRoomArt(l, layout.scale).icon).not.toBeNull();
+  });
+
+  it('keeps every icon on the right back wall, inside the silhouette, clear of the clock', () => {
+    for (const room of layout.rooms) {
+      const art = buildRoomArt(room, layout.scale);
+      const icon = art.icon!;
+      const xs = room.silhouette.map((p) => p.x);
+      const ys = room.silhouette.map((p) => p.y);
+      const points = [...icon.polys.flatMap((p) => p.points), ...icon.lines.flatMap((l) => l.points)];
+      for (const p of points) {
+        expect(p.x).toBeGreaterThanOrEqual(Math.min(...xs));
+        expect(p.x).toBeLessThanOrEqual(Math.max(...xs));
+        expect(p.y).toBeGreaterThanOrEqual(Math.min(...ys));
+        expect(p.y).toBeLessThan(room.floor[2].y);
+      }
+      const rightmost = Math.max(...points.map((p) => p.x));
+      expect(rightmost).toBeLessThan(art.clock.center.x - art.clock.radius);
+    }
+  });
+
+  it('splits the roof and the chimney from the rest of the house, so the roof can fade', () => {
+    const art = buildHouseArt(layout.house!, layout.scale);
+    expect(art.roof.polys).toHaveLength(2);
+    expect(art.roof.polys.map((p) => p.points)).toEqual([layout.house!.roof, layout.house!.chimney]);
+    expect(art.roof.polys.every((p) => p.alpha === 1)).toBe(true);
+  });
+
+  it('makes two star layers of different stars', () => {
+    expect(starField(800, 600, 40, 7)).not.toEqual(starField(800, 600, 16, 19).slice(0, 16));
+    expect(starField(800, 600, 16, 19)).toEqual(starField(800, 600, 16, 19));
+  });
+});
+
 describe('textures', () => {
-  it('has at most 6 recipes, each drawn once from code', () => {
+  it('has at most 9 recipes (the ghost, the fog puffs, three noise clouds, the mote and the glow), each drawn once from code', () => {
     expect(TEXTURE_NAMES.length).toBeGreaterThan(0);
-    expect(TEXTURE_NAMES.length).toBeLessThanOrEqual(6);
+    expect(TEXTURE_NAMES.length).toBeLessThanOrEqual(9);
+    expect(TEXTURE_NAMES).toEqual(expect.arrayContaining(['ghost', 'noiseA', 'noiseB', 'noiseC']));
     for (const name of TEXTURE_NAMES) {
       const r = TEXTURE_RECIPES[name];
       expect(r.width).toBeGreaterThan(0);

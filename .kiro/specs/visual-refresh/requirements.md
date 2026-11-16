@@ -1,6 +1,6 @@
 # Requirements Document
 ## Introduction
-`visual-refresh` is the tenth product spec of Haunted Ops, after `foundation`, `haunted-lab`, `ingest-haunt-score`, `scene-engine`, `exorcist-agent`, `fix-proposal-flow`, `accessible-mode`, `deploy-demo` and `replay`. It is split in two prompts. This spec covers part 1, the page around the Scene: design tokens, layout, header, summary bar, side panel with the hunt timeline, legend, restyled table, restyled replay pages and the document head. Part 2 (the PixiJS scene: rooms, ghosts, fog, sky) is a later prompt and a later set of tasks; this spec does not change `apps/web/src/scene/` except the palette values named in requirement 1.
+`visual-refresh` is the tenth product spec of Haunted Ops, after `foundation`, `haunted-lab`, `ingest-haunt-score`, `scene-engine`, `exorcist-agent`, `fix-proposal-flow`, `accessible-mode`, `deploy-demo` and `replay`. It is split in two prompts. This spec covers part 1, the page around the Scene: design tokens, layout, header, summary bar, side panel with the hunt timeline, legend, restyled table, restyled replay pages and the document head. Part 2 (the PixiJS scene: rooms, ghosts, fog, sky, and four fixes of the page found on screenshots) is requirements 12 to 17 below, written in a second prompt; requirements 1 to 11 change `apps/web/src/scene/` only in the palette values named in requirement 1.
 Today the page is a plain column: the Scene, then a 9-column table, then the hunt detail. A first-time visitor cannot tell what is wrong, the hunt is below the fold, the table scrolls sideways on a phone (about 670 px wide at 390 px) and nothing explains ghosts, fog or dark rooms. The look is "a lantern in a dark house": dark calm surfaces, and only trouble glows.
 The spec adds no dependency, no server code, no API change and no network call. It spends no credits and starts no cloud resource.
 ## Glossary
@@ -16,6 +16,11 @@ The spec adds no dependency, no server code, no API change and no network call. 
 - **Card mode of the table**: the CSS-only layout below 40rem in which each table row is a block and each cell shows its column name from its `data-label` attribute. The DOM, the roles and the focus order do not change.
 - **Icon module**: one small module of inline SVG paths (`apps/web/src/components/icons.tsx`) shared by the Timeline, the Legend and the replay controls.
 - **Entry budget**: `BUDGETS.entry` of `scripts/check-scene-bundle.mjs` (gzip of the entry chunk and its static imports).
+- **Look**: one row of the table `LEVEL_LOOK` in `apps/web/src/scene/model.ts` (pure data): the lamp glow, the danger tint, the cold edge light, the outline and the fewest ghosts of a room at a level. A dark room uses the dark row.
+- **Glow pulse**: one soft swell of a room's glow, one cycle of 2 s, started when its level rises.
+- **Mist**: the green cloud (`--ecto`, `#9BF2C4`) over a room while a Hunt is entering or working there.
+- **Fog layer**: one of three soft noise clouds that drift inside a room's floor at different speeds. Fog is the latency layer and does not depend on the level.
+- **Low quality** and **Reduced motion**: as in `scene-engine`.
 ## Requirements
 ### Requirement 1: Design tokens and contrast
 **User Story:** As a visitor, I want a dark, calm page where only trouble glows and every text can be read, so that the state of the house is clear at a glance.
@@ -105,3 +110,49 @@ The spec adds no dependency, no server code, no API change and no network call. 
 3. `docs/KIRO_USAGE.md` SHALL get one line per finished task, in the form `2026-11-16 | visual-refresh/N | …`, and the file SHALL end with a newline.
 4. THE work SHALL be original: procedural shapes and the product's own palette, no copied code, no imitation of any game, film or franchise, and no forbidden retro-client word in any file.
 5. HELPER files created while working SHALL be deleted; nothing SHALL be committed by the implementation prompt.
+### Requirement 12: Level to look
+**User Story:** As an on-call engineer, I want to see in two seconds, without the table, which room is in trouble and how bad, so that I look at the right room first.
+#### Acceptance Criteria
+1. THE Scene model SHALL define the look of each level in ONE table `LEVEL_LOOK` (pure data, unit tested): calm is a dim lantern only (a low warm glow, no ghost); uneasy has a faint cold edge light; haunted has a clear danger tint on the floor and the walls and visible ghosts; possessed has a strong danger glow, dense ghosts and the outline of the room in the danger colour; dark has no light at all, a near-black room and a thin cold outline so it still reads as a room.
+2. THE glow of a room SHALL be non-decreasing from calm to possessed, SHALL be strictly higher for haunted and possessed than for calm and uneasy, and SHALL be zero for a dark room; `isDark` (level 4, or `up` below 0.5) SHALL stay the rule for a dark room.
+3. THE fog (latency) SHALL be its own layer, cold cyan (`--fog`), with a density from the p95 as before, and SHALL not be drawn in a dark room.
+4. WHEN the level of a room rises, THE Scene SHALL give the glow of that room one soft pulse of one cycle, at least 1 s long, and SHALL start no second pulse within 1 s; no room SHALL change brightness more than 3 times per second.
+5. WHILE a Hunt is entering or working on a service, THE Scene SHALL draw the green mist (`--ecto`) over that room; the mist maps to the Hunt column of the table, so no new fact appears in the Scene.
+6. THE glow SHALL not depend on the error ratio or the p95 (they drive ghosts and fog only), and every colour SHALL come from `palette.ts`.
+### Requirement 13: Ghosts, fog and sky
+**User Story:** As a visitor, I want ghosts and fog that look like ghosts and fog and move smoothly, and a night sky with depth, so that the house feels alive without being noisy.
+#### Acceptance Criteria
+1. THE ghost texture SHALL be a procedural silhouette (a rounded head, a wavy tail and two eye holes) drawn once in `textures.ts`; ghosts SHALL sway with a sine, fade in and out with an eased curve, and SHALL be spread so that no two slots of a room share a spot.
+2. THE counts SHALL still come from the existing pools and caps of `particles.ts` (ghost 12, fog 20, mote 6, total 200).
+3. EACH lit room SHALL draw 2 to 3 soft noise textures (made by code once) that drift at different speeds inside the floor of the room, in addition to the fog puffs.
+4. THE sky SHALL have three layers (far stars, near stars, and a soft moon over a horizon gradient) that move by a few pixels with the focused room; the sky SHALL be still under Reduced motion and in Low quality.
+5. DUST motes SHALL be drawn in lit rooms only, from the existing mote pool.
+6. NO texture SHALL be built per frame; all textures SHALL be built at start.
+### Requirement 14: Rooms and labels
+**User Story:** As a visitor, I want rooms that look like rooms, with a small sign of what each service does, and labels I can read on a phone.
+#### Acceptance Criteria
+1. EACH room SHALL have a floor gradient and a darker inner wall panel on each back wall, and the roof of the house SHALL be solid and SHALL fade out while a room is focused.
+2. EACH service SHALL have one small procedural icon on the back wall: payments a coin, orders a box, ledger a book, gate a gate arch; an unknown service SHALL have no icon.
+3. THE room name SHALL keep its size rule on a desktop; on a viewport narrower than 40rem (640 px) THE name SHALL be drawn at 14 px or more, and the rows of the room SHALL keep the 11 px rule so that the Hunt slot stays clear.
+4. THE Scene SHALL show no fact that the table does not show; the parity property test SHALL keep passing.
+### Requirement 15: Low quality and Reduced motion
+**User Story:** As a visitor with a slow device or a motion sensitivity, I want the scene to cost less or stand still, and still tell me the levels.
+#### Acceptance Criteria
+1. IN Low quality THE Scene SHALL turn off the parallax, every fog layer beyond the first, the dust and the glow pulse, and SHALL keep every level look of requirement 12.
+2. UNDER Reduced motion THE Scene SHALL draw no sway, drift, parallax, dust or pulse; ghosts and fog SHALL stand at their rest positions and every level look SHALL still be visible.
+3. FOR any time, every animated offset (ghost rotation, fog layer offset, mist drift, parallax, pulse) SHALL be zero under Reduced motion.
+### Requirement 16: Four fixes of the page
+**User Story:** As a visitor, I want the panel, the level colours, the table and the phone layout to agree with what the page says.
+#### Acceptance Criteria
+1. WHEN nothing is selected and no Hunt is running, queued or fixing, THE Hunt section SHALL show the service of the most recently finished Hunt (one with a diagnosis first), the same service the Summary bar speaks of; WHEN that Hunt has no steps and the Web has no API to load its detail (demo mode), THE section SHALL say "Diagnosed. The steps and evidence are shown in live mode." in place of the empty text.
+2. THE calm level pill SHALL not use `--lantern`; it SHALL use a neutral token, and uneasy, haunted, possessed and dark SHALL each have their own token (`--level-calm`, `--level-uneasy`, `--level-haunted`, `--level-possessed`, `--level-dark`) that matches requirement 12; the contrast pairs SHALL be added to `contrast.test.ts`.
+3. THE desktop table (40rem and up) SHALL have `table-layout: fixed` with explicit column widths and tabular numbers, so that the header cells keep their widths when values change; no text SHALL be clipped at 1440 and 1024 px, and `layout.spec.ts` SHALL assert that the header cell widths are equal before and after the demo reaches t=20 s.
+4. BELOW 64rem THE page SHALL read: the Summary bar and the Hunt first, then the Scene, then the service cards, then the Legend, by CSS order; the DOM order, the focus order (skip link, mode switch, content) and the single live region SHALL not change, and `layout.spec.ts` SHALL assert the visual order at 390×844.
+### Requirement 17: Budget, tests, steering and records of part 2
+**User Story:** As the maintainer, I want part 2 to cost nothing that earlier specs promised and to leave the rules and the history true.
+#### Acceptance Criteria
+1. THE entry chunk SHALL not grow (part 2 SHALL be in the scene chunk), the scene chunk SHALL stay within 180 KiB, the scene file within 119 KiB and the replay chunk within 6800 bytes; `apps/web/src/scene/hooks.ts` SHALL get no new import. THE measured numbers SHALL be written in the design.
+2. THE tests that lock old values SHALL be updated to the new rule and none SHALL be deleted; NEW tests SHALL cover the look table, a property that the glow is non-decreasing with trouble (Property 5), a property that every animated offset is zero under Reduced motion (Property 6), and the pulse.
+3. WHILE this part is built, ONLY the checks named in the design SHALL be run; the full suite SHALL be run afterwards by the orchestrator.
+4. `.kiro/steering/scene-rendering.md` SHALL list the level to look table and the new layers; `docs/KIRO_USAGE.md` SHALL get one line per finished task, in the form `2026-11-17 | visual-refresh/N | …`, ending with a newline.
+5. THE work SHALL add no dependency, no image, font or sprite file, and no forbidden retro-client word; it SHALL be original.

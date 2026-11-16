@@ -23,7 +23,40 @@ import { hashString } from './rng.js';
 
 export { FOG_MAX, GHOST_MAX, MOTE_MAX, PARTICLE_CAP };
 
-export const LIGHT_BY_LEVEL = [1, 0.85, 0.65, 0.5, 0] as const;
+/** How a room looks at one level. Pure data: the one table the model, the Animator and the surface read. */
+export interface RoomLook {
+  /** Lamp glow, 0 to 1: the room's light. It rises with trouble and is 0 when dark. */
+  glow: number;
+  /** Danger tint on floor and walls, 0 to 1. */
+  danger: number;
+  /** Cold light along the edge of the room, 0 to 1 (the thin outline of a dark room). */
+  edge: number;
+  /** Which outline is drawn: the quiet trim, none (the cold edge is the outline), or the danger outline. */
+  outline: 'trim' | 'edge' | 'danger';
+  /** Alpha of that outline. */
+  outlineAlpha: number;
+  /** Fewest ghosts of a room whose trouble is errors. */
+  ghostMin: number;
+}
+
+/**
+ * calm: a dim lantern and no ghost. uneasy: a faint cold edge light. haunted: a clear danger tint, ghosts
+ * visible. possessed: a strong danger glow, dense ghosts, the outline in the danger colour. dark: no light
+ * at all and a near-black room with a thin cold outline.
+ */
+export const LEVEL_LOOK: readonly [RoomLook, RoomLook, RoomLook, RoomLook, RoomLook] = [
+  { glow: 0.25, danger: 0, edge: 0, outline: 'trim', outlineAlpha: 0.35, ghostMin: 0 },
+  { glow: 0.4, danger: 0, edge: 0.55, outline: 'edge', outlineAlpha: 0, ghostMin: 0 },
+  { glow: 0.7, danger: 0.35, edge: 0.2, outline: 'trim', outlineAlpha: 0.5, ghostMin: 0 },
+  { glow: 1, danger: 0.6, edge: 0, outline: 'danger', outlineAlpha: 0.9, ghostMin: 6 },
+  { glow: 0, danger: 0, edge: 1, outline: 'edge', outlineAlpha: 0, ghostMin: 0 },
+];
+/** The fewest ghosts of an error room at a level: the largest `ghostMin` up to that level, so it never falls as trouble grows. */
+export const ghostFloor = (level: HauntLevel): number => Math.max(...LEVEL_LOOK.slice(0, level + 1).map((l) => l.ghostMin));
+/** A dark room (level 4, or `up` below 0.5) uses the last row whatever its level. */
+export const DARK_LOOK: RoomLook = LEVEL_LOOK[4];
+/** The look of a room: its level's row, or the dark row when the room is dark. */
+export const lookOf = (level: HauntLevel, dark: boolean): RoomLook => (dark ? DARK_LOOK : LEVEL_LOOK[level]);
 export const TRANSITION_MS = 1000;
 /** A tremble of this many iso units at level 3. */
 export const TREMBLE_AMPLITUDE = 0.012;
@@ -108,6 +141,10 @@ export interface RoomVisual {
   levelLabel: string;
   dark: boolean;
   light: number;
+  /** The row of `LEVEL_LOOK` this room shows (the dark row when dark). */
+  look: RoomLook;
+  /** The Exorcist's mist is over this room: a Hunt is entering or working here. */
+  mist: boolean;
   coolness: number;
   ghostCount: number;
   ghostOpacity: number;
@@ -221,10 +258,12 @@ export function toSceneModel(services: readonly ServiceState[], now: number, opt
     const f = clamp(((p95Value(s) ?? 0) - 200) / 2800, 0, 1);
     const errorReason = s.reason?.kind === 'error_rate';
     const p95Reason = s.reason?.kind === 'p95';
-    const ghostCount = Math.min(GHOST_MAX, Math.max(Math.round(e * GHOST_MAX), errorReason ? level : 0));
+    // A calm room has no ghost. A possessed room whose trouble is errors has a dense crowd.
+    const ghostCount = level === 0 ? 0 : Math.min(GHOST_MAX, Math.max(Math.round(e * GHOST_MAX), errorReason ? Math.max(level, ghostFloor(level)) : 0));
     // Fog grows with the level when slowness is the cause: at least 0.6 at level 2, 0.9 at level 3.
     const fogDensity = Math.min(1, Math.max(f, p95Reason ? 0.3 * level : 0));
-    const motes = dark ? 0 : level === 0 ? MOTE_MAX : level === 1 ? 3 : 0;
+    // Dust drifts in lit rooms only, and not in low quality (the Animator also hides it under reduced motion).
+    const motes = dark || quality === 'low' ? 0 : level === 0 ? MOTE_MAX : level === 1 ? 3 : 0;
     return { s, dark, level, e, f, ghostCount, fogDensity, motes };
   });
 
@@ -252,7 +291,9 @@ export function toSceneModel(services: readonly ServiceState[], now: number, opt
       level,
       levelLabel: levelLabel(level),
       dark,
-      light: dark ? 0 : LIGHT_BY_LEVEL[level] * (1 - 0.2 * e) * (1 - 0.3 * f),
+      light: lookOf(level, dark).glow,
+      look: lookOf(level, dark),
+      mist: hunt !== null && (hunt.phase === 'entering' || hunt.phase === 'working'),
       coolness: dark ? 0 : Math.min(1, 0.2 * level + 0.1 * Math.max(e, f)),
       ghostCount: counts.ghosts,
       ghostOpacity: counts.ghosts > 0 ? 0.25 + 0.6 * e : 0,

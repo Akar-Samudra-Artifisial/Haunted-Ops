@@ -1,6 +1,6 @@
 # Implementation Plan: visual-refresh
 ## Overview
-Make the page around the Scene modern and easy to read, in the look "a lantern in a dark house": design tokens, a two-column layout with a side Panel, a header with a short explanation, a Summary bar, the Hunt as a Timeline, a Legend, a table that becomes cards on a phone, restyled replay pages, and the document head. It is 11 top-level tasks. Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: visual-refresh, Property N`. Part 2 (the PixiJS scene) is a later prompt: nothing here touches `apps/web/src/scene/` except the `bg` and `focus` values of `palette.ts`. Nothing here touches the API, a server, GitHub or the real `kiro-cli`, and no test makes a network call.
+Make the page around the Scene modern and easy to read, in the look "a lantern in a dark house": design tokens, a two-column layout with a side Panel, a header with a short explanation, a Summary bar, the Hunt as a Timeline, a Legend, a table that becomes cards on a phone, restyled replay pages, and the document head. It is 11 top-level tasks in part 1 and tasks 12 to 17 in part 2 (the Scene and four fixes of the page). Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: visual-refresh, Property N`. Tasks 1 to 11 touch `apps/web/src/scene/` only in the `bg` and `focus` values of `palette.ts`; tasks 12 to 17 are the PixiJS scene. Nothing here touches the API, a server, GitHub or the real `kiro-cli`, and no test makes a network call.
 ## Tasks
 - [x] 1. Design tokens and contrast
   - [x] 1.1 Replace the colours of `:root` in `apps/web/src/styles.css` with the new tokens and add the type, scale, spacing, radius and shadow tokens; every colour outside `:root` stays a custom property
@@ -77,13 +77,61 @@ Make the page around the Scene modern and easy to read, in the look "a lantern i
     - _Requirements: 11.1, 11.2_
   - [x] 11.2 Add one `2026-11-16 | visual-refresh/N | …` line per finished task to `docs/KIRO_USAGE.md` (the file ends with a newline); delete helper files; run the spec validator
     - _Requirements: 11.3, 11.4, 11.5_
+- [x] 12. Level to look
+  - [x] 12.1 Add the table `LEVEL_LOOK`, `lookOf` and `ghostFloor` to `apps/web/src/scene/model.ts`; `RoomVisual` gets `look` and `mist`; `light` is the glow of the look; no ghost when calm, a floor of ghosts for possessed; no dust in Low quality; add the scene colours to `palette.ts` (`danger`, `ecto`, `fog` cyan, `moon`, `floorFar`, `wallInner`) and their contrast pairs
+    - _Requirements: 12.1, 12.2, 12.3, 12.5, 12.6_
+  - [x] 12.2 Update `model.test.ts` and `model.property.test.ts` to the new rule and add unit tests of the table, the mist and the dust
+    - _Requirements: 12.1, 12.2, 12.5, 17.2_
+  - [x]* 12.3 Property test: the light follows the trouble (Property 5)
+    - _Requirements: 12.1, 12.2, 12.6_
+  - [x] 12.4 Add to the Animator and the Frame the tint, the cold edge, the danger outline, the mist, the glow pulse (`glowPulse`, one cycle of 2 s, one start per second at most) and the new surface drawing of the levels in `pixi-surface.ts`
+    - _Requirements: 12.1, 12.4, 12.5_
+  - [x] 12.5 Unit tests of the pulse (one cycle, at most one change of direction per second, none at first sight, for a fall, a dark room, Low quality or Reduced motion) and of the frame of each level
+    - _Requirements: 12.4, 17.2_
+- [x] 13. Drawing upgrades
+  - [x] 13.1 Draw the ghost silhouette and three noise textures once in `textures.ts`
+    - _Requirements: 13.1, 13.3, 13.6_
+  - [x] 13.2 Ghost motion: golden-ratio spread in `particles.ts`, sine sway and eased fade in the Animator
+    - _Requirements: 13.1, 13.2_
+  - [x] 13.3 Fog layers: three drifting noise sprites per room, at different speeds, inside the floor
+    - _Requirements: 13.3, 12.3_
+  - [x] 13.4 Sky: horizon bands, far stars, near stars and the moon, with the parallax of the focused room; the roof on its own layer that fades while a room is focused
+    - _Requirements: 13.4, 14.1_
+  - [x] 13.5 Rooms: floor gradient, inner wall panels and one icon per service on the back wall (`shapes.ts`, `pixi-surface.ts`)
+    - _Requirements: 14.1, 14.2_
+  - [x] 13.6 Labels: the room name at 14 px or more under 640 px, the row boxes keep the 11 px rule (`layout.ts`)
+    - _Requirements: 14.3_
+  - [x] 13.7 Low quality and Reduced motion: parallax, fog layers beyond the first, dust and pulse off; static ghosts, fog and mist; every level look stays
+    - _Requirements: 15.1, 15.2_
+  - [x]* 13.8 Property test: reduced motion freezes every animated offset (Property 6)
+    - _Requirements: 15.2, 15.3_
+  - [x] 13.9 Update `layout.test.ts`, `animator.test.ts`, `pixi-surface.test.ts` and `art.test.ts` to the new rules and add the art tests (floor detail, icons, roof split, star layers)
+    - _Requirements: 13.1, 14.1, 14.2, 14.3, 17.2_
+- [x] 14. Four fixes of the page
+  - [x] 14.1 Panel: `huntSectionService` also picks the service of the most recently finished Hunt (`latestFinishedService`), the Summary bar uses the same one; say "Diagnosed. The steps and evidence are shown in live mode." for a diagnosed Hunt with no steps and no API; tests of both
+    - _Requirements: 16.1_
+  - [x] 14.2 Level pill tokens `--level-calm` to `--level-dark` in `styles.css`; the calm pill does not use `--lantern`; contrast pairs and a style test in `contrast.test.ts`
+    - _Requirements: 16.2_
+  - [x] 14.3 Desktop table: `table-layout: fixed` with explicit column widths and tabular numbers; `layout.spec.ts` asserts equal header widths at t=0 and t=20 s at 1440 and 1024 px
+    - _Requirements: 16.3_
+  - [x] 14.4 Mobile order under 64rem by CSS `order`; `layout.spec.ts` asserts the visual order at 390×844
+    - _Requirements: 16.4_
+- [x] 15. Budget
+  - [x] 15.1 Build the web app, run `node scripts/check-scene-bundle.mjs` once and write the measured numbers under "Budget record, part 2" in the design; add no import to `apps/web/src/scene/hooks.ts`
+    - _Requirements: 17.1_
+- [x] 16. Checks of part 2
+  - [x] 16.1 Run `pnpm typecheck`, `pnpm lint` and only the test files created or changed (the full suite and the end-to-end run are the orchestrator's)
+    - _Requirements: 17.3_
+- [x] 17. Steering and records of part 2
+  - [x] 17.1 Update `.kiro/steering/scene-rendering.md` with the level to look table and the new layers; add one `2026-11-17 | visual-refresh/N | …` line per finished task to `docs/KIRO_USAGE.md` (the file ends with a newline); run the spec validator
+    - _Requirements: 17.4, 17.5_
 ## Notes
-- Scope: this is part 1 of the refresh. The PixiJS scene (rooms, ghosts, fog, sky) is part 2 and a later prompt; `apps/web/src/scene/` changes only in `palette.ts` (`bg`, and `focus` if it changed).
+- Scope: tasks 1 to 11 are part 1 of the refresh; `apps/web/src/scene/` changes there only in `palette.ts` (`bg`, and `focus` if it changed). Tasks 12 to 17 are part 2: the PixiJS scene (rooms, ghosts, fog, sky) and four fixes of the page. There is no zoom in the Scene; the camera of the parallax and of the roof is the focused room.
 - Entry chunk before this spec: 90.4 of 92 KiB gzip (`check-scene-bundle.mjs`; the 92 KiB comes from `accessible-mode/design.md`). The budget may rise to 94 KiB at most, only on a measured need. Replay chunk: 5665 bytes, budget 6800 bytes.
 - `HuntSummary.stepCount` is the number of steps done; there is no total, so the Web never shows "x of y".
 - Card mode keeps the table semantics by writing the roles as attributes, because `display: block` on table elements can remove the table role in some engines.
 - Checks while building: `pnpm typecheck`, `pnpm lint`, the touched test files, `pnpm --filter @haunted-ops/web build`, `node scripts/check-scene-bundle.mjs`, the spec validator. Not run: the full suite, `pnpm test` three times, `test:scripts`, `check:build`, `db:drift`, the whole Playwright run.
-- Out of scope: the Scene, spatial audio, any API change, any new dependency, a font file, CSS-in-JS.
+- Out of scope: spatial audio, any API change, any new dependency, a font file, CSS-in-JS.
 ## Task Dependency Graph
 ```mermaid
 graph TD
@@ -100,6 +148,13 @@ graph TD
   T8 --> T9[9 Budget]
   T9 --> T10[10 Update and add tests]
   T10 --> T11[11 Steering and records]
+  T11 --> T12[12 Level to look]
+  T12 --> T13[13 Drawing upgrades]
+  T12 --> T14[14 Four fixes of the page]
+  T13 --> T15[15 Budget]
+  T14 --> T15
+  T15 --> T16[16 Checks of part 2]
+  T16 --> T17[17 Steering and records of part 2]
 ```
 ```json
 {
@@ -114,7 +169,14 @@ graph TD
     { "id": 7, "tasks": ["10.1", "10.2", "10.3", "10.4"] },
     { "id": 8, "tasks": ["10.5"] },
     { "id": 9, "tasks": ["11.1"] },
-    { "id": 10, "tasks": ["11.2"] }
+    { "id": 10, "tasks": ["11.2"] },
+    { "id": 11, "tasks": ["12.1"] },
+    { "id": 12, "tasks": ["12.2", "12.3", "12.4", "13.1", "14.1", "14.2", "14.3", "14.4"] },
+    { "id": 13, "tasks": ["12.5", "13.2", "13.3", "13.4", "13.5", "13.6"] },
+    { "id": 14, "tasks": ["13.7", "13.8", "13.9"] },
+    { "id": 15, "tasks": ["15.1"] },
+    { "id": 16, "tasks": ["16.1"] },
+    { "id": 17, "tasks": ["17.1"] }
   ]
 }
 ```

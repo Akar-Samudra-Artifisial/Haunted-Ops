@@ -63,8 +63,30 @@ export function emptyProposalFrame(): ProposalFrame {
   return { scroll: 0, pinned: false, glow: 0, sweep: 0 };
 }
 
+/** One soft noise layer of the fog of a room: its offset from the floor centre (in floor halves, -1 to 1) and alpha. */
+export interface FogLayerFrame {
+  x: number;
+  y: number;
+  alpha: number;
+}
+export const FOG_LAYERS = 3;
+
 export interface RoomFrame {
   name: ServiceName;
+  /** Alpha of the danger tint on floor and walls. */
+  tint: number;
+  /** Alpha of the cold edge light (the thin outline of a dark room). */
+  edge: number;
+  /** Alpha of the danger outline. */
+  alarm: number;
+  /** One soft pulse of the glow after the level rose: 0 at rest, up to 1 at the peak. */
+  pulse: number;
+  /** The green mist of a Hunt in progress: alpha 0 to 1, and its drift in floor halves. */
+  mist: number;
+  mistX: number;
+  mistY: number;
+  /** The fog noise layers, back to front. */
+  fogLayers: FogLayerFrame[];
   hunt: HuntFrame;
   /** Displayed light, 0 to 1. */
   light: number;
@@ -103,6 +125,10 @@ export interface Frame {
   motes: ParticleBuffer;
   pulses: ParticleBuffer;
   selected: ServiceName | null;
+  /** Shift of the sky in pixels for the camera (the focused room); 0 when still. The far layers move less. */
+  parallax: { x: number; y: number };
+  /** Alpha of the roof: 1, and lower while a room is focused. */
+  roofAlpha: number;
   /** False when nothing changes any more: the loop may stop. */
   moving: boolean;
 }

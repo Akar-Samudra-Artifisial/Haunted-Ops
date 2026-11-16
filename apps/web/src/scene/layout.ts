@@ -7,6 +7,9 @@ export const ROOM_STRIDE = 3.2;
 export const WALL_HEIGHT = 1.0;
 export const MAX_SCALE = 160;
 export const MIN_FONT_PX = 11;
+/** Under this width (40rem at 16 px) the room name is drawn at `MIN_FONT_NARROW_PX` or more. */
+export const NARROW_BELOW = 640;
+export const MIN_FONT_NARROW_PX = 14;
 /** Below this many pixels per iso unit the badge uses its short form. */
 export const COMPACT_BELOW = 26;
 export const MAX_DPR = 2;
@@ -419,10 +422,13 @@ export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport):
   };
   const tx = (p: Pt): Pt => ({ x: offset.x + p.x * scale, y: offset.y + p.y * scale });
 
-  const labelPx = Math.max(MIN_FONT_PX, 0.34 * scale);
+  // The room name is drawn at 14 px or more on a narrow viewport. The boxes of the rows keep the 11 px rule, so the
+  // rows (and the Hunt slot above them) fit the room; the pill around the name follows the measured text.
+  const labelBoxPx = Math.max(MIN_FONT_PX, 0.34 * scale);
+  const labelPx = Math.max(width < NARROW_BELOW ? MIN_FONT_NARROW_PX : MIN_FONT_PX, labelBoxPx);
   const badgePx = Math.max(MIN_FONT_PX, 0.28 * scale);
   const compact = scale < COMPACT_BELOW;
-  const hL = labelPx / scale;
+  const hL = labelBoxPx / scale;
   const hB = badgePx / scale;
 
   const roomLayouts: RoomLayout[] = units.map((u) => {
@@ -434,7 +440,7 @@ export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport):
     // Every row leaves room for the pill padding and a small gap. The hunt slot is on the left back wall.
     const labelBottom = PLAQUE_FRONT - PAD_Y * hL;
     const labelTop = labelBottom - hL;
-    const labelSize = boxSize(u.name.length, labelPx, scale, 0.6);
+    const labelSize = boxSize(u.name.length, labelBoxPx, scale, 0.6);
     const labelBoxU: Rect = { x: c.x - labelSize.w / 2, y: c.y + labelTop, w: labelSize.w, h: hL };
     let incidentBoxU: Rect;
     let rowTop: number; // top of the pills in front of the reason badge

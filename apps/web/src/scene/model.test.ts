@@ -16,7 +16,8 @@ import {
   type RoomCounts,
 } from './particles.js';
 import { hashString, mulberry32, unit } from './rng.js';
-import { isDark, levelLabel, toSceneModel, type ModelOptions } from './model.js';
+import { DARK_LOOK, LEVEL_LOOK, isDark, levelLabel, lookOf, toSceneModel, type ModelOptions } from './model.js';
+import { huntOf } from '../test/hunt-arbs.js';
 
 const NOW = Date.parse('2026-11-13T15:30:00.000Z');
 const FULL: ModelOptions = { reducedMotion: false, quality: 'full' };
@@ -110,9 +111,9 @@ describe('particle specs and allocation', () => {
 });
 
 describe('toSceneModel', () => {
-  it('is calm and warm at level 0 with motes and a clock', () => {
+  it('is calm at level 0: a dim lantern, no ghost, motes and a clock', () => {
     const r = room({});
-    expect(r).toMatchObject({ level: 0, levelLabel: 'calm', dark: false, light: 1, ghostCount: 0, fogCount: 0, moteCount: MOTE_MAX, badge: '', badgeShort: '' });
+    expect(r).toMatchObject({ level: 0, levelLabel: 'calm', dark: false, light: LEVEL_LOOK[0].glow, ghostCount: 0, fogCount: 0, moteCount: MOTE_MAX, badge: '', badgeShort: '' });
     expect(r.clock.minute).toBeCloseTo((30 / 60) * Math.PI * 2);
     expect(r.clock.hour).toBeCloseTo(((3 + 0.5) / 12) * Math.PI * 2);
     expect(r.seed).toBe(hashString('payments'));
@@ -164,10 +165,48 @@ describe('toSceneModel', () => {
     expect(slow(2).fogCount).toBe(Math.ceil(0.6 * FOG_MAX));
   });
 
-  it('dims the light by level and by the metrics', () => {
-    expect([0, 1, 2, 3].map((hauntLevel) => room({ hauntLevel: hauntLevel as 0 }).light)).toEqual([1, 0.85, 0.65, 0.5]);
+  it('lights a room by its level: dim when calm, brightest when possessed, and not by the metrics', () => {
+    expect([0, 1, 2, 3].map((hauntLevel) => room({ hauntLevel: hauntLevel as 0 }).light)).toEqual([0.25, 0.4, 0.7, 1]);
     const m = room({ hauntLevel: 2, metrics: { errorRate: 0.5, p95Ms: 3000, up: 1, at: 'x' } });
-    expect(m.light).toBeCloseTo(0.65 * 0.8 * 0.7);
+    expect(m.light).toBe(0.7);
+    expect(room({ hauntLevel: 4 }).light).toBe(0);
+  });
+
+  it('has one table of looks, one row per level, with the treatment each level promises', () => {
+    const [calm, uneasy, haunted, possessed, dark] = LEVEL_LOOK;
+    // calm: dim lantern only, no tint, no cold edge, no ghost
+    expect(calm).toMatchObject({ danger: 0, edge: 0, ghostMin: 0 });
+    expect(calm.glow).toBeGreaterThan(0);
+    expect(calm.glow).toBeLessThanOrEqual(0.3);
+    expect(room({ hauntLevel: 0, metrics: { errorRate: 0.4, p95Ms: 100, up: 1, at: 'x' } }).ghostCount).toBe(0);
+    // uneasy: a faint cold edge light
+    expect(uneasy.edge).toBeGreaterThan(0);
+    expect(uneasy.danger).toBe(0);
+    // haunted: a clear danger tint, ghosts visible
+    expect(haunted.danger).toBeGreaterThanOrEqual(0.3);
+    // possessed: a strong danger glow, dense ghosts, the outline in the danger colour
+    expect(possessed.danger).toBeGreaterThan(haunted.danger);
+    expect(possessed.outline).toBe('danger');
+    expect(possessed.ghostMin).toBeGreaterThanOrEqual(6);
+    expect(room({ hauntLevel: 3, reason: { kind: 'error_rate', value: 0.01 }, metrics: null }).ghostCount).toBeGreaterThanOrEqual(6);
+    // dark: no light at all and a thin cold outline
+    expect(dark).toMatchObject({ glow: 0, danger: 0, edge: 1, outline: 'edge' });
+    expect(room({ hauntLevel: 2, metrics: { errorRate: 0, p95Ms: 0, up: 0, at: 'x' } }).look).toBe(DARK_LOOK);
+    expect(lookOf(1, false)).toBe(LEVEL_LOOK[1]);
+    // trouble is the brightest thing: the lantern is never brighter than the room in trouble
+    expect(Math.max(calm.glow, uneasy.glow)).toBeLessThan(haunted.glow);
+  });
+
+  it('puts the green mist over a room while its Hunt is entering or working, and not otherwise', () => {
+    const started = NOW - 20_000;
+    expect(room({ hunt: huntOf({ status: 'running', startedAt: started, stepCount: 2 }) }).mist).toBe(true);
+    expect(room({ hunt: huntOf({ status: 'running', startedAt: NOW - 100, stepCount: 0 }) }).mist).toBe(true);
+    expect(room({ hunt: huntOf({ status: 'succeeded', startedAt: started, finishedAt: NOW - 1000 }) }).mist).toBe(false);
+    expect(room({}).mist).toBe(false);
+  });
+
+  it('draws no dust in low quality', () => {
+    expect(room({}, 'payments', { reducedMotion: false, quality: 'low' }).moteCount).toBe(0);
   });
 
   it('is dark at level 4 and when up is below 0.5, and only then', () => {

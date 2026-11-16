@@ -55,12 +55,22 @@ describe('computeLayout', () => {
     expect(small.labelPx).toBeGreaterThanOrEqual(11);
   });
 
-  it('is compact for nine rooms at 360 px and keeps text at 11 px', () => {
+  it('is compact for nine rooms at 360 px, draws the room name at 14 px and keeps the reason badge at 11 px', () => {
     const nine: LayoutRoom[] = Array.from({ length: 9 }, (_, i) => ({ name: SERVICE_NAMES[i % 4] as LayoutRoom['name'], grid: { x: i % 3, y: Math.floor(i / 3) } }));
     const layout = computeLayout(nine, view(360, 360));
     expect(layout.compact).toBe(true);
-    expect(layout.labelPx).toBe(11);
+    // Under 40rem the name is at least 14 px; the badge keeps its 11 px minimum.
+    expect(layout.labelPx).toBe(14);
     expect(layout.badgePx).toBe(11);
+  });
+
+  it('keeps the size rule of the room name on a desktop and raises it to 14 px only under 40rem (640 px)', () => {
+    expect(computeLayout(HOUSE, view(1280, 720)).labelPx).toBeCloseTo(0.34 * computeLayout(HOUSE, view(1280, 720)).scale, 6);
+    const nine: LayoutRoom[] = Array.from({ length: 9 }, (_, i) => ({ name: SERVICE_NAMES[i % 4] as LayoutRoom['name'], grid: { x: i % 3, y: Math.floor(i / 3) } }));
+    expect(computeLayout(nine, view(639, 640)).labelPx).toBeGreaterThanOrEqual(14);
+    expect(computeLayout(nine, view(640, 640)).labelPx).toBeLessThan(14);
+    expect(computeLayout(nine, view(640, 640)).labelPx).toBeGreaterThanOrEqual(11);
+    expect(computeLayout(HOUSE, view(390, 560)).labelPx).toBeGreaterThanOrEqual(14);
   });
 
   it('caps the device pixel ratio at 2 and handles a house with gaps and a single room', () => {

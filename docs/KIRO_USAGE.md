@@ -137,3 +137,9 @@ One line per finished task: date | spec/task | what Kiro did.
 2026-11-16 | visual-refresh/9 | entry budget raised from 92 to 94 KiB (measured 92.3 KiB), replay chunk 6581 bytes of 6800
 2026-11-16 | visual-refresh/10 | tests updated by selector (hunt, hunt parity), new layout.spec.ts, summary, legend, timeline and table label tests; typecheck, lint, touched tests, build and bundle check pass
 2026-11-16 | visual-refresh/11 | steering a11y-perf tokens and contrast rule, structure.md renumbered with visual-refresh as 10, README legend sentence, spec validator
+2026-11-17 | visual-refresh/12 | level to look: one LEVEL_LOOK table (calm dim lantern, uneasy cold edge, haunted danger tint, possessed danger glow and outline, dark black with a thin cold outline), mist for a running Hunt, glow pulse, scene palette colours; Properties 5 tested
+2026-11-17 | visual-refresh/13 | drawing upgrades: ghost silhouette and noise textures, spread and swaying ghosts, three drifting fog layers, three-layer sky with parallax, solid roof that fades, floor gradient, inner walls and service icons, 14 px room name under 40rem, Low quality and Reduced motion rules; Property 6 tested
+2026-11-17 | visual-refresh/14 | four page fixes: panel shows the latest finished Hunt (live-mode sentence in demo), level pill tokens (calm no longer amber), fixed table columns, mobile order summary, Hunt, scene, cards
+2026-11-17 | visual-refresh/15 | budget measured: entry 92.7 of 94 KiB (CSS of the fixes), scene chunk 161.0 of 180, scene file 99.7 of 119, replay 6579 of 6800 bytes, hooks.ts untouched
+2026-11-17 | visual-refresh/16 | typecheck, lint and the created or changed test files pass; no full suite, no e2e run
+2026-11-17 | visual-refresh/17 | scene-rendering steering with the level to look table and the layers, usage lines, spec validator

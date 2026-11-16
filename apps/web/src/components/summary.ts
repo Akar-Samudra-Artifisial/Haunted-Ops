@@ -18,14 +18,29 @@ export interface Summary {
   running: boolean;
 }
 const WORST_FIRST: readonly HauntLevel[] = [4, 3, 2, 1, 0];
-/** The Service whose Hunt the summary speaks of: a running Hunt, a queued one, a Proposal, then a diagnosis. */
+/** The Service of the most recently finished Hunt (the one that finished last), or of the one that finished last with a diagnosis. */
+export function latestFinishedService(services: readonly ServiceState[], diagnosedOnly: boolean): ServiceState | null {
+  let best: ServiceState | null = null;
+  let bestAt = Number.NEGATIVE_INFINITY;
+  for (const s of services) {
+    const h = s.hunt;
+    if (h === null || h.finishedAt === null || (diagnosedOnly && !h.diagnosis)) continue;
+    const at = Date.parse(h.finishedAt);
+    if (Number.isFinite(at) && at > bestAt) {
+      best = s;
+      bestAt = at;
+    }
+  }
+  return best;
+}
+
+/** The Service whose Hunt the summary speaks of: a running Hunt, a queued one, a Proposal, then the latest diagnosis. */
 export function huntedService(services: readonly ServiceState[]): ServiceState | null {
   return (
     services.find((s) => s.hunt?.status === 'running') ??
     services.find((s) => s.hunt?.status === 'queued') ??
     services.find((s) => s.proposal !== null && (isActiveProposalStatus(s.proposal.status) || s.proposal.status === 'deployed')) ??
-    services.find((s) => s.hunt?.diagnosis !== null && s.hunt?.diagnosis !== undefined) ??
-    null
+    latestFinishedService(services, true)
   );
 }
 function huntStateOf(s: ServiceState): string | null {

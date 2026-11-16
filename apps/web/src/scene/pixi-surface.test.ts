@@ -192,7 +192,8 @@ describe('PixiSurface', () => {
     await init();
     const app = pixi.state.apps[0]!;
     expect(host.contains(app.canvas)).toBe(true);
-    expect(pixi.state.textures).toBe(5);
+    // The ghost, two fog puffs, three noise clouds, the mote and the glow.
+    expect(pixi.state.textures).toBe(8);
     const onContext = vi.fn();
     surface.onContext(onContext);
     surface.applyLayout(s.layout);

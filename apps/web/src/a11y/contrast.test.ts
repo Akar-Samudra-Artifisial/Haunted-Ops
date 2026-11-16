@@ -40,6 +40,11 @@ const PAIRS: readonly Pair[] = [
     { name: `danger text on ${where}`, kind: 'text', fg: '--danger', bg },
     { name: `fog text (latency) on ${where}`, kind: 'text', fg: '--fog', bg },
     { name: `ecto text (the Exorcist) on ${where}`, kind: 'text', fg: '--ecto', bg },
+    { name: `calm level pill (neutral) on ${where}`, kind: 'text', fg: '--level-calm', bg },
+    { name: `uneasy level pill (cold) on ${where}`, kind: 'text', fg: '--level-uneasy', bg },
+    { name: `haunted level pill (danger tint) on ${where}`, kind: 'text', fg: '--level-haunted', bg },
+    { name: `possessed level pill (danger) on ${where}`, kind: 'text', fg: '--level-possessed', bg },
+    { name: `dark level pill (pale outline) on ${where}`, kind: 'text', fg: '--level-dark', bg },
     { name: `focus outline on ${where}`, kind: 'ui', fg: '--focus', bg },
   ]),
   { name: 'text on the selected row', kind: 'text', fg: '--text', bg: '--selected' },
@@ -150,5 +155,31 @@ describe('motion rule', () => {
       expect(m[1]).not.toMatch(/\d(\.\d+)?s\b(?<!m)/);
     }
     for (const m of outside.matchAll(/animation[a-z-]*:\s*([^;]+);/g)) expect(m[1]).toMatch(/^(none|0s|1\b|soft-pulse )/);
+  });
+});
+
+describe('level pills', () => {
+  const tokenOf = (name: string): string => (css.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`)) as RegExpMatchArray)[1] as string;
+  const ruleOf = (selector: string): string => (css.match(new RegExp(`${selector.replace(/[[\]'.]/g, '\\$&')}\\s*\\{([^}]*)\\}`)) as RegExpMatchArray)[1] as string;
+
+  it('uses a neutral token for the calm pill, never the lantern (amber reads as a warning)', () => {
+    const calm = ruleOf(".pill--level[data-level='0']");
+    expect(calm).toContain('var(--level-calm)');
+    expect(calm).not.toContain('--lantern');
+    expect(contrastRatio(tokenOf('--level-calm'), tokenOf('--text-muted'))).toBeLessThan(1.5);
+  });
+
+  it('gives each of the five levels its own token and its own rule', () => {
+    const names = ['calm', 'uneasy', 'haunted', 'possessed', 'dark'];
+    const values = names.map((n) => tokenOf(`--level-${n}`).toLowerCase());
+    expect(new Set(values).size).toBe(5);
+    names.forEach((n, i) => expect(ruleOf(`.pill--level[data-level='${i}']`)).toContain(`var(--level-${n})`));
+    // The lantern is for healthy services and accents, not for a level.
+    expect(values).not.toContain(tokenOf('--lantern').toLowerCase());
+  });
+
+  it('matches the scene: the uneasy and dark tokens are the scene cold light, the possessed one the danger colour', () => {
+    expect(tokenOf('--level-uneasy').toLowerCase()).toBe('#9cc7e6');
+    expect(tokenOf('--level-possessed').toLowerCase()).toBe(tokenOf('--danger').toLowerCase());
   });
 });

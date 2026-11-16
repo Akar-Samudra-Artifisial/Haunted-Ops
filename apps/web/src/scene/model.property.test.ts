@@ -55,7 +55,9 @@ describe('Property 1: the model is monotonic', () => {
         expect(rb.ghostOpacity).toBeGreaterThanOrEqual(ra.ghostOpacity - 1e-12);
         expect(rb.fogDensity).toBeGreaterThanOrEqual(ra.fogDensity - 1e-12);
         expect(rb.fogCount).toBeGreaterThanOrEqual(ra.fogCount);
-        expect(rb.light).toBeLessThanOrEqual(ra.light + 1e-12);
+        // Trouble lights a room: more level never gives less light, and a dark room has none.
+        if (rb.dark) expect(rb.light).toBe(0);
+        else expect(rb.light).toBeGreaterThanOrEqual(ra.light - 1e-12);
       }),
       RUNS,
     );
@@ -68,7 +70,8 @@ describe('Property 1: the model is monotonic', () => {
         const after = toSceneModel([...others, b], NOW, FULL).rooms.at(-1)!;
         expect(after.ghostCount).toBeGreaterThanOrEqual(before.ghostCount);
         expect(after.fogCount).toBeGreaterThanOrEqual(before.fogCount);
-        expect(after.light).toBeLessThanOrEqual(before.light + 1e-12);
+        if (after.dark) expect(after.light).toBe(0);
+        else expect(after.light).toBeGreaterThanOrEqual(before.light - 1e-12);
       }),
       RUNS,
     );

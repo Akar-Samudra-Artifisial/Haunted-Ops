@@ -16,6 +16,13 @@
   /* The Exorcist and hunt progress. */
   --ecto: #9bf2c4;
   --focus: #ffd866;
+  /* One colour for each level of a room, matching what the scene shows: calm is quiet, uneasy a cold edge, haunted a
+     danger tint, possessed the strong danger colour, dark a pale outline in the dark. */
+  --level-calm: #a39db8;
+  --level-uneasy: #9cc7e6;
+  --level-haunted: #ff9eb0;
+  --level-possessed: #ff5c7a;
+  --level-dark: #dcd7ee;
   /* The selected row: the lantern at 12% over the surface, as one opaque colour. */
   --selected: #312827;
   /* Washes over the picture; the outline, not the wash, is the focus indicator. */
@@ -154,6 +161,32 @@ a {
 .panel > * {
   min-width: 0;
 }
+/* Under 64rem the page reads: the summary bar, the Hunt, the scene, the service cards, the legend. The DOM order (and so the
+   focus order) is unchanged; the two columns dissolve into one grid and `order` arranges the blocks. */
+@media (max-width: 63.99rem) {
+  .layout-main,
+  .panel {
+    display: contents;
+  }
+  .replay-controls {
+    order: 0;
+  }
+  .summary {
+    order: 1;
+  }
+  .hunt-section {
+    order: 2;
+  }
+  .scene-mount {
+    order: 3;
+  }
+  .table-mode {
+    order: 4;
+  }
+  .legend {
+    order: 5;
+  }
+}
 .scene-mount {
   position: relative;
   min-height: 220px;
@@ -220,23 +253,33 @@ a {
   font-size: var(--step--1);
   white-space: nowrap;
 }
-.pill--level[data-level='0'],
 .pill--deployed,
 .pill--merged {
   color: var(--lantern);
 }
-.pill--level[data-level='1'],
 .pill--scenario {
   color: var(--fog);
 }
-.pill--level[data-level='2'],
-.pill--level[data-level='3'],
 .pill--failed,
 .pill--checks_failed {
   color: var(--danger);
 }
+/* The level pills: the calm one is neutral (amber would read as a warning). */
+.pill--level[data-level='0'] {
+  color: var(--level-calm);
+}
+.pill--level[data-level='1'] {
+  color: var(--level-uneasy);
+}
+.pill--level[data-level='2'] {
+  color: var(--level-haunted);
+}
+.pill--level[data-level='3'] {
+  color: var(--level-possessed);
+  border-width: 2px;
+}
 .pill--level[data-level='4'] {
-  color: var(--text);
+  color: var(--level-dark);
   border-style: double;
   border-width: 3px;
 }
@@ -445,6 +488,47 @@ a {
 .table-mode table {
   width: 100%;
   border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+/* A table that is a table (40rem and up) has fixed columns: their widths never depend on what the cells say, so the
+   header does not move when a value changes. The scroll area takes over when the screen is narrower than the columns. */
+@media (min-width: 40.01rem) {
+  .table-mode table {
+    table-layout: fixed;
+    min-width: 60rem;
+  }
+  .table-mode th,
+  .table-mode td {
+    overflow-wrap: anywhere;
+  }
+  .table-mode thead th:nth-child(1) {
+    width: 6.5rem;
+  }
+  /* The widest level pill, "◕ 3 (possessed)", does not wrap: the column fits it. */
+  .table-mode thead th:nth-child(2) {
+    width: 9.5rem;
+  }
+  .table-mode thead th:nth-child(3) {
+    width: 8.5rem;
+  }
+  .table-mode thead th:nth-child(4) {
+    width: 5.5rem;
+  }
+  .table-mode thead th:nth-child(5) {
+    width: 4.5rem;
+  }
+  .table-mode thead th:nth-child(6) {
+    width: 3.5rem;
+  }
+  .table-mode thead th:nth-child(7) {
+    width: 5.5rem;
+  }
+  .table-mode thead th:nth-child(8) {
+    width: 9.5rem;
+  }
+  .table-mode thead th:nth-child(9) {
+    width: 9.5rem;
+  }
 }
 .table-mode th,
 .table-mode td {

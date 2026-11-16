@@ -86,8 +86,11 @@ function wisp(seed: number, i: number, salt: number, sizeLo: number, sizeHi: num
  */
 export function ghostSpec(seed: number, i: number): WispSpec {
   const r = (k: number): number => unit(seed, i, 100 + k);
-  const s = 0.35 + 0.25 * r(1);
-  const d = (r(2) * 2 - 1) * (s - 0.3);
+  // Ghosts are spread, not random: index i walks a golden-ratio sequence in depth and width, so no two
+  // slots of a room share a spot; the seed only rotates the sequence.
+  const frac = (n: number): number => n - Math.floor(n);
+  const s = 0.35 + 0.25 * frac(i * 0.381966 + 0.37 * r(1));
+  const d = (frac(i * 0.618034 + 0.37 * r(2)) * 2 - 1) * (s - 0.3);
   return {
     u: (s + d) / 2,
     v: (s - d) / 2,

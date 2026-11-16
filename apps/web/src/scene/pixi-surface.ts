@@ -8,8 +8,8 @@ import type { Pt, RoomLayout, SceneLayout } from './layout.js';
 import type { RoomVisual, SceneModel } from './model.js';
 import { FONT_STACK, PALETTE, PILL_ALPHA, hexToNumber } from './palette.js';
 import { FOG_BANK_MAX, FOG_WISP_MAX, GHOST_MAX, MOTE_MAX } from './particles.js';
-import { CORRIDOR_STYLE, buildHouseArt, buildRoomArt, clockHands, pillRect, plaqueLayout, starField, type RoomArt } from './shapes.js';
-import { SceneInitError, type Frame, type HuntFrame, type ParticleBuffer, type RoomFrame, type Surface, type SurfaceInit } from './surface.js';
+import { CORRIDOR_STYLE, buildHouseArt, buildRoomArt, clockHands, pillRect, plaqueLayout, starField, type RoomArt, type RoomIcon } from './shapes.js';
+import { FOG_LAYERS, SceneInitError, type Frame, type HuntFrame, type ParticleBuffer, type RoomFrame, type Surface, type SurfaceInit } from './surface.js';
 import { TEXTURE_NAMES, drawTexture, type TextureName } from './textures.js';
 
 const num = hexToNumber;
@@ -68,8 +68,16 @@ interface RoomView {
   body: Container;
   glow: Sprite;
   dim: Graphics;
+  /** Danger tint over floor and walls. */
+  tint: Graphics;
+  /** Three soft noise layers of fog, and the two sprites of the Exorcist's mist, made once. */
+  fogLayers: Sprite[];
+  mist: Sprite[];
+  /** Half the floor's width and height: the unit of the drifts. */
+  half: { w: number; h: number };
   outlineTrim: Graphics;
   outlineAlarm: Graphics;
+  outlineEdge: Graphics;
   clock: Graphics;
   plate: Graphics;
   label: Text;
@@ -115,7 +123,13 @@ interface HuntArt {
 
 interface Layers {
   background: Graphics;
+  /** The sky: far stars, near stars and the moon move a little with the camera (parallax). */
+  farStars: Graphics;
+  nearStars: Graphics;
+  moon: Container;
   house: Graphics;
+  /** The roof and chimney: solid, and clear while a room is focused. */
+  roof: Graphics;
   corridors: Container;
   rooms: Container;
   texts: Container;
@@ -186,7 +200,9 @@ export class PixiSurface implements Surface {
     const ring = new Graphics();
     const ui = new Container();
     ui.addChild(ring);
-    const layers: Layers = { background: new Graphics(), house: new Graphics(), corridors: new Container(), rooms: new Container(), texts: new Container(), ui, ring };
+    const moon = new Container();
+    moon.addChild(new Sprite(this.textures.get('glow') as Texture), new Graphics());
+    const layers: Layers = { background: new Graphics(), farStars: new Graphics(), nearStars: new Graphics(), moon, house: new Graphics(), roof: new Graphics(), corridors: new Container(), rooms: new Container(), texts: new Container(), ui, ring };
     this.layers = layers;
 
     const tex = (n: TextureName): Texture => this.textures.get(n) as Texture;
@@ -200,7 +216,11 @@ export class PixiSurface implements Surface {
     this.pools = pools;
     app.stage.addChild(
       layers.background,
+      layers.farStars,
+      layers.nearStars,
+      layers.moon,
       layers.house,
+      layers.roof,
       layers.corridors,
       layers.rooms,
       pools.fogBank.container,
@@ -249,17 +269,40 @@ export class PixiSurface implements Surface {
 
     layers.background.clear();
     layers.background.rect(0, 0, layout.width, layout.height).fill({ color: num(PALETTE.night) });
-    for (const s of starField(layout.width, layout.height)) layers.background.circle(s.x, s.y, s.r).fill({ color: num(PALETTE.ghost), alpha: s.alpha });
+    // A soft horizon: bands of wall colour, stronger toward the bottom.
+    for (let i = 0; i < 6; i++) layers.background.rect(0, layout.height * (0.5 + 0.083 * i), layout.width, layout.height * 0.09).fill({ color: num(PALETTE.wallLeft), alpha: 0.035 * (i + 1) });
+    layers.farStars.clear();
+    for (const s of starField(layout.width, layout.height, 40, 7)) layers.farStars.circle(s.x, s.y, s.r * 0.8).fill({ color: num(PALETTE.ghost), alpha: s.alpha * 0.7 });
+    layers.nearStars.clear();
+    for (const s of starField(layout.width, layout.height, 16, 19)) layers.nearStars.circle(s.x, s.y, s.r * 1.4).fill({ color: num(PALETTE.ghost), alpha: Math.min(1, s.alpha + 0.2) });
+    // The moon: a pale disc with a bite taken out of it, in a soft halo.
+    const mr = Math.max(6, Math.min(layout.width, layout.height) * 0.04);
+    const [halo, disc] = layers.moon.children as [Sprite, Graphics];
+    layers.moon.position.set(0, 0);
+    halo.anchor.set(0.5);
+    halo.position.set(layout.width * 0.88, layout.height * 0.13);
+    halo.width = mr * 7;
+    halo.height = mr * 7;
+    halo.tint = num(PALETTE.moon);
+    halo.alpha = 0.3;
+    disc.clear();
+    disc.circle(layout.width * 0.88, layout.height * 0.13, mr).fill({ color: num(PALETTE.moon), alpha: 0.85 });
+    disc.circle(layout.width * 0.88 + mr * 0.45, layout.height * 0.13 - mr * 0.2, mr * 0.85).fill({ color: num(PALETTE.night) });
 
     const g = layers.house;
     g.clear();
     if (layout.house) {
       const art = buildHouseArt(layout.house, layout.scale);
-      for (const poly of art.polys) g.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
+      // The roof and chimney are the first two shapes: they are drawn on their own layer.
+      for (const poly of art.polys.slice(art.roof.polys.length)) g.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
       g.circle(art.window.center.x, art.window.center.y, art.window.radius).fill({ color: num(art.window.fill), alpha: art.window.alpha });
-      for (const line of [...art.window.bars, ...art.lines]) {
+      for (const line of [...art.window.bars, ...art.lines.slice(art.roof.lines.length)]) {
         g.poly(flat(line.points), false).stroke({ color: num(line.color), alpha: line.alpha, width: line.width, join: 'round', cap: 'round' });
       }
+      const roof = layers.roof;
+      roof.clear();
+      for (const poly of art.roof.polys) roof.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
+      for (const line of art.roof.lines) roof.poly(flat(line.points), false).stroke({ color: num(line.color), alpha: line.alpha, width: line.width, join: 'round', cap: 'round' });
     }
 
     for (const child of layers.corridors.removeChildren()) child.destroy({ children: true });
@@ -291,7 +334,9 @@ export class PixiSurface implements Surface {
     const root = new Container();
     const body = new Container();
     const base = new Graphics();
-    for (const poly of art.polys) base.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
+    // The floor and the walls first, then the floor gradient and the inner wall panels, then the rug and the lamp shade.
+    for (const poly of [...art.polys.slice(0, 3), ...art.detail, ...art.polys.slice(3)]) base.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
+    if (art.icon) this.drawIcon(base, art.icon);
     for (const line of art.lines) base.poly(flat(line.points), false).stroke({ color: num(line.color), alpha: line.alpha, width: line.width, join: 'round' });
     const clockFace = new Graphics();
     const clock = new Graphics();
@@ -312,6 +357,27 @@ export class PixiSurface implements Surface {
     dim.alpha = 0;
     const outlineTrim = new Graphics();
     outlineTrim.poly(sil, true).stroke({ color: num(PALETTE.trim), width: Math.max(1.5, layout.scale * 0.05), join: 'round' });
+    const outlineEdge = new Graphics();
+    outlineEdge.poly(sil, true).stroke({ color: num(PALETTE.lightCold), width: Math.max(1, layout.scale * 0.035), join: 'round' });
+    outlineEdge.alpha = 0;
+    const tint = new Graphics();
+    tint.poly(sil, true).fill({ color: num(PALETTE.danger) });
+    tint.alpha = 0;
+    const [floorTop, floorRight, floorBottom, floorLeft] = room.floor;
+    const half = { w: (floorRight.x - floorLeft.x) / 4, h: (floorBottom.y - floorTop.y) / 4 };
+    const spriteOf = (name: TextureName, w: number, h: number, color: string, x: number, y: number): Sprite => {
+      const sp = new Sprite(this.textures.get(name) as Texture);
+      sp.anchor.set(0.5);
+      sp.width = w;
+      sp.height = h;
+      sp.tint = num(color);
+      sp.alpha = 0;
+      sp.position.set(x, y);
+      return sp;
+    };
+    const mid = { x: (floorLeft.x + floorRight.x) / 2, y: (floorTop.y + floorBottom.y) / 2 };
+    const fogLayers = (['noiseA', 'noiseB', 'noiseC'] as const).map((n) => spriteOf(n, half.w * 3, half.h * 3, PALETTE.fog, mid.x, mid.y));
+    const mist = (['noiseC', 'noiseA'] as const).map((n) => spriteOf(n, half.w * 3.4, half.h * 3.6, PALETTE.ecto, mid.x, mid.y - half.h * 0.4));
     const outlineAlarm = new Graphics();
     outlineAlarm.poly(sil, true).stroke({ color: num(PALETTE.alarm), width: Math.max(2, layout.scale * 0.07), join: 'round' });
     outlineAlarm.alpha = 0;
@@ -338,10 +404,17 @@ export class PixiSurface implements Surface {
     const huntArt = this.buildHunt(room, layout);
     const hunt = huntArt.container;
 
-    root.addChild(body, glow, dim, outlineTrim, outlineAlarm, huntArt.seal, huntArt.sweep);
+    root.addChild(body, tint, ...fogLayers, glow, dim, ...mist, outlineTrim, outlineEdge, outlineAlarm, huntArt.seal, huntArt.sweep);
     const texts = new Container();
     texts.addChild(badgePill, badge, plate, label, incident, hunt);
-    return { room, art, root, texts, body, glow, dim, outlineTrim, outlineAlarm, clock, plate, label, badge, badgePill, incident, incidentTri, incidentBang, incidentWord, hunt, huntArt };
+    return { room, art, root, texts, body, glow, dim, tint, fogLayers, mist, half, outlineTrim, outlineEdge, outlineAlarm, clock, plate, label, badge, badgePill, incident, incidentTri, incidentBang, incidentWord, hunt, huntArt };
+  }
+
+  /** Draws the small icon of a service on the back wall. */
+  private drawIcon(g: Graphics, icon: RoomIcon): void {
+    for (const poly of icon.polys) g.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
+    for (const d of icon.discs) g.circle(d.center.x, d.center.y, d.radius).fill({ color: num(d.fill), alpha: d.alpha });
+    for (const line of icon.lines) g.poly(flat(line.points), false).stroke({ color: num(line.color), alpha: line.alpha, width: line.width, join: 'round', cap: 'round' });
   }
 
   /** Creates every object of the hunt once; `drawHunt` only moves and recolours them. */
@@ -526,6 +599,10 @@ export class PixiSurface implements Surface {
       // The idle line keeps its own alpha; only the warm line follows the light.
       if (view) view.lit.alpha = (frame.corridors[i] as { lit: number }).lit;
     }
+    layers.farStars.position.set(frame.parallax.x * 0.3, frame.parallax.y * 0.3);
+    layers.nearStars.position.set(frame.parallax.x, frame.parallax.y);
+    layers.moon.position.set(frame.parallax.x * 0.15, frame.parallax.y * 0.15);
+    layers.roof.alpha = frame.roofAlpha;
     pools.fogBank.fill(frame.fogBank);
     pools.fog.fill(frame.fog);
     pools.ghosts.fill(frame.ghosts);
@@ -539,12 +616,25 @@ export class PixiSurface implements Surface {
     const breath = 1 + 0.03 * (rf.lampBreath * 2 - 1);
     const light = rf.light * rf.flicker;
     view.body.position.set(rf.shakeX, rf.shakeY);
-    view.glow.alpha = clamp(light * breath, 0, 1) * (rf.dark ? 0 : 0.85);
-    view.glow.tint = mixColor(num(PALETTE.glowWarm), num(PALETTE.lightCold), rf.coolness);
+    // The glow is warm in a calm room and turns to the danger colour as the tint grows; a pulse adds one soft swell.
+    view.glow.alpha = clamp(light * breath + 0.35 * rf.pulse, 0, 1) * (rf.dark ? 0 : 0.85);
+    view.glow.tint = mixColor(num(PALETTE.glowWarm), num(PALETTE.danger), clamp(rf.tint / 0.6, 0, 1));
     view.dim.alpha = clamp(rf.dim + (1 - clamp(light, 0, 1)) * 0.6 * (1 - rf.dim), 0, 0.95);
-    const alarm = rf.coolness >= 0.55 && !rf.dark;
-    view.outlineAlarm.alpha = alarm ? 0.7 : 0;
-    view.outlineTrim.alpha = alarm ? 0 : rf.outlineAlpha;
+    view.tint.alpha = clamp(rf.tint * (1 + 0.6 * rf.pulse), 0, 0.8) * (rf.dark ? 0 : 1);
+    view.outlineAlarm.alpha = rf.alarm;
+    view.outlineEdge.alpha = rf.edge;
+    view.outlineTrim.alpha = rf.outlineAlpha;
+    for (let k = 0; k < FOG_LAYERS; k++) {
+      const layer = rf.fogLayers[k];
+      const sp = view.fogLayers[k];
+      if (!layer || !sp) continue;
+      sp.alpha = layer.alpha;
+      sp.position.set(view.room.center.x + layer.x * view.half.w * 2, view.room.center.y + layer.y * view.half.h * 2);
+    }
+    view.mist[0]!.alpha = 0.5 * rf.mist;
+    view.mist[1]!.alpha = 0.35 * rf.mist;
+    view.mist[0]!.position.set(view.room.center.x + rf.mistX * view.half.w * 2, view.room.center.y - view.half.h * 0.4 + rf.mistY * view.half.h * 2);
+    view.mist[1]!.position.set(view.room.center.x - rf.mistX * view.half.w * 2, view.room.center.y - view.half.h * 0.4 - rf.mistY * view.half.h * 2);
     view.badge.alpha = rf.badgeAlpha;
     view.badgePill.alpha = rf.badgeAlpha;
     this.drawHunt(view, rf.hunt, this.layout?.scale ?? 1);

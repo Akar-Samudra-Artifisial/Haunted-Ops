@@ -5,10 +5,14 @@ import { formatClock } from '../format.js';
 import { huntCellText, huntStepText, huntView, TOOL_TEXT } from './hunt-text.js';
 import { Icon } from './icons.js';
 import { proposalView } from './proposal-text.js';
+import { latestFinishedService } from './summary.js';
 
 export type LoadHuntDetail = (huntId: string) => Promise<HuntDetail>;
 
-/** The Service the Hunt section is about: the selected one, else the first with a running or queued Hunt, else one with an active fix. */
+/**
+ * The Service the Hunt section is about: the selected one, else the first with a running or queued Hunt, else one
+ * with an active fix, else the one whose Hunt finished last (the Summary bar speaks of the same one).
+ */
 export function huntSectionService(services: readonly ServiceState[], selected: ServiceName | null): ServiceState | null {
   if (selected !== null) return services.find((s) => s.name === selected) ?? null;
   return (
@@ -16,7 +20,8 @@ export function huntSectionService(services: readonly ServiceState[], selected: 
     services.find((s) => s.hunt?.status === 'queued') ??
     // Then a fix that is still moving, so its pull request link is in the table without a selection.
     services.find((s) => s.proposal !== null && isActiveProposalStatus(s.proposal.status)) ??
-    null
+    latestFinishedService(services, true) ??
+    latestFinishedService(services, false)
   );
 }
 
@@ -85,6 +90,9 @@ export function HuntSection({ service, loadDetail }: { service: ServiceState | n
             ))}
           </ol>
         </>
+      ) : hunt?.diagnosis && loadDetail === undefined ? (
+        // No API to read the steps from (demo mode): say so, in place of the empty text.
+        <p data-testid="hunt-live-note">Diagnosed. The steps and evidence are shown in live mode.</p>
       ) : (
         <p>No steps yet.</p>
       )}

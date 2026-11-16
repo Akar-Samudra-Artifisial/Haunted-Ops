@@ -12,6 +12,7 @@ import { REASON_TEXT, huntCellText, huntStepText, huntView } from './hunt-text.j
 import { TableMode } from './TableMode.js';
 import { toSceneModel } from '../scene/model.js';
 import { tableRowText } from './table-model.js';
+import { huntedService, summarize } from './summary.js';
 
 afterEach(() => {
   cleanup();
@@ -79,9 +80,15 @@ describe('TableMode: the Hunt column and section', () => {
     expect(screen.getByTestId('hunt-state').textContent).toBe('sealed: d-7, 65c0fca');
   });
 
-  it('shows no section when nothing is selected and no Hunt runs', () => {
-    render(<TableMode services={[withHunt(sealedHunt())]} />);
+  it('shows no section when nothing is selected, no Hunt runs and none has finished', () => {
+    render(<TableMode services={[withHunt(null)]} />);
     expect(screen.queryByTestId('hunt-section')).toBeNull();
+  });
+
+  it('shows the Hunt that finished last when nothing is selected and nothing runs (the Summary bar says Diagnosed about it)', () => {
+    render(<TableMode services={[withHunt(sealedHunt())]} />);
+    expect(screen.getByTestId('hunt-section')).toBeTruthy();
+    expect(screen.getByTestId('hunt-diagnosis')).toBeTruthy();
   });
 
   it('shows a valid diagnosis with its cited evidence as plain text, and nothing for a failed Hunt', async () => {
@@ -128,7 +135,40 @@ describe('TableMode: the Hunt column and section', () => {
     expect(huntSectionService(list, null)?.name).toBe('orders');
     expect(huntSectionService(list, 'gate')?.name).toBe('gate');
     expect(huntSectionService([withHunt(makeHunt(), 'gate')], null)?.name).toBe('gate');
-    expect(huntSectionService([withHunt(sealedHunt())], null)).toBeNull();
+    // With nothing selected and nothing moving, the Hunt that finished last (a diagnosis first): the Summary bar says
+    // "Diagnosed" about the same Service, so the Panel is never empty beside it.
+    expect(huntSectionService([withHunt(sealedHunt())], null)?.name).toBe('payments');
+    expect(huntSectionService([withHunt(null)], null)).toBeNull();
+  });
+  it('picks the Service of the Hunt that finished last, the one with a diagnosis first, and the one the Summary bar names', () => {
+    const older = withHunt(makeHunt({ status: 'succeeded', reason: 'diagnosed', startedAt: at(1), finishedAt: at(5), diagnosis: sealedHunt().diagnosis }), 'orders');
+    const newer = withHunt(makeHunt({ status: 'succeeded', reason: 'diagnosed', startedAt: at(2), finishedAt: at(9), diagnosis: sealedHunt().diagnosis }), 'ledger');
+    const failedNewest = withHunt(makeHunt({ status: 'failed', reason: 'timeout', startedAt: at(3), finishedAt: at(20), diagnosis: null }), 'gate');
+    expect(huntSectionService([older, newer, failedNewest], null)?.name).toBe('ledger');
+    expect(huntedService([older, newer, failedNewest])?.name).toBe('ledger');
+    expect(huntSectionService([failedNewest], null)?.name).toBe('gate');
+    expect(huntSectionService([older, newer, failedNewest], 'orders')?.name).toBe('orders');
+    const summary = summarize([older, newer]);
+    expect(summary.huntState).toBe('Diagnosed');
+  });
+  it('shows the diagnosed Hunt, not the empty state, beside a Summary bar that says Diagnosed (the App with a finished Hunt and no selection)', () => {
+    const sealed = withHunt(sealedHunt());
+    const service = huntSectionService([sealed], null);
+    render(<HuntSection service={service} />);
+    expect(screen.getByTestId('hunt-section')).toBeTruthy();
+    expect(screen.queryByTestId('hunt-empty')).toBeNull();
+    expect(screen.getByTestId('hunt-diagnosis')).toBeTruthy();
+  });
+  it('says "Diagnosed. The steps and evidence are shown in live mode." for a diagnosed Hunt with no steps and no API to load them', () => {
+    const bare = withHunt({ ...sealedHunt(), steps: [], stepCount: 0 });
+    render(<HuntSection service={bare} />);
+    expect(screen.getByTestId('hunt-live-note').textContent).toBe('Diagnosed. The steps and evidence are shown in live mode.');
+    expect(screen.queryByText('No steps yet.')).toBeNull();
+    cleanup();
+    // With an API to ask, the sentence is not used.
+    render(<HuntSection service={bare} loadDetail={() => new Promise<HuntDetail>(() => undefined)} />);
+    expect(screen.queryByTestId('hunt-live-note')).toBeNull();
+    expect(screen.getByText('No steps yet.')).toBeTruthy();
   });
 
   it('has the cell text of the row model', () => {

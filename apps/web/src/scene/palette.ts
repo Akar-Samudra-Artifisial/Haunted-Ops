@@ -13,13 +13,18 @@ export const PALETTE = {
   glowWarm: '#ffb45e',
   lightCold: '#9cc7e6',
   ghost: '#e9f3ff',
-  fog: '#8fb3c9',
+  fog: '#7fd4e6', // cold cyan, equal to --fog
   alarm: '#ff7a66', // incident mark, level 3 rim
   pill: '#1a1626', // label and badge background
   text: '#f4efe6',
   ring: '#ffd866', // selection ring (equal to --focus)
   alarmText: '#ffb3a3', // alarm colour for text on the pill
   fogText: '#a9d4ec', // fog colour for text on the pill
+  danger: '#ff5c7a', // trouble tint and outline (equal to --danger)
+  ecto: '#9bf2c4', // the Exorcist's mist (equal to --ecto)
+  moon: '#dfe8f5',
+  floorFar: '#3a3052', // floor gradient, back edge
+  wallInner: '#241e36', // darker inner wall panel
 } as const;
 
 export type PaletteToken = keyof typeof PALETTE;
@@ -54,4 +59,7 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   { name: 'outline on night', fg: 'trim', bg: 'night', kind: 'shape' },
   { name: 'corridor on night', fg: 'trim', bg: 'night', kind: 'shape' },
   { name: 'selection ring on night', fg: 'ring', bg: 'night', kind: 'shape' },
+  { name: 'danger outline on night', fg: 'danger', bg: 'night', kind: 'shape' },
+  { name: 'cold outline on dark room', fg: 'lightCold', bg: 'nightDeep', kind: 'shape' },
+  { name: 'ecto mist on night', fg: 'ecto', bg: 'night', kind: 'shape' },
 ];

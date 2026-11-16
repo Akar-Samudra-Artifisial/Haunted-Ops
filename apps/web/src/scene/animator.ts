@@ -18,7 +18,7 @@ import {
 } from './particles.js';
 import { unit } from './rng.js';
 import { CORRIDOR_STYLE } from './shapes.js';
-import { emptyHuntFrame, type Frame, type ParticleBuffer, type RoomFrame } from './surface.js';
+import { FOG_LAYERS, emptyHuntFrame, type FogLayerFrame, type Frame, type ParticleBuffer, type RoomFrame } from './surface.js';
 
 /** The seal closes in 0.8 s, the lantern fades out in 0.6 s, the sparks fall for 0.9 s. */
 export const SEAL_MS = 800;
@@ -29,6 +29,28 @@ export const PULSE_MS = 400;
 export const PULSE_GAP_MS = 350;
 /** The lamp flicker is value noise on a lattice with one point per this time: at most 2 changes per second. */
 export const FLICKER_CELL_MS = 500;
+/** The soft glow pulse after a level rise: one cycle (one rise, one fall) of this length, at least one second apart. */
+export const GLOW_PULSE_MS = 2000;
+export const GLOW_PULSE_GAP_MS = 1000;
+/** The sky moves by at most this many pixels with the focused room, and sways by a few more. */
+export const PARALLAX_PX = 10;
+/** The three fog noise layers drift at different speeds (radians per ms) and reach this far (floor halves). */
+export const FOG_DRIFT = [
+  { speed: 0.00013, amp: 0.45 },
+  { speed: 0.0002, amp: 0.35 },
+  { speed: 0.00008, amp: 0.55 },
+] as const;
+/** The roof is this clear while a room is focused. */
+export const ROOF_FOCUSED_ALPHA = 0.15;
+
+/** One soft pulse: 0 before `startMs` and after one cycle, one smooth hump in between. Pure. */
+export function glowPulse(startMs: number, timeMs: number): number {
+  const t = (timeMs - startMs) / GLOW_PULSE_MS;
+  if (!(t > 0 && t < 1)) return 0;
+  const s = Math.sin(Math.PI * t);
+  return s * s;
+}
+
 /** Extra brightness dip per iso unit of tremble. */
 const TREMBLE_DIP = 10;
 
@@ -70,6 +92,7 @@ export const DRAFT_GLOW_MS = 2000;
 export const FADED_ALPHA = 0.35;
 
 const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
+const clampUnit = (n: number): number => (n < -1 ? -1 : n > 1 ? 1 : n);
 const progress = (start: number | null, timeMs: number, durationMs: number): number => (start === null ? 0 : clamp01((timeMs - start) / durationMs));
 
 /** Rooms the buffers are sized for (a 3 by 3 house). */
@@ -102,6 +125,9 @@ function buffer(capacity: number): ParticleBuffer {
 interface RoomState {
   frame: RoomFrame;
   hunt: HuntState;
+  /** The level last seen and the start of the last glow pulse. */
+  level: number | null;
+  pulseStart: number;
   ghostA: Float32Array;
   fogA: Float32Array;
   bankA: Float32Array;
@@ -141,6 +167,13 @@ export function valueNoise(seed: number, t: number, salt: number): number {
 
 const EPS = 1e-3;
 
+/** Alpha of the danger outline, and of the quiet trim outline, for a room: from its row of the look table. */
+const alarmTarget = (v: RoomVisual): number => (v.look.outline === 'danger' ? v.look.outlineAlpha : 0);
+const trimTarget = (v: RoomVisual): number => (v.look.outline === 'trim' ? v.look.outlineAlpha : 0);
+/** Alpha of the first fog noise layer for a density; the others are a share of it. */
+const fogLayerTarget = (v: RoomVisual, k: number, low: boolean): number =>
+  v.dark || v.fogDensity <= 0 || (low && k > 0) ? 0 : (0.16 + 0.3 * v.fogDensity) * (k === 0 ? 1 : 0.75);
+
 export function createAnimator(): Animator {
   let layout: SceneLayout | null = null;
   let model: SceneModel | null = null;
@@ -157,6 +190,8 @@ export function createAnimator(): Animator {
     motes: buffer(MAX_ROOMS * MOTE_MAX),
     pulses: buffer(MAX_PULSES),
     selected: null,
+    parallax: { x: 0, y: 0 },
+    roofAlpha: 1,
     moving: true,
   };
 
@@ -168,6 +203,14 @@ export function createAnimator(): Animator {
       s = {
         frame: {
           name,
+          tint: v.look.danger,
+          edge: v.look.edge,
+          alarm: alarmTarget(v),
+          pulse: 0,
+          mist: v.mist ? 1 : 0,
+          mistX: 0,
+          mistY: 0,
+          fogLayers: Array.from({ length: FOG_LAYERS }, (): FogLayerFrame => ({ x: 0, y: 0, alpha: 0 })),
           light: v.light,
           coolness: v.coolness,
           dim: v.dark ? DARK_DIM : 0,
@@ -175,7 +218,7 @@ export function createAnimator(): Animator {
           shakeX: 0,
           shakeY: 0,
           lampBreath: 0.5,
-          outlineAlpha: v.dark ? 1 : 0.35,
+          outlineAlpha: trimTarget(v),
           badgeAlpha: v.badge === '' ? 0 : 1,
           clock: v.clock,
           incident: v.incident.open,
@@ -183,6 +226,8 @@ export function createAnimator(): Animator {
           hunt: emptyHuntFrame(),
         },
         hunt: newHuntState(),
+        level: null,
+        pulseStart: Number.NEGATIVE_INFINITY,
         ghostA: new Float32Array(GHOST_MAX),
         fogA: new Float32Array(FOG_WISP_MAX),
         bankA: new Float32Array(FOG_BANK_MAX),
@@ -359,6 +404,8 @@ export function createAnimator(): Animator {
     sizeScale: number,
     /** Largest y of the anchor point (ghost feet stay above the text). */
     yMax: number,
+    /** Sideways sway of a ghost, in iso units: 0 for particles that do not sway. */
+    sway = 0,
   ): void {
     const motion = v.motion.drift;
     const capacity = slots.length;
@@ -374,11 +421,14 @@ export function createAnimator(): Animator {
       if (k >= buf.capacity) continue;
       const s = spec[i] as WispSpec;
       place(s, room, timeMs, motion);
-      buf.x[k] = scratch.x;
-      buf.y[k] = Math.min(scratch.y - lift * s.size * (layout as SceneLayout).scale, yMax);
-      buf.size[k] = s.size * sizeScale * (layout as SceneLayout).scale;
-      buf.alpha[k] = a;
-      buf.rotation[k] = motion === 0 ? 0 : 0.12 * Math.sin(s.phase + (timeMs / 1000) * 1.3 * motion);
+      const scale = (layout as SceneLayout).scale;
+      const swing = sway > 0 && motion !== 0 ? Math.sin(s.phase * 2 + (timeMs / 1000) * 0.9 * motion) : 0;
+      buf.x[k] = scratch.x + sway * scale * swing;
+      buf.y[k] = Math.min(scratch.y - lift * s.size * scale, yMax);
+      buf.size[k] = s.size * sizeScale * scale;
+      // Eased fade in and out: a smooth step of the way to the target.
+      buf.alpha[k] = a >= target || target <= 0 ? a : target * smooth(a / target);
+      buf.rotation[k] = motion === 0 ? 0 : 0.12 * Math.sin(s.phase + (timeMs / 1000) * 1.3 * motion) + 0.1 * swing;
       buf.count = k + 1;
     }
   }
@@ -423,6 +473,7 @@ export function createAnimator(): Animator {
       const dt = Math.min(Math.max(dtMsRaw, 0), MAX_STEP_MS);
       const tau = model.transitionMs / 3;
       const reduced = model.reducedMotion;
+      const low = model.quality === 'low';
       flag.moving = false;
       frame.ghosts.count = 0;
       frame.fog.count = 0;
@@ -438,7 +489,28 @@ export function createAnimator(): Animator {
         f.light = approach(f.light, v.light, dt, tau);
         f.coolness = approach(f.coolness, v.coolness, dt, tau);
         f.dim = approach(f.dim, v.dark ? DARK_DIM : 0, dt, tau);
-        f.outlineAlpha = approach(f.outlineAlpha, v.dark ? 1 : 0.35, dt, tau);
+        f.outlineAlpha = approach(f.outlineAlpha, trimTarget(v), dt, tau);
+        f.tint = approach(f.tint, v.look.danger, dt, tau);
+        f.edge = approach(f.edge, v.look.edge, dt, tau);
+        f.alarm = approach(f.alarm, alarmTarget(v), dt, tau);
+        f.mist = approach(f.mist, v.mist ? 1 : 0, dt, tau);
+        // One soft pulse when the level rises (not at the first sight, not in a dark room); none in low quality or with reduced motion.
+        if (st.level !== null && v.level > st.level && !v.dark && !reduced && !low && timeMs - st.pulseStart >= GLOW_PULSE_GAP_MS) st.pulseStart = timeMs;
+        st.level = v.level;
+        f.pulse = reduced || low ? 0 : glowPulse(st.pulseStart, timeMs);
+        if (f.pulse > 0) flag.moving = true;
+        const t = timeMs;
+        f.mistX = reduced ? 0 : 0.25 * Math.sin(t * 0.0004 + v.seed);
+        f.mistY = reduced ? 0 : 0.15 * Math.cos(t * 0.0003 + v.seed);
+        for (let k = 0; k < FOG_LAYERS; k++) {
+          const layer = f.fogLayers[k] as FogLayerFrame;
+          layer.alpha = approach(layer.alpha, fogLayerTarget(v, k, low), dt, tau);
+          const d = FOG_DRIFT[k as 0 | 1 | 2];
+          // Drift is off in reduced motion; in low quality only the first layer exists and it rests too.
+          layer.x = reduced || (low && k > 0) ? 0 : d.amp * Math.sin(t * d.speed + v.seed * (k + 1));
+          layer.y = reduced || (low && k > 0) ? 0 : d.amp * 0.6 * Math.cos(t * d.speed * 1.3 + v.seed * (k + 2));
+          if (Math.abs(layer.alpha - fogLayerTarget(v, k, low)) > EPS) flag.moving = true;
+        }
         f.badgeAlpha = approach(f.badgeAlpha, v.badge === '' ? 0 : 1, dt, tau);
         f.dark = v.dark;
         f.clock = v.clock;
@@ -447,7 +519,11 @@ export function createAnimator(): Animator {
           Math.abs(f.light - v.light) > EPS ||
           Math.abs(f.coolness - v.coolness) > EPS ||
           Math.abs(f.dim - (v.dark ? DARK_DIM : 0)) > EPS ||
-          Math.abs(f.outlineAlpha - (v.dark ? 1 : 0.35)) > EPS ||
+          Math.abs(f.outlineAlpha - trimTarget(v)) > EPS ||
+          Math.abs(f.tint - v.look.danger) > EPS ||
+          Math.abs(f.edge - v.look.edge) > EPS ||
+          Math.abs(f.alarm - alarmTarget(v)) > EPS ||
+          Math.abs(f.mist - (v.mist ? 1 : 0)) > EPS ||
           Math.abs(f.badgeAlpha - (v.badge === '' ? 0 : 1)) > EPS
         ) {
           flag.moving = true;
@@ -467,12 +543,26 @@ export function createAnimator(): Animator {
         const hide = v.dark ? 0 : 1;
         // Ghost feet stay above the highest text pill, so ghosts never cover the nameplate or the badges.
         const ghostFeet = room.textTop - 0.04 * layout.scale;
-        fill(frame.ghosts, st.ghostA, v.ghostCount, v.ghostOpacity * hide, st.ghostS, room, v, timeMs, dt, tau, 0.3, 1, ghostFeet);
+        fill(frame.ghosts, st.ghostA, v.ghostCount, v.ghostOpacity * hide, st.ghostS, room, v, timeMs, dt, tau, 0.3, 1, ghostFeet, 0.08);
         const fog = splitFog(v.fogCount);
         fill(frame.fogBank, st.bankA, fog.bank, FOG_ALPHA.bank(v.fogDensity) * hide, st.bankS, room, v, timeMs, dt, tau, 0, 1, Infinity);
         fill(frame.fog, st.fogA, fog.wisps, FOG_ALPHA.wisp(v.fogDensity) * hide, st.fogS, room, v, timeMs, dt, tau, 0.35, 1, Infinity);
-        fill(frame.motes, st.moteA, v.moteCount, 0.55 * hide, st.moteS, room, v, timeMs, dt, tau, 0, 1, Infinity);
+        fill(frame.motes, st.moteA, reduced ? 0 : v.moteCount, 0.55 * hide, st.moteS, room, v, timeMs, dt, tau, 0, 1, Infinity);
       }
+
+      // The camera: the sky shifts a little toward the focused room and sways; nothing moves with reduced motion or in low quality.
+      const focus = frame.selected === null ? undefined : layout.rooms.find((r) => r.name === frame.selected);
+      if (reduced || low) {
+        frame.parallax.x = 0;
+        frame.parallax.y = 0;
+      } else {
+        const nx = focus ? clampUnit((focus.center.x - lay.width / 2) / (lay.width / 2)) : 0;
+        const ny = focus ? clampUnit((focus.center.y - lay.height / 2) / (lay.height / 2)) : 0;
+        frame.parallax.x = approach(frame.parallax.x, -nx * PARALLAX_PX + 3 * Math.sin(timeMs / 9000), dt, tau);
+        frame.parallax.y = approach(frame.parallax.y, -ny * PARALLAX_PX * 0.6 + 2 * Math.cos(timeMs / 11000), dt, tau);
+      }
+      frame.roofAlpha = approach(frame.roofAlpha, frame.selected === null ? 1 : ROOF_FOCUSED_ALPHA, dt, tau);
+      if (Math.abs(frame.roofAlpha - (frame.selected === null ? 1 : ROOF_FOCUSED_ALPHA)) > EPS) flag.moving = true;
 
       layout.corridors.forEach((c, i) => {
         const a = visualOf(c.from);
