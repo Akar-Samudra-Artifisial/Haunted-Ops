@@ -150,3 +150,12 @@ One line per finished task: date | spec/task | what Kiro did.
 2026-11-17 | visual-refresh/22 | budget measured: entry 92.8 of 94 KiB, scene chunk 160.6 of 180, scene file 99.3 of 119, replay 6579 of 6800 bytes, hooks.ts untouched
 2026-11-17 | visual-refresh/23 | typecheck, lint, the created or changed test files, e2e/layout.spec.ts once and the spec validator pass; no full suite
 2026-11-17 | visual-refresh/24 | scene-rendering steering with the chip rule and the ghost spacing rule, usage lines, spec validator
+2026-11-17 | visual-refresh/25 | sprites.ts loads the ten team WebP files with Assets.load in parallel (8 s timeout, null on any error, timeout or non-image); init starts it only when WebGL is there, so the procedural art stays the fallback
+2026-11-17 | visual-refresh/26 | illustrated rooms: one Sprite fitted so the content box matches the floor diamond and its bottom centre is the front corner; no procedural body, rug, icon, clock or roof over it; outlines follow the picture
+2026-11-17 | visual-refresh/27 | level look on the pictures: sprite tint from spriteBrightness(light, dim), floor-only danger tint, no filters; Property 9 (brighter with trouble, dark room darkest)
+2026-11-17 | visual-refresh/28 | ghosts in three variant pools (ghostKind, GHOST_KIND_MAX) within the old caps, fog wisps from the fog sprite, Exorcist walk and scan sprites mirrored to face their way; Property 10
+2026-11-17 | visual-refresh/29 | check-scene-bundle: each webp at most 80 KiB, all at most 400 KiB (285.5 KiB measured), missing manifest file fails; build-release already ships dist whole, so no change
+2026-11-17 | visual-refresh/30 | tests updated to the new rule (art audit allows Assets.load only in sprites.ts, pixi mock with Assets, texture counts for both paths) and added (fit, loadSprites null cases, ghost split, e2e files 200 and fallback, no request without WebGL or in Accessible mode)
+2026-11-17 | visual-refresh/31 | budget measured: entry 93.0 of 94 KiB, scene chunk 175.9 of 180, scene file 92.4 of 119, replay 6581 of 6800 bytes, assets 285.5 of 400 KiB, hooks.ts untouched
+2026-11-17 | visual-refresh/32 | typecheck, lint, the created or changed test files, e2e/scene.spec.ts once, the build with the bundle check and the spec validator pass; no full suite
+2026-11-17 | visual-refresh/33 | steering (scene-rendering, tech, security) and the README Art section state the team sprites with the procedural fallback; usage lines

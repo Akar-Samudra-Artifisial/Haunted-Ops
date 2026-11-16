@@ -20,6 +20,8 @@ export interface ParticleBuffer {
   readonly size: Float32Array;
   readonly alpha: Float32Array;
   readonly rotation: Float32Array;
+  /** Sprite variant of a slot (ghosts: calm, drift, angry); 0 for every other class. */
+  readonly kind: Uint8Array;
 }
 
 /** The Exorcist and the Hunt slot of one room, as numbers the surface only has to draw. */

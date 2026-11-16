@@ -6,6 +6,10 @@ Haunted Ops is an incident war room drawn as a 2.5D haunted house. Each service 
 
 The panel next to the house has a "What am I looking at?" key: a ghost is errors, fog is latency, a dark room is down, a lantern is a healthy room and green mist is the Exorcist investigating. It is open on your first visit and remembers your choice.
 
+## Art
+
+Scene art is procedural shapes plus the team's illustrated sprites in `apps/web/public/scene/` (generated with Seedream 5.5 via Runware and curated by the team; original, imitating no existing game, film or franchise); the procedural art stays as the fallback. The ten WebP files (four rooms, three ghosts, the Exorcist in two poses and one fog wisp) live in `apps/web/public/scene/`; if one cannot load, the house is drawn with shapes as before.
+
 ## Accessible mode
 
 Accessible mode turns the page into a table-first view: the house scene is not loaded (no WebGL, no canvas, no animation), and the table shows every fact the scene shows.

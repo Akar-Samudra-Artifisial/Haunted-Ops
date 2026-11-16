@@ -6,6 +6,7 @@ import {
   FOG_BANK_MAX,
   FOG_WISP_MAX,
   GHOST_MAX,
+  ghostKind,
   MOTE_MAX,
   PARTICLE_CAP,
   PULSES_PER_CORRIDOR,
@@ -121,6 +122,7 @@ function buffer(capacity: number): ParticleBuffer {
     size: new Float32Array(capacity),
     alpha: new Float32Array(capacity),
     rotation: new Float32Array(capacity),
+    kind: new Uint8Array(capacity),
   };
 }
 
@@ -409,6 +411,8 @@ export function createAnimator(): Animator {
     yMax: number,
     /** Sideways sway of a ghost, in iso units: 0 for particles that do not sway. */
     sway = 0,
+    /** Level of the room when the slots take a sprite variant (ghosts), else -1. */
+    kindLevel = -1,
   ): void {
     const motion = v.motion.drift;
     const capacity = slots.length;
@@ -431,6 +435,7 @@ export function createAnimator(): Animator {
       buf.size[k] = s.size * sizeScale * scale;
       // Eased fade in and out: a smooth step of the way to the target.
       buf.alpha[k] = a >= target || target <= 0 ? a : target * smooth(a / target);
+      buf.kind[k] = kindLevel < 0 ? 0 : ghostKind(kindLevel, i);
       buf.rotation[k] = motion === 0 ? 0 : 0.12 * Math.sin(s.phase + (timeMs / 1000) * 1.3 * motion) + 0.1 * swing;
       buf.count = k + 1;
     }
@@ -547,7 +552,7 @@ export function createAnimator(): Animator {
         const hide = v.dark ? 0 : 1;
         // Ghost feet stay above the chip, so ghosts never cover it.
         const ghostFeet = room.textTop - 0.04 * layout.scale;
-        fill(frame.ghosts, st.ghostA, v.ghostCount, v.ghostOpacity * hide, st.ghostS, room, v, timeMs, dt, tau, 0.3, 1, ghostFeet, 0.08);
+        fill(frame.ghosts, st.ghostA, v.ghostCount, v.ghostOpacity * hide, st.ghostS, room, v, timeMs, dt, tau, 0.3, 1, ghostFeet, 0.08, v.level);
         const fog = splitFog(v.fogCount);
         fill(frame.fogBank, st.bankA, fog.bank, FOG_ALPHA.bank(v.fogDensity) * hide, st.bankS, room, v, timeMs, dt, tau, 0, 1, Infinity);
         fill(frame.fog, st.fogA, fog.wisps, FOG_ALPHA.wisp(v.fogDensity) * hide, st.fogS, room, v, timeMs, dt, tau, 0.35, 1, Infinity);

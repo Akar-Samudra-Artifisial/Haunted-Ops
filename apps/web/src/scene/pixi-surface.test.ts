@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { FULL, NOW, REDUCED, house, scene } from '../test/scene-fakes.js';
 import { huntOf } from '../test/hunt-arbs.js';
-import { createAnimator } from './animator.js';
+import { MAX_ROOMS, createAnimator } from './animator.js';
+import { GHOST_KIND_MAX, GHOST_MAX, PARTICLE_CAP } from './particles.js';
+import { ROOM_SPRITE, SPRITE_KEYS, roomSpriteFit } from './sprites.js';
 import { SceneInitError } from './surface.js';
 import type * as TexturesModule from './textures.js';
 
@@ -17,6 +19,10 @@ const pixi = vi.hoisted(() => {
     created: { graphics: 0, sprites: 0 },
     textures: 0,
     failInit: false,
+    /** The files of the sprites: `true` answers every `Assets.load` with a picture, `false` rejects it. */
+    sprites: false,
+    /** The page can give a WebGL context (the probe before the files are asked for). */
+    webgl: false,
     gate: null as Promise<void> | null,
   };
   class Point {
@@ -31,6 +37,7 @@ const pixi = vi.hoisted(() => {
     children: Container[] = [];
     position = new Point();
     anchor = new Point();
+    scale = new Point();
     visible = true;
     alpha = 1;
     destroyed = false;
@@ -82,13 +89,15 @@ const pixi = vi.hoisted(() => {
     }
   }
   class Sprite extends Container {
-    constructor() {
+    constructor(texture?: unknown) {
       super();
+      this.texture = texture ?? null;
       state.created.sprites += 1;
     }
     width = 0;
     height = 0;
     tint = 0;
+    texture: unknown = null;
     blendMode = 'normal';
   }
   class Text extends Container {
@@ -144,10 +153,18 @@ const pixi = vi.hoisted(() => {
       if (state.failInit) throw new Error('no context');
     }
   }
-  return { state, Application, Container, Graphics, Sprite, Text, Particle, ParticleContainer, Texture };
+  const Assets = {
+    load: vi.fn(async (path: string) => {
+      if (!state.sprites) throw new Error(`cannot load ${path}`);
+      return { width: 256, height: 256, path };
+    }),
+    unload: vi.fn(async () => undefined),
+  };
+  return { state, Assets, Application, Container, Graphics, Sprite, Text, Particle, ParticleContainer, Texture };
 });
 
 vi.mock('pixi.js', () => ({
+  Assets: pixi.Assets,
   Application: pixi.Application,
   Container: pixi.Container,
   Graphics: pixi.Graphics,
@@ -182,6 +199,9 @@ beforeEach(() => {
   pixi.state.created = { graphics: 0, sprites: 0 };
   pixi.state.textures = 0;
   pixi.state.failInit = false;
+  pixi.state.sprites = false;
+  pixi.state.webgl = false;
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => (pixi.state.webgl ? { getExtension: () => null } : null)) as never);
   pixi.state.gate = null;
 });
 afterEach(() => vi.clearAllMocks());
@@ -358,6 +378,130 @@ describe('PixiSurface', () => {
     });
   });
 
+  describe('the illustrated sprites (Feature: visual-refresh, part 4)', () => {
+    type Node = { children: Node[]; particles?: Array<{ alpha: number }>; ops?: number; texture?: { path?: string }; visible?: boolean; width: number; height: number; position: { x: number; y: number }; scale: { x: number; y: number }; blendMode?: string; tint: number };
+    const stageOf = (): Node => pixi.state.apps[pixi.state.apps.length - 1]!.stage as unknown as Node;
+    const ROOMS_AT = 7;
+    const ROOF_AT = 5;
+    async function start(sprites: boolean, webgl = true) {
+      pixi.state.sprites = sprites;
+      pixi.state.webgl = webgl;
+      const possessed = { hauntLevel: 3 as const, reason: { kind: 'error_rate' as const, value: 0.5 }, metrics, openIncident: incident };
+      const s = scene(house({ payments: possessed, orders: { ...possessed, hauntLevel: 2 as const } }), FULL);
+      const surface = new PixiSurface();
+      await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
+      surface.applyLayout(s.layout);
+      surface.applyModel(s.model);
+      const a = createAnimator();
+      a.setLayout(s.layout);
+      a.setModel(s.model);
+      return { s, surface, a };
+    }
+    const bodyOf = (name: string, s: { layout: { rooms: Array<{ name: string }> } }): Node => {
+      const rooms = stageOf().children[ROOMS_AT]!;
+      const order = [...s.layout.rooms].map((r) => r.name);
+      const idx = rooms.children.findIndex((root) => root.children[0]!.children.some((c) => c.texture?.path?.includes(`room-${name}`)));
+      expect(order).toContain(name);
+      return rooms.children[idx]!.children[0]!;
+    };
+
+    it('asks for the ten files once WebGL is there, and builds 7 textures (no procedural ghost)', async () => {
+      const { surface } = await start(true);
+      expect(pixi.Assets.load).toHaveBeenCalledTimes(SPRITE_KEYS.length);
+      expect(pixi.state.textures).toBe(7);
+      surface.destroy();
+      expect(pixi.Assets.unload).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks for no file when the page has no WebGL', async () => {
+      const { surface } = await start(true, false);
+      expect(pixi.Assets.load).not.toHaveBeenCalled();
+      expect(pixi.state.textures).toBe(8);
+      surface.destroy();
+    });
+
+    it('with sprites: one room picture, fitted to the floor, and no procedural body, icon, clock or roof', async () => {
+      const { s, surface } = await start(true);
+      for (const name of Object.keys(ROOM_SPRITE)) {
+        const body = bodyOf(name, s);
+        expect(body.children).toHaveLength(1);
+        const room = s.layout.rooms.find((r) => r.name === name)!;
+        const fit = roomSpriteFit(room.floor);
+        const sp = body.children[0]!;
+        expect([sp.position.x, sp.position.y, sp.width, sp.height]).toEqual([fit.x, fit.y, fit.width, fit.height]);
+      }
+      expect(stageOf().children[ROOF_AT]!.ops).toBe(0);
+      surface.destroy();
+    });
+
+    it('without sprites (the files fail): today\'s procedural rooms and roof, and nothing else changes', async () => {
+      const { s, surface } = await start(false);
+      expect(pixi.Assets.load).toHaveBeenCalled();
+      expect(pixi.state.textures).toBe(8);
+      const rooms = stageOf().children[ROOMS_AT]!;
+      expect(rooms.children.length).toBe(s.layout.rooms.length);
+      for (const root of rooms.children) expect(root.children[0]!.children).toHaveLength(3);
+      expect(stageOf().children[ROOF_AT]!.ops).toBeGreaterThan(0);
+      surface.destroy();
+    });
+
+    it('splits the ghosts over three pools without passing a pool size, the room size or the total cap', async () => {
+      const { surface, a } = await start(true);
+      const pools = stageOf().children.slice(-3);
+      expect(pools).toHaveLength(3);
+      for (let t = 1; t <= 200; t++) {
+        const frame = a.step(16, t * 16);
+        surface.draw(frame);
+        const shown = pools.map((p) => p.particles!.filter((x) => x.alpha > 0).length);
+        expect(shown.reduce((n, x) => n + x, 0)).toBe(frame.ghosts.count);
+        shown.forEach((n, k) => expect(n).toBeLessThanOrEqual(MAX_ROOMS * GHOST_KIND_MAX[k]!));
+        expect(frame.ghosts.count).toBeLessThanOrEqual(MAX_ROOMS * GHOST_MAX);
+        expect(frame.ghosts.count).toBeLessThanOrEqual(PARTICLE_CAP);
+      }
+      // A possessed room shows angry ghosts (the third pool).
+      expect(pools[2]!.particles!.some((x) => x.alpha > 0)).toBe(true);
+      surface.destroy();
+    });
+
+    it('draws the Exorcist as a picture that mirrors toward its way', async () => {
+      pixi.state.sprites = true;
+      pixi.state.webgl = true;
+      const running = huntOf({ status: 'running', startedAt: NOW - 20_000, stepCount: 3 });
+      const s = scene(house({ payments: { hauntLevel: 3, reason: { kind: 'error_rate', value: 0.4 }, metrics, openIncident: incident, hunt: running } }), FULL);
+      const surface = new PixiSurface();
+      await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
+      surface.applyLayout(s.layout);
+      surface.applyModel(s.model);
+      const a = createAnimator();
+      a.setLayout(s.layout);
+      a.setModel(s.model);
+      for (let t = 1; t <= 200; t++) surface.draw(a.step(16, t * 16));
+      // Only the figures that are shown: the three other rooms hold a hidden one.
+      const find = (n: Node, out: Node[] = []): Node[] => {
+        if (n.visible === false) return out;
+        if (n.texture?.path?.includes('exorcist')) out.push(n);
+        n.children.forEach((c) => find(c, out));
+        return out;
+      };
+      const figure = find(stageOf());
+      expect(figure).toHaveLength(1);
+      expect(figure[0]!.texture!.path).toContain('exorcist-scan');
+      // The art faces left: facing right (dir 1) mirrors it (negative scale.x) and puts the lantern glow on the right; facing left keeps it as drawn.
+      const room = s.layout.rooms.find((r) => r.name === 'payments')!;
+      const dir = room.exorcistAt.x >= room.doors.px.x ? 1 : -1;
+      expect(Math.sign(figure[0]!.scale.x)).toBe(-dir);
+      expect(figure[0]!.scale.y).toBeGreaterThan(0);
+      const glowOf = (n: Node, out: Node[] = []): Node[] => {
+        if (n.children.includes(figure[0]!)) out.push(...n.children.filter((c) => c.blendMode === 'add'));
+        n.children.forEach((c) => glowOf(c, out));
+        return out;
+      };
+      const glows = glowOf(stageOf());
+      expect(glows.length).toBeGreaterThan(0);
+      expect(Math.sign(glows[0]!.position.x)).toBe(dir);
+      surface.destroy();
+    });
+  });
   it('reuses the incident mark texts on every model change', async () => {
     const { s, surface, init } = setup();
     await init();

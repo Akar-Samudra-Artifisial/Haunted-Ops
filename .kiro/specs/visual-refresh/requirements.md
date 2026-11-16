@@ -1,6 +1,6 @@
 # Requirements Document
 ## Introduction
-`visual-refresh` is the tenth product spec of Haunted Ops, after `foundation`, `haunted-lab`, `ingest-haunt-score`, `scene-engine`, `exorcist-agent`, `fix-proposal-flow`, `accessible-mode`, `deploy-demo` and `replay`. It is split in three prompts. This spec covers part 1, the page around the Scene: design tokens, layout, header, summary bar, side panel with the hunt timeline, legend, restyled table, restyled replay pages and the document head. Part 2 (the PixiJS scene: rooms, ghosts, fog, sky, and four fixes of the page found on screenshots) is requirements 12 to 17 below, written in a second prompt. Part 3 (polish found on new screenshots: one chip per room, ghosts as separate silhouettes, a hunt mist that can be seen, and the Incident column of the table) is requirements 18 to 22, written in a third prompt. Requirements 1 to 11 change `apps/web/src/scene/` only in the palette values named in requirement 1.
+`visual-refresh` is the tenth product spec of Haunted Ops, after `foundation`, `haunted-lab`, `ingest-haunt-score`, `scene-engine`, `exorcist-agent`, `fix-proposal-flow`, `accessible-mode`, `deploy-demo` and `replay`. It is split in four prompts. This spec covers part 1, the page around the Scene: design tokens, layout, header, summary bar, side panel with the hunt timeline, legend, restyled table, restyled replay pages and the document head. Part 2 (the PixiJS scene: rooms, ghosts, fog, sky, and four fixes of the page found on screenshots) is requirements 12 to 17 below, written in a second prompt. Part 3 (polish found on new screenshots: one chip per room, ghosts as separate silhouettes, a hunt mist that can be seen, and the Incident column of the table) is requirements 18 to 22, written in a third prompt. Part 4 (illustrated sprites for rooms, ghosts, fog and the Exorcist, with the procedural art as the fallback) is requirements 23 to 30, written in a fourth prompt. Requirements 1 to 11 change `apps/web/src/scene/` only in the palette values named in requirement 1.
 Today the page is a plain column: the Scene, then a 9-column table, then the hunt detail. A first-time visitor cannot tell what is wrong, the hunt is below the fold, the table scrolls sideways on a phone (about 670 px wide at 390 px) and nothing explains ghosts, fog or dark rooms. The look is "a lantern in a dark house": dark calm surfaces, and only trouble glows.
 The spec adds no dependency, no server code, no API change and no network call. It spends no credits and starts no cloud resource.
 ## Glossary
@@ -25,6 +25,9 @@ The spec adds no dependency, no server code, no API change and no network call. 
 - **Chip band**: the part of the screen under a room that its chip may use: the column of the room (3.2 iso units to each side of its centre) and the bottom 20 % of the room's screen rect, plus the part of the chip that hangs below the front corner.
 - **Ghost site**: one of the 14 resting places of a room's ghosts, a hex lattice inside the band 0.25 to 0.8 of the floor on both axes, shifted by the seed of the room.
 - **Mist breath**: the slow change of the mist's alpha, one cycle of 4 s, at most 0.12 of alpha.
+- **Sprite**: one of the ten WebP pictures of the team in `apps/web/public/scene/` (four rooms, three ghosts, two poses of the Exorcist, one fog wisp), loaded by `sprites.ts`.
+- **Sprite set**: the textures `loadSprites` returns when every file loaded; `null` means the procedural art is drawn.
+- **Fit**: the pure function of `sprites.ts` that places a room picture so its content box is as wide as the floor diamond and its bottom centre is the front corner of the floor.
 ## Requirements
 ### Requirement 1: Design tokens and contrast
 **User Story:** As a visitor, I want a dark, calm page where only trouble glows and every text can be read, so that the state of the house is clear at a glance.
@@ -200,3 +203,81 @@ The spec adds no dependency, no server code, no API change and no network call. 
 3. WHILE this part is built, ONLY the checks named in the design SHALL be run; the full suite and the whole end-to-end run SHALL be run afterwards by the orchestrator.
 4. `.kiro/steering/scene-rendering.md` SHALL state the chip rule and the ghost spacing rule (two lines); `docs/KIRO_USAGE.md` SHALL get one line per finished task, in the form `2026-11-17 | visual-refresh/N | …`, ending with a newline.
 5. THE work SHALL add no dependency, no image, font or sprite file, and no forbidden retro-client word; it SHALL be original.
+### Requirement 23: Illustrated sprites, loaded with the procedural art as the fallback
+**User Story:** As a visitor, I want the house, its ghosts, its fog and the Exorcist drawn as the team's illustrations, and as shapes if a picture cannot load, so that the Scene looks finished and never breaks.
+
+#### Acceptance Criteria
+
+1. THE Scene SHALL use ten WebP files made by the team in `apps/web/public/scene/` (generated with Seedream 5.5 via Runware and curated by hand; original art that imitates no game, film or franchise): four room files of 768 by 768 px (payments, orders, ledger, gate), three ghost files (calm, drift, angry), two Exorcist files (walk, scan) and one fog wisp file. Vite serves them as `/scene/<file>`. THE files SHALL not be regenerated, resized, renamed or re-encoded by this work.
+2. THE new module `apps/web/src/scene/sprites.ts` SHALL be the only place that loads image files: it holds the manifest of the ten paths (string literals that start with `/scene/`), the room fit constants and the map from a service to its room file (payments, orders, ledger and gate; any other service has no sprite), and `loadSprites(): Promise<SpriteSet | null>` that loads all files in parallel with PixiJS `Assets.load` and a timeout of 8 s. No dependency SHALL be added.
+3. WHEN any file fails, the timeout passes, or a file does not decode as a picture (the web server answers a missing file with `index.html` and status 200), `loadSprites` SHALL return `null`.
+4. `PixiSurface.init` SHALL start `loadSprites` while the renderer starts and wait for it before the textures are built; WITH `null`, THE Scene SHALL draw exactly today's procedural rooms, ghosts, fog wisps and figure (the code stays as the fallback, and the low-power path is unchanged). A room whose service has no sprite SHALL always use the procedural room.
+5. NOTHING SHALL be loaded when the Scene is not loaded: Accessible mode and a browser without WebGL SHALL make no `/scene/*.webp` request (the surface asks for the files only when a WebGL context can be made), and neither the entry chunk nor the replay chunk SHALL import `sprites.ts`.
+6. THIS requirement supersedes the "procedural shapes only" rules of earlier requirements and specs: requirement 13.2 of `scene-engine` (`scene-engine/requirements.md:193`) and requirements 13.1 (`:132`), 17.5 (`:165`), 19.4 (`:181`) and 22.5 (`:205`) of this spec. From part 4 the Scene art is procedural shapes plus the team's sprites, and the procedural art stays as the fallback. The closed specs and the earlier requirements SHALL not be rewritten.
+
+### Requirement 24: The rooms are illustrated
+**User Story:** As a visitor, I want each room to be an illustrated cutaway of its service, so that the house looks like a house.
+
+#### Acceptance Criteria
+
+1. WITH sprites, `buildRoom` SHALL put one `Sprite` of the room file at the bottom of the room container, placed and scaled by one pure function of `sprites.ts` so that the content box of the picture (as a fraction of the image: x 0.0605 to 0.941, y 0.078 to 0.930; the same for the four files) is as wide as the floor diamond (`RoomLayout.floor`) and the bottom centre of the box is the front corner of the floor.
+2. FOR a sprite room, THE procedural body, rug, service icon and clock SHALL not be drawn, and the roof SHALL not be drawn over it (the picture has its own wall caps); the corridors SHALL stay.
+3. THE outlines of a sprite room (quiet trim, cold edge, danger) SHALL follow the outline of the picture (a hexagon computed from the same box), and the danger tint SHALL cover the floor diamond only.
+4. THE chip and the labels of part 3 SHALL stay as they are and SHALL stay above the sprites.
+
+### Requirement 25: The level look on the pictures
+**User Story:** As an on-call engineer, I want the room in trouble to be the brightest thing on screen, also on a phone, so that I find it in two seconds.
+
+#### Acceptance Criteria
+
+1. THE look of part 2 (`LEVEL_LOOK`) SHALL stay the source of the levels and SHALL be applied to a sprite room with the sprite `tint` (a grey from a pure function of the displayed light and the dark overlay) and the existing overlay layers (danger tint, glow, outline, pulse, mist), not with filters.
+2. CALM SHALL read dim and quiet, clearly darker than any room in trouble; UNEASY a little brighter with a faint cold edge; HAUNTED the danger glow and a danger tint limited to the floor diamond; POSSESSED a stronger danger glow and the danger outline; DARK the picture tinted to near black (brightness under 0.05) with the thin cold outline, so it still reads as a room.
+3. THE fog (latency) layers and the hunt mist SHALL stay their own layers above the picture.
+4. FOR any service with a sprite and any trouble, the brightness of the picture SHALL be non-decreasing from calm to possessed and the dark room SHALL be the darkest (Property 9).
+
+### Requirement 26: Ghosts, fog and the Exorcist as sprites
+**User Story:** As a visitor, I want ghosts that look different when they are calm or angry, cyan fog and a figure that looks like an investigator, so that the story of an incident can be read in the picture.
+
+#### Acceptance Criteria
+
+1. WITH sprites, THE ghosts SHALL use three textures (calm, drift, angry), one pool per texture (a `ParticleContainer` holds one texture), and the existing slots of each room SHALL be shared between the pools by a pure function `ghostKind(level, i)`: uneasy and haunted rooms use calm and drift, a possessed room uses mostly angry. THE caps SHALL not change (12 per room, 200 in all) and no pool SHALL be sized to hold more than the slots of its kind need; THE size rule (the sprite height) and the spacing of part 3 SHALL stay.
+2. FOR any set of rooms and levels, THE ghosts of all pools SHALL never pass the per-room and the total cap (Property 10).
+3. THE fog wisps SHALL use `fog-wisp.webp` tinted with the fog token (`#7FD4E6`) in the same layer, with the same counts and drift; the fog bank and the noise layers stay.
+4. THE Exorcist figure SHALL be a `Sprite` of height `FIGURE_H` times the scale: `exorcist-walk` while it enters or moves and `exorcist-scan` while it works, mirrored horizontally to face its direction; the green mist SHALL stay.
+5. WITHOUT sprites, the procedural ghost, wisps and figure SHALL be drawn as before.
+
+### Requirement 27: Quality and motion keep their rules
+**User Story:** As a visitor with Reduced motion or a slow machine, I want the same rules as before with the new pictures.
+
+#### Acceptance Criteria
+
+1. UNDER Reduced motion and in Low quality, every rule of parts 2 and 3 SHALL hold with the sprites: static positions, no sway, drift, parallax, dust or pulse, and the level looks visible.
+2. THE pictures SHALL be tinted by the displayed light only, so a still scene stays still.
+
+### Requirement 28: Asset budget, build and release
+**User Story:** As the maintainer, I want the pictures to cost a known amount and to ship with the app.
+
+#### Acceptance Criteria
+
+1. `scripts/check-scene-bundle.mjs` SHALL check `dist/scene/*.webp`: each file at most 80 KiB, all together at most 400 KiB (285.5 KB at the start of part 4), print the measured total, and fail when a file named in the `sprites.ts` manifest is missing from `dist/scene/`. THE JS budgets SHALL not change (entry 94 KiB, scene chunk 180 KiB, scene file 119 KiB, replay 6800 bytes).
+2. THE release SHALL ship `dist/scene/`: `deploy/build-release.sh` copies `apps/web/dist` whole and the release check has no file filter that would drop a WebP file; `check:build` SHALL stay deterministic (the files are copied byte for byte). THE finding SHALL be written in the design.
+
+### Requirement 29: Tests of part 4
+**User Story:** As the maintainer, I want the new rules tested and the old tests kept.
+
+#### Acceptance Criteria
+
+1. THE test of `art.test.ts` that forbids image files, `Assets.load`, `fetch(` and `url(` in `src/scene/*.ts` SHALL be updated, not deleted: `Assets.load` and `/scene/` paths are allowed only in `sprites.ts`, every loaded path is in the manifest and starts with `/scene/`, and the other bans stay for every file.
+2. `pixi-surface.test.ts` SHALL add `Assets` to its `pixi.js` mock and assert the texture count for both paths (sprites loaded and fallback); `animator.test.ts` SHALL keep its source check true.
+3. NEW tests SHALL cover the fit function (box width equals the floor width, bottom centre equals the front corner), `loadSprites` returning `null` on a rejection, on the timeout and on a non-image answer, the surface building no procedural body, icon or roof with sprites and building them without, the ghost split never passing `GHOST_MAX` per room or the total cap, Property 9 and Property 10.
+4. `scene.spec.ts` SHALL check that on `/?demo=1` the ten files are requested with status 200 and `image/webp` and the console has no error, and that with `/scene/*` aborted the Scene still renders; `no-webgl.spec.ts` and `accessible.spec.ts` SHALL check that no `/scene/*.webp` request is made.
+
+### Requirement 30: Steering, README and records of part 4
+**User Story:** As the maintainer, I want the rules and the history to say what the code does.
+
+#### Acceptance Criteria
+
+1. `.kiro/steering/scene-rendering.md`, `tech.md` and `security.md` SHALL replace the procedural-only rule with: "Scene art is procedural shapes plus the team's illustrated sprites in `apps/web/public/scene/` (generated with Seedream 5.5 via Runware and curated by the team; original, imitating no existing game, film or franchise); the procedural art stays as the fallback".
+2. THE README SHALL get a short "Art" section with the same credit sentence.
+3. `docs/KIRO_USAGE.md` SHALL get one line per finished task, in the form `2026-11-17 | visual-refresh/N | …`, ending with a newline.
+4. THE work SHALL add no dependency, no secret, no home path and no forbidden retro-client word; the ten files SHALL be unchanged; and while part 4 is built, ONLY the checks named in the design SHALL be run.

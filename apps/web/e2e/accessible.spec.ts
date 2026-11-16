@@ -4,7 +4,7 @@ const URL_ACCESSIBLE = '/?mode=accessible&demo=all-haunted';
 const sceneRequests = (page: Page): string[] => {
   const seen: string[] = [];
   page.on('request', (r) => {
-    if (/SceneCanvas|pixi/i.test(r.url())) seen.push(r.url());
+    if (/SceneCanvas|pixi|\/scene\/[^/]+\.webp/i.test(r.url())) seen.push(r.url());
   });
   return seen;
 };

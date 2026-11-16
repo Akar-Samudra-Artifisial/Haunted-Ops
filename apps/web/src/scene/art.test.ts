@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { insideDiamond } from '../test/geometry.js';
 import { computeLayout } from './layout.js';
@@ -254,19 +254,35 @@ describe('asset audit', () => {
   const dir = 'src/scene';
   const sources = readdirSync(dir).filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\./.test(f));
 
-  it('imports no image, SVG, font or sound file and loads nothing from the network', () => {
+  it('imports no image, SVG, font or sound file and loads nothing from the network (only sprites.ts loads its manifest files)', () => {
     for (const file of sources) {
       const text = readFileSync(`${dir}/${file}`, 'utf8');
       expect(text, file).not.toMatch(/from\s+['"][^'"]+\.(png|jpe?g|gif|webp|avif|svg|woff2?|ttf|otf|mp3|ogg|wav)(\?[^'"]*)?['"]/i);
-      expect(text, file).not.toMatch(/new\s+Image\s*\(|new\s+Audio\s*\(|Assets\.load|fetch\s*\(|@font-face|url\(/);
+      expect(text, file).not.toMatch(/new\s+Image\s*\(|new\s+Audio\s*\(|fetch\s*\(|@font-face|url\(/);
+      if (file !== 'sprites.ts') {
+        expect(text, file).not.toMatch(/Assets\.load|\.webp|['"`]\/scene\//);
+      }
     }
   });
-
-  it('lets only pixi-surface.ts import pixi.js', () => {
-    const importers = sources.filter((f) => /from\s+['"]pixi\.js/.test(readFileSync(`${dir}/${f}`, 'utf8')));
-    expect(importers).toEqual(['pixi-surface.ts']);
+  it('lets Assets.load run only on manifest paths, and every manifest path starts with /scene/ and is a file of public/scene', () => {
+    const text = readFileSync(`${dir}/sprites.ts`, 'utf8');
+    const calls = text.match(/Assets\.load/g) ?? [];
+    expect(calls).toHaveLength(1);
+    expect(text).toContain('Assets.load<Texture>(SPRITE_MANIFEST[k])');
+    const manifest = text.slice(text.indexOf('SPRITE_MANIFEST = {'), text.indexOf('} as const'));
+    const paths = text.match(/['"`]\/scene\/[^'"`]*['"`]/g) ?? [];
+    expect(paths.length).toBe(10);
+    for (const quoted of paths) {
+      const path = quoted.slice(1, -1);
+      expect(path, path).toMatch(/^\/scene\/[a-z-]+\.webp$/);
+      expect(manifest, path).toContain(`'${path}'`);
+      expect(existsSync(`public${path}`), path).toBe(true);
+    }
   });
-
+  it('lets only pixi-surface.ts and sprites.ts import pixi.js', () => {
+    const importers = sources.filter((f) => /from\s+['"]pixi\.js/.test(readFileSync(`${dir}/${f}`, 'utf8')));
+    expect(importers).toEqual(['pixi-surface.ts', 'sprites.ts']);
+  });
   it('uses the system font stack of the page', () => {
     const palette = readFileSync(`${dir}/palette.ts`, 'utf8');
     expect(palette).toContain('system-ui');

@@ -5,7 +5,7 @@ fileMatchPattern: "apps/web/src/scene/**"
 
 # Scene rendering
 
-- PixiJS v8. Procedural shapes and our own palette only.
+- PixiJS v8. Our own palette. Scene art is procedural shapes plus the team's illustrated sprites in `apps/web/public/scene/` (generated with Seedream 5.5 via Runware and curated by the team; original, imitating no existing game, film or franchise); the procedural art stays as the fallback.
 - Budget: 60 fps. Frame time target under 16.7 ms.
 - Sprite caps: set a hard maximum for ghosts, fog puffs and particles per room. Drop the oldest first.
 - Use `ParticleContainer` for ghosts, fog and sparks. Avoid per-frame allocations.
@@ -15,7 +15,7 @@ fileMatchPattern: "apps/web/src/scene/**"
 
 ## Lantern in a dark house (`visual-refresh` part 2)
 
-The house sits in the dark. A calm room is dim and quiet; trouble is what lights up. A viewer tells which room is in trouble, and how bad, in two seconds. All art is procedural (shapes, gradients and textures drawn by code, built once at init, never per frame).
+The house sits in the dark. A calm room is dim and quiet; trouble is what lights up. A viewer tells which room is in trouble, and how bad, in two seconds. Scene art is procedural shapes plus the team's illustrated sprites in `apps/web/public/scene/` (generated with Seedream 5.5 via Runware and curated by the team; original, imitating no existing game, film or franchise); the procedural art stays as the fallback. The procedural art (shapes, gradients and textures drawn by code, built once at init, never per frame) is what draws when the files cannot load.
 
 ### Level to look (`LEVEL_LOOK` in `model.ts`, the one table; `isDark` stays the rule for a dark room)
 

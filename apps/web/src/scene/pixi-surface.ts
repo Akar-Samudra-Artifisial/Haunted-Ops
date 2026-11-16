@@ -7,9 +7,10 @@ import { clamp } from './math.js';
 import type { Pt, RoomLayout, SceneLayout } from './layout.js';
 import type { RoomVisual, SceneModel } from './model.js';
 import { FONT_STACK, PALETTE, PILL_ALPHA, hexToNumber } from './palette.js';
-import { FOG_BANK_MAX, FOG_WISP_MAX, GHOST_MAX, MOTE_MAX } from './particles.js';
+import { FOG_BANK_MAX, FOG_WISP_MAX, GHOST_KINDS, GHOST_KIND_MAX, GHOST_MAX, MOTE_MAX } from './particles.js';
 import { CORRIDOR_STYLE, buildHouseArt, buildRoomArt, chipLayout, clockHands, starField, type RoomArt, type RoomIcon } from './shapes.js';
 import { FOG_LAYERS, SceneInitError, type Frame, type HuntFrame, type ParticleBuffer, type RoomFrame, type Surface, type SurfaceInit } from './surface.js';
+import { loadSprites, roomSpriteFit, spriteBrightness, spriteSilhouette, unloadSprites, type SpriteSet } from './sprites.js';
 import { TEXTURE_NAMES, drawTexture, type TextureName } from './textures.js';
 
 const num = hexToNumber;
@@ -20,6 +21,24 @@ function mixColor(a: number, b: number, t: number): number {
   const ch = (shift: number): number => Math.round(((a >> shift) & 255) * (1 - k) + ((b >> shift) & 255) * k);
   return (ch(16) << 16) | (ch(8) << 8) | ch(0);
 }
+
+/** True when this browser gives a WebGL context: nothing is fetched for a scene that cannot start. */
+function webglAvailable(): boolean {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2') ?? document.createElement('canvas').getContext('webgl');
+    if (!gl) return false;
+    (gl as WebGLRenderingContext).getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A grey tint of a brightness from 0 to 1. */
+const grey = (b: number): number => {
+  const c = Math.round(clamp(b, 0, 1) * 255);
+  return (c << 16) | (c << 8) | c;
+};
 
 /** Alpha of the two mist sprites at rest, and the most the slow breath takes away (0.15 at most). */
 const MIST_ALPHA = [0.92, 0.78] as const;
@@ -44,22 +63,22 @@ class Pool {
     }
   }
 
-  fill(buf: ParticleBuffer): void {
-    for (let i = 0; i < this.particles.length; i++) {
-      const p = this.particles[i] as Particle;
-      if (i < buf.count) {
-        // `size` is the sprite height: a wide texture (the fog bank) keeps its aspect.
-        const s = (buf.size[i] as number) / this.texH;
-        p.x = buf.x[i] as number;
-        p.y = buf.y[i] as number;
-        p.scaleX = s;
-        p.scaleY = s;
-        p.alpha = buf.alpha[i] as number;
-        p.rotation = buf.rotation[i] as number;
-      } else {
-        p.alpha = 0;
-      }
+  /** Writes the slots of `buf` (only those of variant `kind` when given) and hides the pool's other particles. */
+  fill(buf: ParticleBuffer, kind?: number): void {
+    let j = 0;
+    for (let i = 0; i < buf.count && j < this.particles.length; i++) {
+      if (kind !== undefined && buf.kind[i] !== kind) continue;
+      const p = this.particles[j++] as Particle;
+      // `size` is the sprite height: a wide texture (the fog bank) keeps its aspect.
+      const s = (buf.size[i] as number) / this.texH;
+      p.x = buf.x[i] as number;
+      p.y = buf.y[i] as number;
+      p.scaleX = s;
+      p.scaleY = s;
+      p.alpha = buf.alpha[i] as number;
+      p.rotation = buf.rotation[i] as number;
     }
+    for (; j < this.particles.length; j++) (this.particles[j] as Particle).alpha = 0;
   }
 }
 
@@ -70,6 +89,8 @@ interface RoomView {
   /** The chip and the hunt slot: above the fog, below the ghosts. */
   texts: Container;
   body: Container;
+  /** The illustrated room, or null for the procedural one. */
+  sprite: Sprite | null;
   glow: Sprite;
   dim: Graphics;
   /** Danger tint over floor and walls. */
@@ -93,6 +114,8 @@ interface RoomView {
 
 /** Points of the seal ring; it is drawn as the first `n` segments. */
 const SEAL_STEPS = 48;
+/** The lantern of the illustrated Exorcist, as shares of the figure's height (left of its centre, up from its feet). */
+const SPRITE_LANTERN = { x: 0.23, y: 0.42 } as const;
 /** A fizzle throws at most this many spark dots (Graphics, not particles). */
 const SPARK_COUNT = 6;
 
@@ -103,11 +126,17 @@ interface HuntArt {
   result: Graphics;
   seal: Graphics;
   figure: Container;
+  /** The illustrated figure (null: the procedural body), its two poses and its height. */
+  figureSprite: Sprite | null;
+  poses: { walk: Texture; scan: Texture } | null;
+  figH: number;
+  facing: number;
   lanternGlow: Sprite;
   lantern: Graphics;
   sparks: Graphics[];
   lanternX: number;
   lanternY: number;
+  /** Lantern of the sprite figure, in figure heights from its feet (x is for a figure facing left). */
   slot: { x: number; y: number; w: number; h: number; midY: number; r: number; markX: (i: number) => number };
   ringPts: number[];
   /** What is drawn now, so a frame redraws a Graphics only when it changed. */
@@ -148,7 +177,8 @@ export class PixiSurface implements Surface {
   private destroyed = false;
   private host: HTMLElement | null = null;
   private textures = new Map<TextureName, Texture>();
-  private pools: { ghosts: Pool; fog: Pool; fogBank: Pool; motes: Pool; pulses: Pool } | null = null;
+  private sprites: SpriteSet | null = null;
+  private pools: { ghosts: Pool[]; fog: Pool; fogBank: Pool; motes: Pool; pulses: Pool } | null = null;
   private layers: Layers | null = null;
   private views = new Map<ServiceName, RoomView>();
   private corridors: Array<{ base: Graphics; lit: Graphics }> = [];
@@ -166,6 +196,8 @@ export class PixiSurface implements Surface {
     this.quality = opts.quality;
     this.dpr = opts.dpr;
     this.size = { width: opts.width, height: opts.height };
+    // The files load while the renderer starts, but only when the browser can give a WebGL context at all.
+    const loading = webglAvailable() ? loadSprites() : Promise.resolve(null);
     const app = new Application();
     try {
       await app.init({
@@ -195,7 +227,14 @@ export class PixiSurface implements Surface {
     canvas.style.height = '100%';
     opts.host.appendChild(canvas);
 
-    for (const name of TEXTURE_NAMES) this.textures.set(name, Texture.from(drawTexture(name)));
+    this.sprites = await loading;
+    if (this.destroyed) {
+      this.sprites = null;
+      app.destroy({ removeView: true }, { children: true, texture: true, textureSource: true });
+      return;
+    }
+    const sprites = this.sprites;
+    for (const name of TEXTURE_NAMES) if (!(sprites && name === 'ghost')) this.textures.set(name, Texture.from(drawTexture(name)));
     const ring = new Graphics();
     const ui = new Container();
     ui.addChild(ring);
@@ -207,8 +246,11 @@ export class PixiSurface implements Surface {
     const tex = (n: TextureName): Texture => this.textures.get(n) as Texture;
     const pools = {
       fogBank: new Pool(tex('fogBank'), MAX_ROOMS * FOG_BANK_MAX, PALETTE.fog, 0.5),
-      fog: new Pool(tex('fog'), MAX_ROOMS * FOG_WISP_MAX, PALETTE.fog, 0.5),
-      ghosts: new Pool(tex('ghost'), MAX_ROOMS * GHOST_MAX, PALETTE.ghost, 1),
+      fog: new Pool(sprites ? sprites.fog : tex('fog'), MAX_ROOMS * FOG_WISP_MAX, PALETTE.fog, 0.5),
+      // One pool per ghost sprite (a pool holds one texture); without sprites, one procedural pool.
+      ghosts: sprites
+        ? sprites.ghosts.map((t, k) => new Pool(t, MAX_ROOMS * (GHOST_KIND_MAX[k] as number), '#ffffff', 1))
+        : [new Pool(tex('ghost'), MAX_ROOMS * GHOST_MAX, PALETTE.ghost, 1)],
       motes: new Pool(tex('mote'), MAX_ROOMS * MOTE_MAX, PALETTE.lampWarm, 0.5),
       pulses: new Pool(tex('mote'), MAX_PULSES, PALETTE.lampWarm, 0.5),
     };
@@ -229,7 +271,7 @@ export class PixiSurface implements Surface {
       // The ring runs along the silhouette, through the front corner: the chip stays on top of it.
       layers.ui,
       layers.texts,
-      pools.ghosts.container,
+      ...pools.ghosts.map((g) => g.container),
     );
 
     const onLost = (e: Event): void => {
@@ -300,8 +342,10 @@ export class PixiSurface implements Surface {
       }
       const roof = layers.roof;
       roof.clear();
-      for (const poly of art.roof.polys) roof.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
-      for (const line of art.roof.lines) roof.poly(flat(line.points), false).stroke({ color: num(line.color), alpha: line.alpha, width: line.width, join: 'round', cap: 'round' });
+      // A room with a sprite has its own wall caps: the procedural roof is not drawn over it.
+      const roofed = !layout.rooms.some((r) => this.sprites?.rooms[r.name]);
+      for (const poly of roofed ? art.roof.polys : []) roof.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
+      for (const line of roofed ? art.roof.lines : []) roof.poly(flat(line.points), false).stroke({ color: num(line.color), alpha: line.alpha, width: line.width, join: 'round', cap: 'round' });
     }
 
     for (const child of layers.corridors.removeChildren()) child.destroy({ children: true });
@@ -332,15 +376,27 @@ export class PixiSurface implements Surface {
     const art = buildRoomArt(room, layout.scale);
     const root = new Container();
     const body = new Container();
+    const roomTex = this.sprites?.rooms[room.name];
+    const fit = roomTex ? roomSpriteFit(room.floor) : null;
     const base = new Graphics();
     // The floor and the walls first, then the floor gradient and the inner wall panels, then the rug and the lamp shade.
-    for (const poly of [...art.polys.slice(0, 3), ...art.detail, ...art.polys.slice(3)]) base.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
-    if (art.icon) this.drawIcon(base, art.icon);
-    for (const line of art.lines) base.poly(flat(line.points), false).stroke({ color: num(line.color), alpha: line.alpha, width: line.width, join: 'round' });
     const clockFace = new Graphics();
     const clock = new Graphics();
-    clockFace.circle(art.clock.center.x, art.clock.center.y, art.clock.radius).fill({ color: num(PALETTE.nightDeep), alpha: 0.9 }).stroke({ color: num(PALETTE.trim), width: Math.max(1, art.clock.radius * 0.12) });
-    body.addChild(base, clockFace, clock);
+    let sprite: Sprite | null = null;
+    if (roomTex && fit) {
+      // The illustrated room: no procedural body, rug, icon or clock (the picture has its own).
+      sprite = new Sprite(roomTex);
+      sprite.position.set(fit.x, fit.y);
+      sprite.width = fit.width;
+      sprite.height = fit.height;
+      body.addChild(sprite);
+    } else {
+      for (const poly of [...art.polys.slice(0, 3), ...art.detail, ...art.polys.slice(3)]) base.poly(flat(poly.points), true).fill({ color: num(poly.fill), alpha: poly.alpha });
+      if (art.icon) this.drawIcon(base, art.icon);
+      for (const line of art.lines) base.poly(flat(line.points), false).stroke({ color: num(line.color), alpha: line.alpha, width: line.width, join: 'round' });
+      clockFace.circle(art.clock.center.x, art.clock.center.y, art.clock.radius).fill({ color: num(PALETTE.nightDeep), alpha: 0.9 }).stroke({ color: num(PALETTE.trim), width: Math.max(1, art.clock.radius * 0.12) });
+      body.addChild(base, clockFace, clock);
+    }
 
     const glow = new Sprite(this.textures.get('glow') as Texture);
     glow.anchor.set(0.5);
@@ -350,7 +406,7 @@ export class PixiSurface implements Surface {
     glow.blendMode = 'add';
     glow.tint = num(PALETTE.glowWarm);
 
-    const sil = flat(room.silhouette);
+    const sil = flat(fit ? spriteSilhouette(fit) : room.silhouette);
     const dim = new Graphics();
     dim.poly(sil, true).fill({ color: num(PALETTE.nightDeep) });
     dim.alpha = 0;
@@ -360,7 +416,8 @@ export class PixiSurface implements Surface {
     outlineEdge.poly(sil, true).stroke({ color: num(PALETTE.lightCold), width: Math.max(1, layout.scale * 0.035), join: 'round' });
     outlineEdge.alpha = 0;
     const tint = new Graphics();
-    tint.poly(sil, true).fill({ color: num(PALETTE.danger) });
+    // On a sprite room the danger tint stays on the floor diamond.
+    tint.poly(fit ? flat(room.floor) : sil, true).fill({ color: num(PALETTE.danger) });
     tint.alpha = 0;
     const [floorTop, floorRight, floorBottom, floorLeft] = room.floor;
     const half = { w: (floorRight.x - floorLeft.x) / 4, h: (floorBottom.y - floorTop.y) / 4 };
@@ -396,7 +453,7 @@ export class PixiSurface implements Surface {
     root.addChild(body, tint, ...fogLayers, glow, dim, ...mist, outlineTrim, outlineEdge, outlineAlarm, huntArt.seal, huntArt.sweep);
     const texts = new Container();
     texts.addChild(plate, label, bang, hunt);
-    return { room, art, root, texts, body, glow, dim, tint, fogLayers, mist, half, outlineTrim, outlineEdge, outlineAlarm, clock, plate, label, bang, hunt, huntArt };
+    return { room, art, root, texts, body, sprite, glow, dim, tint, fogLayers, mist, half, outlineTrim, outlineEdge, outlineAlarm, clock, plate, label, bang, hunt, huntArt };
   }
 
   /** Draws the small icon of a service on the back wall. */
@@ -433,20 +490,33 @@ export class PixiSurface implements Surface {
     const figure = new Container();
     const w = FIGURE_W * s;
     const h = FIGURE_H * s;
-    const body = new Graphics();
-    body.roundRect(-w / 2, -h, w, h, w / 2).fill({ color: num(PALETTE.trim), alpha: 0.95 });
-    body.circle(0, -h * 0.82, w * 0.34).fill({ color: num(PALETTE.nightDeep), alpha: 0.9 });
-    const lanternX = w * 0.75;
-    const lanternY = -h * 0.4;
+    const poses = this.sprites ? this.sprites.exorcist : null;
+    // The illustrated figure stands on its feet (anchor at the bottom centre) and is `h` high; its lantern is on the left of the picture.
+    let figureSprite: Sprite | null = null;
+    let body: Graphics | Sprite;
+    if (poses) {
+      figureSprite = new Sprite(poses.walk);
+      figureSprite.anchor.set(0.5, 1);
+      figureSprite.scale.set(h / poses.walk.height);
+      body = figureSprite;
+    } else {
+      const g = new Graphics();
+      g.roundRect(-w / 2, -h, w, h, w / 2).fill({ color: num(PALETTE.trim), alpha: 0.95 });
+      g.circle(0, -h * 0.82, w * 0.34).fill({ color: num(PALETTE.nightDeep), alpha: 0.9 });
+      body = g;
+    }
+    const lanternX = poses ? -h * SPRITE_LANTERN.x : w * 0.75;
+    const lanternY = poses ? -h * SPRITE_LANTERN.y : -h * 0.4;
     const lanternGlow = new Sprite(this.textures.get('glow') as Texture);
     lanternGlow.anchor.set(0.5);
     lanternGlow.position.set(lanternX, lanternY);
     lanternGlow.width = 0.9 * s;
     lanternGlow.height = 0.9 * s;
     lanternGlow.blendMode = 'add';
-    lanternGlow.tint = num(PALETTE.glowWarm);
+    lanternGlow.tint = num(poses ? PALETTE.ecto : PALETTE.glowWarm);
     const lantern = new Graphics();
-    lantern.circle(lanternX, lanternY, Math.max(2, 0.06 * s)).fill({ color: num(PALETTE.lampWarm) });
+    // The picture has its own lantern: only the glow over it is drawn.
+    if (!poses) lantern.circle(lanternX, lanternY, Math.max(2, 0.06 * s)).fill({ color: num(PALETTE.lampWarm) });
     const sparks: Graphics[] = [];
     for (let i = 0; i < SPARK_COUNT; i++) {
       const spark = new Graphics();
@@ -495,6 +565,10 @@ export class PixiSurface implements Surface {
       result,
       seal,
       figure,
+      figureSprite,
+      poses,
+      figH: h,
+      facing: 0,
       lanternGlow,
       lantern,
       sparks,
@@ -565,7 +639,8 @@ export class PixiSurface implements Surface {
     layers.roof.alpha = frame.roofAlpha;
     pools.fogBank.fill(frame.fogBank);
     pools.fog.fill(frame.fog);
-    pools.ghosts.fill(frame.ghosts);
+    if (this.sprites) for (let k = 0; k < GHOST_KINDS; k++) (pools.ghosts[k] as Pool).fill(frame.ghosts, k);
+    else (pools.ghosts[0] as Pool).fill(frame.ghosts);
     pools.motes.fill(frame.motes);
     pools.pulses.fill(frame.pulses);
     this.drawRing(frame.selected, layout);
@@ -577,9 +652,16 @@ export class PixiSurface implements Surface {
     const light = rf.light * rf.flicker;
     view.body.position.set(rf.shakeX, rf.shakeY);
     // The glow is warm in a calm room and turns to the danger colour as the tint grows; a pulse adds one soft swell.
-    view.glow.alpha = clamp(light * breath + 0.35 * rf.pulse, 0, 1) * (rf.dark ? 0 : 0.85);
+    view.glow.alpha = clamp(light * breath + 0.35 * rf.pulse, 0, 1) * (rf.dark ? 0 : view.sprite ? 0.6 : 0.85);
     view.glow.tint = mixColor(num(PALETTE.glowWarm), num(PALETTE.danger), clamp(rf.tint / 0.6, 0, 1));
-    view.dim.alpha = clamp(rf.dim + (1 - clamp(light, 0, 1)) * 0.6 * (1 - rf.dim), 0, 0.95);
+    const dimAlpha = clamp(rf.dim + (1 - clamp(light, 0, 1)) * 0.6 * (1 - rf.dim), 0, 0.95);
+    // A sprite room is dimmed by tinting the picture itself (the overlay only covers the walls and floor of the plan).
+    if (view.sprite) {
+      view.sprite.tint = grey(spriteBrightness(clamp(light, 0, 1), rf.dim));
+      view.dim.alpha = 0;
+    } else {
+      view.dim.alpha = dimAlpha;
+    }
     view.tint.alpha = clamp(rf.tint * (1 + 0.6 * rf.pulse), 0, 0.8) * (rf.dark ? 0 : 1);
     view.outlineAlarm.alpha = rf.alarm;
     view.outlineEdge.alpha = rf.edge;
@@ -647,6 +729,18 @@ export class PixiSurface implements Surface {
     const { doors, exorcistAt } = view.room;
     a.figure.alpha = h.figure;
     a.figure.position.set(doors.px.x + (exorcistAt.x - doors.px.x) * h.walk, doors.px.y + (exorcistAt.y - doors.px.y) * h.walk);
+    if (a.figureSprite && a.poses) {
+      // Walking in or moving: the walk pose; working: the scan pose. The art faces left: mirror it to face its way.
+      a.figureSprite.texture = h.walk < 0.999 ? a.poses.walk : a.poses.scan;
+      const dir = exorcistAt.x >= doors.px.x ? 1 : -1;
+      if (dir !== a.facing) {
+        a.facing = dir;
+        // The art faces left: moving right (dir 1) mirrors it, and the lantern goes to the right with it.
+        a.figureSprite.scale.x = -Math.abs(a.figureSprite.scale.x) * dir;
+        a.lanternX = dir * a.figH * SPRITE_LANTERN.x;
+        a.lanternGlow.position.set(a.lanternX, a.lanternY);
+      }
+    }
     a.lantern.alpha = h.lantern;
     a.lanternGlow.alpha = 0.75 * h.lantern;
     for (let i = 0; i < a.sparks.length; i++) {
@@ -682,6 +776,8 @@ export class PixiSurface implements Surface {
     this.textures.clear();
     this.contextCb = null;
     if (app) app.destroy({ removeView: true }, { children: true, texture: true, textureSource: true });
+    if (this.sprites) unloadSprites();
+    this.sprites = null;
     this.host = null;
   }
 }

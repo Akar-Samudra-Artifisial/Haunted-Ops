@@ -116,3 +116,55 @@ test.describe('keyboard and fallback', () => {
   });
 });
 
+test.describe('the illustrated sprites (visual-refresh part 4)', () => {
+  const FILES = [
+    'room-payments',
+    'room-orders',
+    'room-ledger',
+    'room-gate',
+    'ghost-calm',
+    'ghost-drift',
+    'ghost-angry',
+    'exorcist-walk',
+    'exorcist-scan',
+    'fog-wisp',
+  ];
+  test('requests the room, ghost, fog and Exorcist files (200, image/webp) and logs no console error', async ({ page }) => {
+    const seen = new Map<string, { status: number; type: string }>();
+    const errors: string[] = [];
+    page.on('response', (r) => {
+      const path = new URL(r.url()).pathname;
+      if (path.startsWith('/scene/')) seen.set(path, { status: r.status(), type: r.headers()['content-type'] ?? '' });
+    });
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text());
+    });
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto('/?demo=1');
+    await expect(page.locator('#scene-mount canvas')).toBeVisible({ timeout: 45_000 });
+    await page.waitForTimeout(2500);
+    for (const f of FILES) {
+      const hit = seen.get(`/scene/${f}.webp`);
+      expect(hit, `${f}.webp is requested`).toBeDefined();
+      expect(hit?.status, f).toBe(200);
+      expect(hit?.type, f).toContain('image/webp');
+    }
+    expect(errors, errors.join('\n')).toEqual([]);
+    mkdirSync(SHOTS, { recursive: true });
+    await page.locator('#scene-mount').screenshot({ path: `${SHOTS}/sprites-demo.png` });
+  });
+  test('falls back to the procedural scene when the files cannot be loaded', async ({ page }) => {
+    await page.route('**/scene/*.webp', (route) => route.abort());
+    const crashes: string[] = [];
+    page.on('pageerror', (e) => crashes.push(e.message));
+    await page.goto('/?demo=1');
+    const canvas = page.locator('#scene-mount canvas');
+    await expect(canvas).toBeVisible({ timeout: 45_000 });
+    await page.waitForTimeout(2500);
+    const png = await canvas.screenshot({ path: `${SHOTS}/sprites-fallback.png` });
+    const stats = await pixelStats(page, png);
+    expect(stats.distinct).toBeGreaterThanOrEqual(16);
+    expect(stats.differing).toBeGreaterThan(0.05);
+    expect(crashes).toEqual([]);
+  });
+});

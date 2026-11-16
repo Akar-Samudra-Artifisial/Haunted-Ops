@@ -4,6 +4,27 @@ import { unit } from './rng.js';
 export const GHOST_MAX = 12;
 /** Fog puffs per room, in two layers: a low bank on the floor and drifting wisps above it. */
 export const FOG_MAX = 20;
+/** The three ghost sprites (`visual-refresh` part 4): calm, drift, angry. */
+export type GhostKind = 0 | 1 | 2;
+export const GHOST_KINDS = 3;
+/**
+ * The sprite of ghost slot `i` of a room at `level`: haunted and uneasy rooms alternate calm and drift, a possessed (or
+ * darker) room shows mostly angry with every fourth slot drifting. The slots of a room are shared out, never added to.
+ */
+export function ghostKind(level: number, i: number): GhostKind {
+  if (level >= 3) return i % 4 === 3 ? 1 : 2;
+  return level <= 0 ? 0 : i % 2 === 0 ? 0 : 1;
+}
+/** The most slots of one room that one variant pool ever holds (over every level), so a pool is sized once. */
+export const GHOST_KIND_MAX: readonly [number, number, number] = (() => {
+  const max = [0, 0, 0];
+  for (let level = 0; level <= 4; level++) {
+    const n = [0, 0, 0];
+    for (let i = 0; i < GHOST_MAX; i++) n[ghostKind(level, i)] = (n[ghostKind(level, i)] as number) + 1;
+    for (let k = 0; k < GHOST_KINDS; k++) max[k] = Math.max(max[k] as number, n[k] as number);
+  }
+  return [max[0] as number, max[1] as number, max[2] as number];
+})();
 export const FOG_BANK_MAX = 10;
 export const FOG_WISP_MAX = FOG_MAX - FOG_BANK_MAX;
 /** Fog count to (bank, wisps): the bank fills first, so a thin fog hugs the floor. */

@@ -7,7 +7,7 @@ inclusion: always
 ## Hard rules
 
 - Original work built during the submission period. Do NOT copy or import code from `../seance` or `../seance-crew`. Different domain, different runtime (headless `kiro-cli` + MCP, not ACP), different web stack.
-- Original art: procedural shapes and our own palette. Do not imitate any existing game, film or franchise (names, characters, art style).
+- Original art: our own palette. Scene art is procedural shapes plus the team's illustrated sprites in `apps/web/public/scene/` (generated with Seedream 5.5 via Runware and curated by the team; original, imitating no existing game, film or franchise); the procedural art stays as the fallback. Do not imitate any existing game, film or franchise (names, characters, art style).
 - Production data never reaches the demo server. Replays use sanitized fixtures reviewed by a human.
 - Secrets (Kiro API key, GitHub token) only from env / AWS SSM. Never in the repo, logs, fixtures or screenshots.
 - pnpm only. Node 26. TypeScript strict.

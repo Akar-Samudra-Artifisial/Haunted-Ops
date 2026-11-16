@@ -20,7 +20,7 @@ Package manager: pnpm only. Runtime: Node 26. Language: TypeScript, strict mode.
 - Agent runtime is headless `kiro-cli` + MCP, not ACP. ACP is the fallback only if the G0 spike fails.
 - SSE over WebSocket: one-way server to browser stream, simpler, works through proxies.
 - PostgreSQL only: state, events and replays in one store. Single instance keeps fan-out in memory.
-- PixiJS v8 for the scene: WebGL/WebGPU sprites with procedural shapes, no asset pipeline.
+- PixiJS v8 for the scene: WebGL/WebGPU sprites. Scene art is procedural shapes plus the team's illustrated sprites in `apps/web/public/scene/` (generated with Seedream 5.5 via Runware and curated by the team; original, imitating no existing game, film or franchise); the procedural art stays as the fallback. Only `apps/web/src/scene/sprites.ts` loads the files; no asset pipeline.
 - The server, not the agent, holds the GitHub token and opens pull requests.
 
 ## Rejected alternatives

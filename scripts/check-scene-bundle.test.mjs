@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BUDGETS, analyze, closure, gzipSize, problems, splitChunks } from './check-scene-bundle.mjs';
+import { ASSET_BUDGETS, BUDGETS, analyze, assetProblems, manifestFiles, closure, gzipSize, problems, splitChunks } from './check-scene-bundle.mjs';
 
 const manifest = {
   'index.html': { file: 'assets/index-a.js', isEntry: true, imports: ['_shared.js'], dynamicImports: ['src/scene/SceneCanvas.tsx', 'src/replay/ReplayApp.tsx'] },
@@ -88,4 +88,24 @@ test('fails when the entry chunk reaches the replay chunk with a static import, 
   const r = analyze(manifest, read);
   assert.deepEqual(problems(r, { ...BUDGETS, replay: r.replayGzip }), []);
   assert.match(problems(r, { ...BUDGETS, replay: r.replayGzip - 1 })[0], /replay chunk is .* gzip, budget/);
+});
+
+test('reads the sprite files of the manifest in sprites.ts', () => {
+  const source = "export const M = { a: '/scene/room-a.webp', b: \"/scene/ghost-b.webp\", c: '/scene/room-a.webp' } as const; // /scene/<file>";
+  assert.deepEqual(manifestFiles(source), ['room-a.webp', 'ghost-b.webp']);
+});
+
+test('checks the sprite files: missing, over 80 KiB, over 400 KiB in all', () => {
+  const KIB = 1024;
+  const files = [
+    { name: 'room-a.webp', size: 50 * KIB },
+    { name: 'ghost-b.webp', size: 8 * KIB },
+  ];
+  assert.deepEqual(assetProblems(files, ['room-a.webp', 'ghost-b.webp']), []);
+  assert.match(assetProblems(files, ['room-a.webp', 'fog.webp'])[0], /fog\.webp is listed in the sprite manifest but missing/);
+  assert.match(assetProblems([{ name: 'big.webp', size: 80 * KIB + 1 }], [])[0], /big\.webp is .* budget 80\.0 KiB per file/);
+  const many = Array.from({ length: 6 }, (_, i) => ({ name: `f${i}.webp`, size: 70 * KIB }));
+  assert.match(assetProblems(many, [])[0], /in all, budget 400\.0 KiB/);
+  assert.equal(ASSET_BUDGETS.file, 80 * KIB);
+  assert.equal(ASSET_BUDGETS.total, 400 * KIB);
 });

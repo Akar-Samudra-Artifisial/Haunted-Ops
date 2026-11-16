@@ -1,6 +1,6 @@
 # Implementation Plan: visual-refresh
 ## Overview
-Make the page around the Scene modern and easy to read, in the look "a lantern in a dark house": design tokens, a two-column layout with a side Panel, a header with a short explanation, a Summary bar, the Hunt as a Timeline, a Legend, a table that becomes cards on a phone, restyled replay pages, and the document head. It is 11 top-level tasks in part 1 and tasks 12 to 17 in part 2 (the Scene and four fixes of the page). Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: visual-refresh, Property N`. Tasks 1 to 11 touch `apps/web/src/scene/` only in the `bg` and `focus` values of `palette.ts`; tasks 12 to 17 are the PixiJS scene. Nothing here touches the API, a server, GitHub or the real `kiro-cli`, and no test makes a network call.
+Make the page around the Scene modern and easy to read, in the look "a lantern in a dark house": design tokens, a two-column layout with a side Panel, a header with a short explanation, a Summary bar, the Hunt as a Timeline, a Legend, a table that becomes cards on a phone, restyled replay pages, and the document head. It is 11 top-level tasks in part 1 and tasks 12 to 17 in part 2 (the Scene and four fixes of the page), tasks 18 to 24 in part 3 and tasks 25 to 33 in part 4 (the illustrated sprites). Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: visual-refresh, Property N`. Tasks 1 to 11 touch `apps/web/src/scene/` only in the `bg` and `focus` values of `palette.ts`; tasks 12 to 17 are the PixiJS scene. Nothing here touches the API, a server, GitHub or the real `kiro-cli`, and no test makes a network call.
 ## Tasks
 - [x] 1. Design tokens and contrast
   - [x] 1.1 Replace the colours of `:root` in `apps/web/src/styles.css` with the new tokens and add the type, scale, spacing, radius and shadow tokens; every colour outside `:root` stays a custom property
@@ -164,6 +164,45 @@ Make the page around the Scene modern and easy to read, in the look "a lantern i
 - [x] 24. Steering and records of part 3
   - [x] 24.1 Update `.kiro/steering/scene-rendering.md` with the chip rule and the ghost spacing rule (two lines); add one `2026-11-17 | visual-refresh/N | …` line per finished task to `docs/KIRO_USAGE.md` (the file ends with a newline)
     - _Requirements: 22.4, 22.5_
+- [x] 25. Load the sprites, with the procedural art as the fallback
+  - [x] 25.1 `apps/web/src/scene/sprites.ts`: the manifest of the ten `/scene/` paths, the room fit constants, the service to room map, `roomSpriteFit`, `spriteSilhouette`, `spriteBrightness`, `loadSprites` (parallel `Assets.load`, 8 s timeout, `null` on any error, timeout or non-image) and `unloadSprites`
+    - _Requirements: 23.1, 23.2, 23.3, 24.1_
+  - [x] 25.2 `PixiSurface.init`: start `loadSprites` with the renderer only when WebGL is there, await it before the textures, skip the procedural ghost texture with sprites, `null` keeps today's art; `destroy` unloads the files
+    - _Requirements: 23.4, 23.5_
+- [x] 26. The rooms are illustrated
+  - [x] 26.1 `buildRoom`: one `Sprite` at the fitted place with no procedural body, rug, icon or clock; no roof over sprite rooms; outlines follow the picture's hexagon; the danger tint covers the floor only; a room without a sprite keeps the procedural room
+    - _Requirements: 23.4, 24.1, 24.2, 24.3, 24.4_
+- [x] 27. The level look on the pictures
+  - [x] 27.1 `drawRoom`: tint the sprite with the grey of `spriteBrightness(light, dim)`, no filters, a lower lamp glow over a picture, mist, fog and outlines unchanged
+    - _Requirements: 25.1, 25.2, 25.3, 27.1, 27.2_
+  - [x]* 27.2 Property test: the brightness is non-decreasing from calm to possessed and the dark room is the darkest (Property 9)
+    - _Requirements: 25.2, 25.4_
+- [x] 28. Ghosts, fog and the Exorcist as sprites
+  - [x] 28.1 `ghostKind` and `GHOST_KIND_MAX` in `particles.ts`, a `kind` array in the buffers, the animator writes it, one pool per ghost sprite with the existing caps
+    - _Requirements: 26.1, 26.5_
+  - [x]* 28.2 Property test: the ghost pools never pass the per-room, per-pool and total caps (Property 10)
+    - _Requirements: 26.1, 26.2_
+  - [x] 28.3 Fog wisps from `fog-wisp.webp` tinted `#7FD4E6`; the Exorcist `Sprite` (walk, scan, mirrored, lantern glow over the picture's lantern)
+    - _Requirements: 26.3, 26.4, 26.5_
+- [x] 29. Asset budget and release
+  - [x] 29.1 `scripts/check-scene-bundle.mjs`: each `dist/scene/*.webp` at most 80 KiB, all at most 400 KiB, the total printed, a missing manifest file fails; a script test; record the finding on `deploy/build-release.sh` (it ships `dist/scene/` whole; no change needed) and on `check:build`
+    - _Requirements: 28.1, 28.2_
+- [x] 30. Update and add tests
+  - [x] 30.1 `art.test.ts`: `Assets.load` and `/scene/` paths only in `sprites.ts`, every path in the manifest and under `/scene/`, the other bans for every file; `pixi.js` imported by `pixi-surface.ts` and `sprites.ts` only
+    - _Requirements: 29.1_
+  - [x] 30.2 `pixi-surface.test.ts` (the `Assets` mock, texture counts for both paths, no procedural body or roof with sprites, ghost pools within the caps, the figure picture) and the new `sprites.test.ts`
+    - _Requirements: 29.2, 29.3_
+  - [x] 30.3 `scene.spec.ts` (ten files, 200 and `image/webp`, no console error, the fallback case), `no-webgl.spec.ts` and `accessible.spec.ts` (no `/scene/*.webp` request)
+    - _Requirements: 29.4_
+- [x] 31. Budget
+  - [x] 31.1 Build the web app, run `node scripts/check-scene-bundle.mjs` once and write the measured numbers in the design ("Measured (build of part 4)"); add no import to `apps/web/src/scene/hooks.ts`
+    - _Requirements: 28.1_
+- [x] 32. Checks of part 4
+  - [x] 32.1 Run `pnpm typecheck`, `pnpm lint`, only the test files created or changed, `e2e/scene.spec.ts` once, the build with the bundle check once and the spec validator (the full suite and the whole end-to-end run are the orchestrator's)
+    - _Requirements: 29.3, 30.4_
+- [x] 33. Steering, README and records of part 4
+  - [x] 33.1 Replace the procedural-only rule in `.kiro/steering/scene-rendering.md`, `tech.md` and `security.md`, add the "Art" section to the README, and add one `2026-11-17 | visual-refresh/N | …` line per finished task to `docs/KIRO_USAGE.md` (the file ends with a newline)
+    - _Requirements: 30.1, 30.2, 30.3, 30.4_
 ## Notes
 - Scope: tasks 1 to 11 are part 1 of the refresh; `apps/web/src/scene/` changes there only in `palette.ts` (`bg`, and `focus` if it changed). Tasks 12 to 17 are part 2: the PixiJS scene (rooms, ghosts, fog, sky) and four fixes of the page. There is no zoom in the Scene; the camera of the parallax and of the roof is the focused room.
 - Entry chunk before this spec: 90.4 of 92 KiB gzip (`check-scene-bundle.mjs`; the 92 KiB comes from `accessible-mode/design.md`). The budget may rise to 94 KiB at most, only on a measured need. Replay chunk: 5665 bytes, budget 6800 bytes.
@@ -171,6 +210,7 @@ Make the page around the Scene modern and easy to read, in the look "a lantern i
 - Card mode keeps the table semantics by writing the roles as attributes, because `display: block` on table elements can remove the table role in some engines.
 - Checks while building: `pnpm typecheck`, `pnpm lint`, the touched test files, `pnpm --filter @haunted-ops/web build`, `node scripts/check-scene-bundle.mjs`, the spec validator. Not run: the full suite, `pnpm test` three times, `test:scripts`, `check:build`, `db:drift`, the whole Playwright run.
 - Part 3 (tasks 18 to 24): the chip, the ghosts, the hunt mist and the Incident column, written in a third prompt. The mist test is written first and fails on alpha 0.5 before the drawing is fixed. Checks while building: `pnpm typecheck`, `pnpm lint`, the created or changed test files, `e2e/layout.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator.
+- Part 4 (tasks 25 to 33): the illustrated sprites, written in a fourth prompt. The ten files of `apps/web/public/scene/` are made by the team and are not changed. Checks while building: `pnpm typecheck`, `pnpm lint`, the created or changed test files, `e2e/scene.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator.
 - Out of scope: spatial audio, any API change, any new dependency, a font file, CSS-in-JS.
 ## Task Dependency Graph
 ```mermaid
@@ -205,6 +245,16 @@ graph TD
   T21 --> T22
   T22 --> T23[23 Checks of part 3]
   T23 --> T24[24 Steering and records of part 3]
+  T24 --> T25[25 Load the sprites]
+  T25 --> T26[26 The rooms are illustrated]
+  T25 --> T28[28 Ghosts, fog and the Exorcist]
+  T26 --> T27[27 The level look on the pictures]
+  T27 --> T29[29 Asset budget and release]
+  T28 --> T29
+  T29 --> T30[30 Update and add tests]
+  T30 --> T31[31 Budget]
+  T31 --> T32[32 Checks of part 4]
+  T32 --> T33[33 Steering, README and records of part 4]
 ```
 ```json
 {
@@ -232,7 +282,16 @@ graph TD
     { "id": 20, "tasks": ["18.3", "18.4", "19.3", "19.4", "20.3"] },
     { "id": 21, "tasks": ["22.1"] },
     { "id": 22, "tasks": ["23.1"] },
-    { "id": 23, "tasks": ["24.1"] }
+    { "id": 23, "tasks": ["24.1"] },
+    { "id": 24, "tasks": ["25.1"] },
+    { "id": 25, "tasks": ["25.2"] },
+    { "id": 26, "tasks": ["26.1", "28.1"] },
+    { "id": 27, "tasks": ["27.1", "28.3"] },
+    { "id": 28, "tasks": ["27.2", "28.2", "29.1"] },
+    { "id": 29, "tasks": ["30.1", "30.2", "30.3"] },
+    { "id": 30, "tasks": ["31.1"] },
+    { "id": 31, "tasks": ["32.1"] },
+    { "id": 32, "tasks": ["33.1"] }
   ]
 }
 ```
