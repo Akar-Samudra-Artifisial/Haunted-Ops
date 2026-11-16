@@ -92,9 +92,17 @@ export type SubmitDiagnosisInput = ToolInputs['submit_diagnosis'];
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; field: string };
 
+/** kiro-cli adds this key to the arguments of a call: model text, never trusted, never stored. It is the only key dropped. */
+export const PURPOSE_KEY = '__tool_use_purpose';
+/** The arguments without the key `__tool_use_purpose` (exactly that key, at the top level); any other value is returned as it is. */
+export function withoutPurpose(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw) || !(PURPOSE_KEY in raw)) return raw;
+  const { [PURPOSE_KEY]: _dropped, ...rest } = raw as Record<string, unknown>;
+  return rest;
+}
 /** Parses raw tool arguments. On failure, `field` is the path of the first bad field (or `$`). */
 export function parseToolInput<K extends HuntTool>(tool: K, raw: unknown): ParseResult<ToolInputs[K]> {
-  const r = INPUT_SCHEMAS[tool].safeParse(raw);
+  const r = INPUT_SCHEMAS[tool].safeParse(withoutPurpose(raw));
   if (r.success) return { ok: true, value: r.data as ToolInputs[K] };
   const issue = r.error.issues[0];
   const keys = issue?.code === 'unrecognized_keys' ? issue.keys : [];

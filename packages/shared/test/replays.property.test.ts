@@ -92,6 +92,8 @@ const forbiddenArb: fc.Arbitrary<{ kind: string; text: string }> = fc
       { kind: 'ip address', text: `${r.w} ${r.n + 100}.${r.n}.0.${r.n}.` },
       { kind: 'ipv6 address', text: `${r.w} ::1` },
       { kind: 'ipv6 address', text: `${r.w} fe80::${r.n}:1` },
+      { kind: 'ipv6 address', text: `${r.w}:fe80::${r.n}:1` },
+      { kind: 'ipv6 address', text: `device:fe80::${r.n}:1` },
       { kind: 'ipv6 address', text: `${r.w} 2001:db8:0:0:0:0:0:${r.n}` },
       { kind: 'bidi or zero-width character', text: `${r.w}\u200B${r.w2}` },
       { kind: 'bidi or zero-width character', text: `${r.w}\u202E${r.w2}` },

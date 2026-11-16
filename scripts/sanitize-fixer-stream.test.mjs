@@ -107,3 +107,15 @@ test('keeps the stable tool name of a call and of an update, and nothing else of
   assert.equal(evs[2]._meta, undefined);
   assert.ok(!out.text.includes('nope'));
 });
+
+test('drops __tool_use_purpose from calls and updates, and keeps mcpServerName only when it is exorcist', () => {
+  const raw = [
+    call('real-call-1', 'Running: Reading charge.js:1', { operations: [{ mode: 'Line', path: `${WORK}/services/payments/src/charge.js` }], __tool_use_purpose: 'PURPOSE-TEXT' }),
+    update('real-call-1', { status: 'completed', rawInput: { operations: [], __tool_use_purpose: 'PURPOSE-TEXT' }, _meta: { kiro: { toolName: 'read', mcpServerName: 'other' } } }),
+  ].join('\n');
+  const r = sanitizeFixerStream(raw, { work: WORK, env: {} });
+  assert.equal(r.text.includes('PURPOSE-TEXT'), false);
+  const [c, u] = r.text.trim().split('\n').map((l) => JSON.parse(l).data.update);
+  assert.equal(c.title, 'Running: Reading charge.js:1');
+  assert.deepEqual(u._meta, { kiro: { toolName: 'read' } });
+});

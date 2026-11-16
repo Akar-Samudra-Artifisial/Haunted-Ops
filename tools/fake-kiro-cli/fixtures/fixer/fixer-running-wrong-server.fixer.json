@@ -1,0 +1,13 @@
+{
+  "steps": [
+    {
+      "kind": "migrate-agent"
+    },
+    {
+      "kind": "read-dynamic",
+      "path": "services/payments/src/charge.js",
+      "running": true,
+      "server": "other"
+    }
+  ]
+}

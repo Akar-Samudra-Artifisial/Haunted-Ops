@@ -51,6 +51,29 @@ export function scrub(text, found = new Map()) {
 }
 
 const isRecord = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
+/** kiro-cli adds this key to a tool input: model text, never trusted. It is the only key dropped here. */
+export const PURPOSE_KEY = '__tool_use_purpose';
+/** The input without the key `__tool_use_purpose`, at the top and in the `arguments` of a `Tool Call` wrapper. */
+export function dropPurpose(rawInput) {
+  if (!isRecord(rawInput)) return rawInput;
+  const { [PURPOSE_KEY]: _dropped, ...rest } = rawInput;
+  if (isRecord(rest.arguments) && PURPOSE_KEY in rest.arguments) {
+    const { [PURPOSE_KEY]: _inner, ...args } = rest.arguments;
+    return { ...rest, arguments: args };
+  }
+  return rest;
+}
+/**
+ * The identity of a tool event as an `_meta` to add: `_meta.kiro.toolName` when it is a plain name, and
+ * `_meta.kiro.mcpServerName` only when it is `exorcist`. Nothing else of `_meta` is kept. Empty when there is none.
+ */
+export function keepIdentity(update) {
+  const kiro = isRecord(update._meta) && isRecord(update._meta.kiro) ? update._meta.kiro : {};
+  const out = {};
+  if (typeof kiro.toolName === 'string' && /^[A-Za-z0-9_.-]{1,40}$/.test(kiro.toolName)) out.toolName = kiro.toolName;
+  if (kiro.mcpServerName === 'exorcist') out.mcpServerName = 'exorcist';
+  return Object.keys(out).length === 0 ? {} : { _meta: { kiro: out } };
+}
 
 /** Maps each distinct real id to a stable `<prefix>-N`, in order of first appearance. */
 export function idMapper(prefix) {
@@ -117,7 +140,7 @@ export function sanitizeStream(text, options = {}) {
     }
     const kind = update.sessionUpdate;
     if (kind === 'tool_call') {
-      const rawInput = scrubValue(update.rawInput ?? {}, found);
+      const rawInput = scrubValue(dropPurpose(update.rawInput ?? {}), found);
       const serialized = JSON.stringify(rawInput);
       out.push({
         type: ev.type ?? 'sessionUpdate',
@@ -129,6 +152,7 @@ export function sanitizeStream(text, options = {}) {
             title: scrub(String(update.title ?? ''), found),
             kind: typeof update.kind === 'string' ? update.kind : 'other',
             rawInput: serialized.length > MAX_INPUT_CHARS ? { truncated: true } : rawInput,
+            ...keepIdentity(update),
           },
         },
       });
@@ -137,7 +161,7 @@ export function sanitizeStream(text, options = {}) {
         type: ev.type ?? 'sessionUpdate',
         data: {
           sessionId: sessions(isRecord(ev.data) ? ev.data.sessionId : undefined),
-          update: { sessionUpdate: 'tool_call_update', toolCallId: calls(update.toolCallId), status: typeof update.status === 'string' ? update.status : 'unknown' },
+          update: { sessionUpdate: 'tool_call_update', toolCallId: calls(update.toolCallId), status: typeof update.status === 'string' ? update.status : 'unknown', ...keepIdentity(update) },
         },
       });
     } else if (kind === 'session_info_update') {

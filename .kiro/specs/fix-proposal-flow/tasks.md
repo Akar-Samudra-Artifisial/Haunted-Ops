@@ -278,6 +278,9 @@ Everything up to and including task 9 runs with no Lab, no `kiro-cli`, no real G
   - [x] 22.7 Pre-flight script `scripts/fix-live-preflight.mjs` (`pnpm --filter @haunted-ops/api preflight:live`) with tests on a fake binary; `docs/DEV.md` (run it first, then the live test twice); design, requirements and `.kiro/steering/security.md` updated (tool identity rule, accepted write and read schema, `Image` refused); one `docs/KIRO_USAGE.md` line; the checks
     - _Requirements: 28.11, 19.3_
 
+- [x] 23. The `Running: ` title and the purpose key (the same kiro-cli 3.3.0 API key login as `exorcist-agent` task 15; fake kiro-cli only, no live run)
+  - [x] 23.1 Fixer guard: `__tool_use_purpose` removed from the input of a call and an update before they are judged, a call or an update that names an MCP server stops as `foreign_tool`, a `Running: ` title passes with a `toolName`; fixer fixtures `fixer-running-title` and `fixer-running-wrong-server`, tests in `fixer-guard.recorded.test.ts` and `fixer-process.test.ts`, the fixer stream sanitizer drops the key
+    - _Requirements: 29.1_
 - [x] 10. Live recording and opt-in live test (spends Credits, run by the orchestrator)
   - [x] 10.1 Record at most 2 real fixer runs on the `error-spike` scenario with `kiro-cli` 3.3.0 and the pinned model (about 1 Credit each): pin the title shapes and rules of `fs_read` and `fs_write`, write them into the design, keep one sanitized stream as `live-fixer-error-spike.stream.jsonl` (no agent messages), and check the Patch passes the Checks
     - _Requirements: 3.1, 3.2, 3.3_
@@ -327,7 +330,8 @@ graph TD
   T19 --> T20[20 Dynamic edit shape]
   T20 --> T21[21 No chmod through links]
   T21 --> T22[22 Hardening before the live test]
-  T22 --> T10[10 Live recording]
+  T22 --> T23[23 Running title]
+  T23 --> T10[10 Live recording]
   T8 --> T11[11 Gate G-MVP]
   T10 --> T11
   T22 --> T11
@@ -355,9 +359,10 @@ graph TD
     { "id": 13, "tasks": ["20"] },
     { "id": 14, "tasks": ["21"] },
     { "id": 15, "tasks": ["22"] },
-    { "id": 16, "tasks": ["10"] },
-    { "id": 17, "tasks": ["11"] },
-    { "id": 18, "tasks": ["12"] }
+    { "id": 16, "tasks": ["23"] },
+    { "id": 17, "tasks": ["10"] },
+    { "id": 18, "tasks": ["11"] },
+    { "id": 19, "tasks": ["12"] }
   ]
 }
 ```

@@ -101,6 +101,13 @@ Add the replay feature end to end: the file format and its validator, the tools 
     - _Requirements: 8.4_
   - [x] 9.3 Check the fast-check seed print of `test:scripts`, run the checks, update `docs/KIRO_USAGE.md`
     - _Requirements: 8.5_
+- [x] 10. IPv6 behind a word and two flaky Web tests
+  - [x] 10.1 `hasIpv6`: a run that starts inside a word, or with a single `:`, is also tested after its first single `:`; `a::b` decided as refused and named in the design, the comment and a test; tests for `device:fe80::1`, `id:fe80::1`, `ipv6:2001:db8::7` and the accepted shapes, the property test and the 64 KiB shapes
+    - _Requirements: 9.1, 9.2_
+  - [x] 10.2 The two flaky Web tests get a 30 s timeout (and polling waits of 5 s in the second), `numRuns` unchanged
+    - _Requirements: 9.3_
+  - [x] 10.3 Documents and verification: requirements 9, design, `docs/KIRO_USAGE.md`; the checks of `exorcist-agent` task 15 pass
+    - _Requirements: 9.1, 9.2, 9.3_
 ## Notes
 - Name: the feature is always "replay". The fake `kiro-cli` has a mode with a similar name; this spec does not touch it and shares no code or name with it.
 - The Builder needs the built packages (`pnpm build`): it imports the validator of `packages/shared/dist` and `sanitizePrText` of `apps/api/dist`. Tests that run in vitest inject the source functions instead.
@@ -122,7 +129,9 @@ Add the replay feature end to end: the file format and its validator, the tools 
     { "id": 7, "tasks": ["8.5", "8.7", "8.8", "8.9"] },
     { "id": 8, "tasks": ["8.11"] },
     { "id": 9, "tasks": ["9.1", "9.2"] },
-    { "id": 10, "tasks": ["9.3"] }
+    { "id": 10, "tasks": ["9.3"] },
+    { "id": 11, "tasks": ["10.1", "10.2"] },
+    { "id": 12, "tasks": ["10.3"] }
   ]
 }
 ```

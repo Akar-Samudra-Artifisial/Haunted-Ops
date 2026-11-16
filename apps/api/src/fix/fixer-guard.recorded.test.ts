@@ -446,3 +446,50 @@ describe('Property 6d: an `Editing` call passes iff its command, keys, strings a
     );
   });
 });
+describe('the `Running: ` title of kiro-cli 3.3.0 with `KIRO_API_KEY` and the key `__tool_use_purpose`', () => {
+  const BATCH = fixture('read-operations.stream.jsonl');
+  const SCOPE = 'services/payments/src/';
+  const meta = (u: Record<string, unknown>): Record<string, unknown> => (u._meta as { kiro: Record<string, unknown> }).kiro;
+  const running = (text: string): string =>
+    mutate(text, 0, (u) => {
+      u.title = `Running: ${String(u.title)}`;
+      (u.rawInput as Record<string, unknown>).__tool_use_purpose = 'Read the file';
+    });
+  it('passes the `Running: ` form of a read and of a write, with the stable tool name deciding', () => {
+    expect(replay(running(BATCH), SCOPE)).toBeNull();
+    const guard = new FixerGuard(FOLDER, { writeScope: SCOPE });
+    const input = { command: 'create', path: 'services/payments/src/a.ts', file_text: 'x', __tool_use_purpose: 'Write it' };
+    expect(guard.judge({ type: 'tool_call', id: 'w', title: 'Running: Editing a.ts', kind: 'edit', rawInput: input, toolName: 'write' })).toEqual({ kind: 'step' });
+    expect(guard.judge({ type: 'tool_call_update', id: 'w', status: 'completed', title: 'Running: Editing a.ts', rawInput: input, toolName: 'write' })).toEqual({ kind: 'pass' });
+    expect(guard.writes).toBe(1);
+  });
+  it('drops only that key: another unknown key still stops the run as unknown_args', () => {
+    const guard = new FixerGuard(FOLDER, { writeScope: SCOPE });
+    const input = { command: 'create', path: 'services/payments/src/a.ts', file_text: 'x', __tool_use_purpose: 'Write it', extra: 1 };
+    const out = guard.judge({ type: 'tool_call', id: 'w', title: 'Running: Editing a.ts', kind: 'edit', rawInput: input, toolName: 'write' });
+    expect(out).toMatchObject({ kind: 'stop', code: 'unknown_args' });
+    expect(JSON.stringify(out)).not.toContain('Write it');
+    const only = new FixerGuard(FOLDER, { writeScope: SCOPE }).judge({ type: 'tool_call', id: 'w', title: 'Editing a.ts', kind: 'edit', rawInput: { __tool_use_purpose: 'x' }, toolName: 'write' });
+    expect(only).toMatchObject({ kind: 'step' });
+  });
+  it('stops a call or an update that names an MCP server (a built-in file tool has none), without printing the purpose', () => {
+    const wrong = replay(
+      mutate(running(BATCH), 0, (u) => {
+        meta(u).mcpServerName = 'other';
+      }),
+      SCOPE,
+    );
+    expect(wrong?.outcome).toMatchObject({ code: 'foreign_tool' });
+    expect(wrong?.outcome.detail).toMatch(/^mcpServerName=other kind=read keys=\[operations\]$/);
+    expect(wrong?.outcome.detail).not.toContain('Read the file');
+    const exorcist = replay(mutate(running(BATCH), 0, (u) => void (meta(u).mcpServerName = 'exorcist')), SCOPE);
+    expect(exorcist?.outcome).toMatchObject({ code: 'foreign_tool' });
+    const guard = new FixerGuard(FOLDER, { writeScope: SCOPE });
+    expect(guard.judge({ type: 'tool_call', id: 'r', title: 'Running: Reading a.ts:1', kind: 'read', rawInput: { operations: [{ mode: 'Line', path: 'services/payments/src/a.ts' }] }, toolName: 'read' })).toEqual({ kind: 'step' });
+    expect(guard.judge({ type: 'tool_call_update', id: 'r', status: 'completed', mcpServerName: 'other' })).toMatchObject({ kind: 'stop', code: 'foreign_tool' });
+  });
+  it('stops a `Running: ` title with a tool name that is not read or write', () => {
+    const shell = replay(mutate(running(BATCH), 0, (u) => void (meta(u).toolName = 'shell')), SCOPE);
+    expect(shell?.outcome).toMatchObject({ code: 'foreign_tool', detail: 'toolName=shell kind=read keys=[operations]' });
+  });
+});

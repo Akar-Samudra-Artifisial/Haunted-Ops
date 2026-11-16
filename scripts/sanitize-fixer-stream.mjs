@@ -12,7 +12,7 @@
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { MAX_INPUT_CHARS, idMapper, scrub } from '../tools/sanitize-replay/sanitize-hunt-stream.mjs';
+import { MAX_INPUT_CHARS, dropPurpose, idMapper, keepIdentity, scrub } from '../tools/sanitize-replay/sanitize-hunt-stream.mjs';
 
 const isRecord = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 /** Keys that hold an environment and are dropped with their value, at any depth. */
@@ -93,11 +93,8 @@ function cleanValue(value, ctx, depth = 0) {
   return value;
 }
 
-/** `_meta.kiro.toolName` of a tool event (the stable tool name, `read` or `write`), as an `_meta` to add; nothing when it has none. */
-function keepToolName(update) {
-  const name = isRecord(update._meta) && isRecord(update._meta.kiro) ? update._meta.kiro.toolName : undefined;
-  return typeof name === 'string' && /^[A-Za-z0-9_.-]{1,40}$/.test(name) ? { _meta: { kiro: { toolName: name } } } : {};
-}
+/** The identity of a tool event as an `_meta` to add: the stable tool name, and the server name only when it is `exorcist`. */
+const keepToolName = keepIdentity;
 const round = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 1000) / 1000 : v);
 function keepMeta(meta) {
   if (!isRecord(meta) || !isRecord(meta.kiro)) return undefined;
@@ -156,7 +153,7 @@ export function sanitizeFixerStream(text, options) {
     const sessionId = sessions(ev.data.sessionId);
     const kind = update.sessionUpdate;
     if (kind === 'tool_call') {
-      const rawInput = cleanValue(update.rawInput ?? {}, ctx);
+      const rawInput = cleanValue(dropPurpose(update.rawInput ?? {}), ctx);
       out.push({
         type: ev.type ?? 'sessionUpdate',
         data: {
@@ -179,7 +176,7 @@ export function sanitizeFixerStream(text, options) {
       // The input an update carries is judged by the guard too (kiro-cli 3.3.0 repeats it, `replace_all` added), so it
       // is kept, cleaned like a call's. The tool output (`rawOutput`, `content`) is never kept.
       if (update.rawInput !== undefined) {
-        const rawInput = cleanValue(update.rawInput, ctx);
+        const rawInput = cleanValue(dropPurpose(update.rawInput), ctx);
         u.rawInput = JSON.stringify(rawInput).length > MAX_INPUT_CHARS ? { truncated: true } : rawInput;
       }
       Object.assign(u, keepToolName(update));

@@ -138,31 +138,38 @@ export function hasIpv4(text: string): boolean {
 }
 const HEX_COLON_RUN = /[0-9A-Fa-f:]{2,}/g;
 const IPV6_GROUP = /^[0-9A-Fa-f]{1,4}$/;
-/** An IPv6 address, full (8 groups) or compressed with one `::` (`::1`, `fe80::1`). `12:30:45`, `std::vector` and `::` alone are not. */
+/** Whether a whole run of hex digits and colons is an IPv6 address: 8 groups, or 1 to 7 around one `::`. */
+function isIpv6Run(run: string): boolean {
+  if (run.length < 2) return false;
+  const gap = run.indexOf('::');
+  if (gap === -1) {
+    const groups = run.split(':');
+    return groups.length === 8 && groups.every((g) => IPV6_GROUP.test(g));
+  }
+  if (run.indexOf('::', gap + 1) !== -1 || run.includes(':::')) return false;
+  const head = run.slice(0, gap);
+  const tail = run.slice(gap + 2);
+  const groups = [...(head === '' ? [] : head.split(':')), ...(tail === '' ? [] : tail.split(':'))];
+  return groups.length >= 1 && groups.length <= 7 && groups.every((g) => IPV6_GROUP.test(g));
+}
+/**
+ * An IPv6 address, full (8 groups) or compressed with one `::` (`::1`, `fe80::1`, and `a::b`, which is the valid address
+ * a:0:0:0:0:0:0:b: it is refused, and the Builder masks it). `12:30:45`, `std::vector` and `::` alone are not.
+ * A run inside a word is code (`std::vector`, `zab12fe80::1`). A single `:` in a run is a separator, not part of a word,
+ * so, for a run that starts inside a word or with a single `:`, the part after its first `:` is checked as well, without the left-boundary check: `addr:fe80::1`,
+ * `device:fe80::1` (the word ends in hex letters, so the run starts inside it), `id:fe80::1`, `ipv6:2001:db8::7`.
+ * The right-boundary check stays for both. Linear: each run is read a few times.
+ */
 export function hasIpv6(text: string): boolean {
   for (const match of text.matchAll(HEX_COLON_RUN)) {
-    let run = match[0];
-    let index = match.index ?? 0;
-    // One `:` that starts the run (`addr:fe80::1`) is a separator, not part of a word: drop it and skip the left check.
-    const separated = run.startsWith(':') && !run.startsWith('::');
-    if (separated) {
-      run = run.slice(1);
-      index++;
-    }
-    // A run inside a word (`std::vector`, `ab::cd` after a letter) is code, not an address.
-    if ((!separated && /[A-Za-z0-9_]/.test(text.charAt(index - 1))) || /[A-Za-z0-9_]/.test(text.charAt(index + run.length))) continue;
-    if (run.length < 2) continue;
-    const gap = run.indexOf('::');
-    if (gap === -1) {
-      const groups = run.split(':');
-      if (groups.length === 8 && groups.every((g) => IPV6_GROUP.test(g))) return true;
-      continue;
-    }
-    if (run.indexOf('::', gap + 1) !== -1 || run.includes(':::')) continue;
-    const head = run.slice(0, gap);
-    const tail = run.slice(gap + 2);
-    const groups = [...(head === '' ? [] : head.split(':')), ...(tail === '' ? [] : tail.split(':'))];
-    if (groups.length >= 1 && groups.length <= 7 && groups.every((g) => IPV6_GROUP.test(g))) return true;
+    const run = match[0];
+    const index = match.index ?? 0;
+    if (/[A-Za-z0-9_]/.test(text.charAt(index + run.length))) continue;
+    const inWord = /[A-Za-z0-9_]/.test(text.charAt(index - 1));
+    if (!inWord && isIpv6Run(run)) return true;
+    // Only a run that starts inside a word, or with a single `:`, can hide an address behind a separator (`a:b:c:d:e:f:1:2:3` is not one).
+    const first = run.indexOf(':');
+    if (first !== -1 && (inWord || first === 0) && run.charAt(first + 1) !== ':' && isIpv6Run(run.slice(first + 1))) return true;
   }
   return false;
 }

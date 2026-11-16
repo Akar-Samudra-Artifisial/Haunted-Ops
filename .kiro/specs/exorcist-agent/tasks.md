@@ -238,6 +238,15 @@ Three sub-tasks spend Credits and are run by hand: 3.3 (probe, about 0.25), 3.4 
   - [x] 14.9 Documents and verification: requirements 25, Properties 22 and 23, `docs/DEV.md`, `docs/KIRO_USAGE.md`; `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:scripts`, `pnpm build`, `pnpm check:build` and the bundle check pass
     - _Requirements: 17.4_
 
+- [x] 15. The `Running: @exorcist/<tool>` title (first hunt on the demo server, kiro-cli 3.3.0 with an API key login; all tested with the fake kiro-cli, no live run)
+  - [x] 15.1 Allow-list and parser: `mcpToolOf` (the two title forms, `mcpServerName` and `toolName` must agree), `mcpServerName` in the stream parser, the same rule in `isSameCall`, the runner passes the `_meta` fields; `__tool_use_purpose` dropped at the guard, the runner, `parseToolInput` (so the step summary and the MCP server), the stream recorder, both sanitizers and the fixer guard; a fixer call that names an MCP server stops as `foreign_tool`
+    - _Requirements: 26.1, 26.2, 26.3, 26.4, 26.5_
+  - [x] 15.2 Fake kiro-cli and fixtures: `running`, `runningServer`, `runningTool` and `purpose` in the `call` step, `running` and `server` in the fixer steps; fixtures `tool-call-running-title`, `tool-call-running-wrong-server`, `tool-call-running-wrong-tool`, `fixer-running-title`, `fixer-running-wrong-server`; integration test (a full hunt to a diagnosis, the two refusals, the purpose text in no log, event, row, stream file or detail)
+    - _Requirements: 26.6_
+  - [x]* 15.3 Property test: both title forms are accepted for every tool with a matching or absent `toolName` and `mcpServerName`, and any mismatch, other server, prefix or suffix is foreign (Property 24); tests for the parser, the recorder, the sanitizers, the MCP server and the fixer guard
+    - _Requirements: 26.1, 26.2, 26.3, 26.4, 26.5_
+  - [x] 15.4 Documents and verification: requirements 26, the design note and Property 24, `.kiro/steering/security.md`, `docs/DEV.md`, `docs/KIRO_USAGE.md`; `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:scripts`, `pnpm check:build` and the bundle check pass
+    - _Requirements: 26.1, 26.3_
 ## Task Dependency Graph
 
 ```mermaid

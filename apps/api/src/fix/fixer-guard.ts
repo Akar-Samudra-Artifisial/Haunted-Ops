@@ -1,4 +1,5 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { withoutPurpose } from '@haunted-ops/exorcist-mcp/schemas';
 import type { HuntStreamEvent } from '../hunts/stream-parser.js';
 import { FIXER_TOOLS, type FixerTool } from './fix-env.js';
 import { MAX_PATCH_FILE_BYTES } from './patch-checks.js';
@@ -495,8 +496,14 @@ export class FixerGuard {
   }
 
   /** Judges one stream event. `step`: a new call to count; `pass`: nothing to do; `stop`: stop the process group. */
-  judge(ev: HuntStreamEvent): GuardOutcome {
+  judge(event: HuntStreamEvent): GuardOutcome {
+    // The key `__tool_use_purpose` (model text kiro-cli adds to the input) is dropped before anything is judged; no other key is.
+    const ev = event.type === 'tool_call' || event.type === 'tool_call_update' ? { ...event, rawInput: withoutPurpose(event.rawInput) } : event;
     this.eventKind = ev.type === 'tool_call' ? ev.kind : undefined;
+    // Our two file tools are built in: a call that names an MCP server is not one of them (fail closed, the name is cleaned).
+    if ((ev.type === 'tool_call' || ev.type === 'tool_call_update') && ev.mcpServerName !== undefined) {
+      return stop('foreign_tool', `mcpServerName=${cleanName(ev.mcpServerName)}`, ev.rawInput, this.eventKind);
+    }
     if (ev.type === 'tool_call') {
       const known = this.accepted.get(ev.id);
       return known !== undefined ? this.again(ev.id, known, ev.title, ev.rawInput, undefined, ev.toolName) : this.accept(ev.id, ev.title, ev.rawInput, ev.kind, ev.toolName);
@@ -512,5 +519,4 @@ export class FixerGuard {
     return { kind: 'pass' };
   }
 }
-
 export const fixerToolNames: readonly string[] = FIXER_TOOLS;

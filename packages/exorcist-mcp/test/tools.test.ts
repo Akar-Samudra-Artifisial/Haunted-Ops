@@ -53,6 +53,18 @@ describe('exorcist MCP server over MCP', () => {
     }
   });
 
+  it('drops exactly `__tool_use_purpose` before the strict schema: the call works, any other extra key is still refused', async () => {
+    const { call } = await connect();
+    const ok = await call('query_metrics', { service: 'payments', signal: 'error_ratio', window: '15m', __tool_use_purpose: 'Find when payments error ratio changed' });
+    expect(ok.isError).toBe(false);
+    expect(ok.body).toMatchObject({ tool: 'query_metrics', data: { handle: 'metric:payments/error_ratio/15m' } });
+    expect(ok.text).not.toContain('Find when payments');
+    const extra = await call('query_metrics', { service: 'payments', signal: 'error_ratio', window: '15m', __tool_use_purpose: 'x', extra: 1 });
+    expect(extra.isError).toBe(true);
+    expect(extra.body).toMatchObject({ error: { code: 'bad_input', field: 'extra' } });
+    const other = await call('query_metrics', { service: 'payments', signal: 'error_ratio', window: '15m', __tool_use_other: 'x' });
+    expect(other.body).toMatchObject({ error: { code: 'bad_input', field: '__tool_use_other' } });
+  });
   it('runs a whole hunt against the fake lab and Prometheus, with handles in every result and the ledger', async () => {
     const { call, sink } = await connect();
     const metrics = await call('query_metrics', { service: 'payments', signal: 'error_ratio', window: '15m' });

@@ -13,7 +13,7 @@ import { downstreamOf, mostDownstream } from '@haunted-ops/shared';
 import type { EventBus } from '../events/event-bus.js';
 import type { JsonLogger } from '../security/logger.js';
 import { validateDiagnosis } from './diagnosis-validator.js';
-import { CreditMeter, ToolCounter, acceptedOf, checkToolCall, describeForeign, fitsDailyBudget, isSameCall, wrappedCall, type AcceptedCall, type GuardStop } from './guards.js';
+import { CreditMeter, ToolCounter, acceptedOf, checkToolCall, describeForeign, fitsDailyBudget, isSameCall, withoutPurpose, wrappedCall, type AcceptedCall, type GuardStop } from './guards.js';
 import { parseToolInput } from '@haunted-ops/exorcist-mcp/schemas';
 import type { HuntConfig } from './hunt-config.js';
 import { buildHuntArgv, buildHuntEnv, defaultMcpBinDir, type PromptFacts } from './hunt-env.js';
@@ -561,7 +561,8 @@ export class HuntRunner {
     /** The latest complete input of the diagnosis call: a later update may carry the fuller one. */
     const takeDiagnosis = (id: string, rawInput: unknown): void => {
       if (id !== diagnosisId || rawInput === undefined || rawInput === null) return;
-      const candidate = wrappedCall(rawInput)?.arguments ?? rawInput;
+      const clean = withoutPurpose(rawInput);
+      const candidate = wrappedCall(clean)?.arguments ?? clean;
       if (parseToolInput('submit_diagnosis', candidate).ok) streamDiagnosis = candidate;
     };
     const handle = (ev: HuntStreamEvent): void => {
@@ -571,12 +572,12 @@ export class HuntRunner {
           const known = accepted.get(ev.id);
           if (known === undefined) {
             // An update for a call that was never accepted can only be judged by what it says it is.
-            if (ev.title !== null && ev.title !== undefined && ev.title !== '' && checkToolCall({ type: 'tool_call', id: ev.id, title: ev.title, rawInput: ev.rawInput }).kind === 'foreign') {
+            if (ev.title !== null && ev.title !== undefined && ev.title !== '' && checkToolCall({ id: ev.id, title: ev.title, rawInput: ev.rawInput, toolName: ev.toolName, mcpServerName: ev.mcpServerName }).kind === 'foreign') {
               refuse(ev.title, ev.rawInput);
             }
             return;
           }
-          if (!isSameCall(known, ev.title, ev.rawInput)) return refuse(ev.title ?? '', ev.rawInput);
+          if (!isSameCall(known, ev.title, ev.rawInput, ev)) return refuse(ev.title ?? '', ev.rawInput);
           takeDiagnosis(ev.id, ev.rawInput);
           return;
         }
@@ -584,7 +585,7 @@ export class HuntRunner {
           // The id of an accepted call comes back (kiro-cli repeats a call): it is the same call only if it names the same tool.
           const known = ev.id === '' ? undefined : accepted.get(ev.id);
           if (known !== undefined) {
-            if (!isSameCall(known, ev.title, ev.rawInput)) return refuse(ev.title, ev.rawInput);
+            if (!isSameCall(known, ev.title, ev.rawInput, ev)) return refuse(ev.title, ev.rawInput);
             takeDiagnosis(ev.id, ev.rawInput);
             return;
           }

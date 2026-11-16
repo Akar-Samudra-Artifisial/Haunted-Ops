@@ -189,6 +189,21 @@ describe('the fixer process, with the fake kiro-cli fixer', () => {
     expect(result.halt?.detail).not.toContain('charge.js');
     await wd.remove(ID);
   });
+  it('finishes a fix whose titles start with `Running: ` and whose inputs carry the purpose key, and keeps that text out of the stream file', async () => {
+    const path = join(tmp, 'running.fixer.stream.jsonl');
+    const { result, f } = await run('fixer-running-title', {}, { stream: path });
+    expect(result).toMatchObject({ started: true, finished: true, aiFailReason: null, halt: null, toolCalls: 2, writes: 1 });
+    expect(written(f)).toBe(HEALTHY_CHARGE);
+    expect(readFileSync(path, 'utf8')).toContain('Running: Editing charge.js');
+    expect(readFileSync(path, 'utf8')).not.toContain('__tool_use_purpose');
+    await wd.remove(ID);
+  });
+  it('stops a `Running: ` call that names an MCP server, as foreign_tool', async () => {
+    const { result } = await run('fixer-running-wrong-server');
+    expect(result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', halt: { code: 'foreign_tool' } });
+    expect(result.halt?.detail).toMatch(/^mcpServerName=other /);
+    await wd.remove(ID);
+  });
   it('stops at an update of a call that was never announced (unknown_update)', async () => {
     const { result } = await run('fixer-orphan-update');
     expect(result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', halt: { code: 'unknown_update' } });

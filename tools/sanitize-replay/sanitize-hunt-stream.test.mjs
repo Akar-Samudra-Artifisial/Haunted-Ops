@@ -110,3 +110,21 @@ test('idMapper is stable and ordered', () => {
   assert.deepEqual([m('b'), m('a'), m('b')], ['x-1', 'x-2', 'x-1']);
   assert.equal(m(undefined), undefined);
 });
+
+test('drops __tool_use_purpose and keeps mcpServerName only when it is exorcist', () => {
+  const meta = (kiro) => ({ kiro });
+  const raw = [
+    line(ev({ sessionUpdate: 'tool_call', toolCallId: 'a', title: 'Running: @exorcist/query_metrics', kind: 'other', rawInput: { service: 'payments', __tool_use_purpose: 'PURPOSE-TEXT', other: 1 }, _meta: meta({ toolName: 'query_metrics', mcpServerName: 'exorcist', secret: 'x' }) })),
+    line(ev({ sessionUpdate: 'tool_call', toolCallId: 'b', title: 'Running: @exorcist/tail_logs', kind: 'other', rawInput: { tool_id: 't', arguments: { __tool_use_purpose: 'PURPOSE-TEXT' } }, _meta: meta({ toolName: 'tail_logs', mcpServerName: 'someone-else' }) })),
+    line(ev({ sessionUpdate: 'tool_call_update', toolCallId: 'a', status: 'completed', _meta: meta({ mcpServerName: 'exorcist' }) })),
+  ].join('\n');
+  const r = sanitizeStream(raw);
+  assert.equal(r.text.includes('PURPOSE-TEXT'), false);
+  assert.equal(r.text.includes('__tool_use_purpose'), false);
+  const [a, b, c] = r.text.trim().split('\n').map((l) => JSON.parse(l).data.update);
+  assert.deepEqual(a.rawInput, { service: 'payments', other: 1 });
+  assert.deepEqual(a._meta, { kiro: { toolName: 'query_metrics', mcpServerName: 'exorcist' } });
+  assert.deepEqual(b.rawInput, { tool_id: 't', arguments: {} });
+  assert.deepEqual(b._meta, { kiro: { toolName: 'tail_logs' } });
+  assert.deepEqual(c._meta, { kiro: { mcpServerName: 'exorcist' } });
+});

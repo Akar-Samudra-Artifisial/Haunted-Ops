@@ -1,0 +1,24 @@
+{
+  "steps": [
+    {
+      "kind": "load",
+      "tool": "query_metrics"
+    },
+    {
+      "kind": "call",
+      "tool": "query_metrics",
+      "input": {
+        "service": "payments",
+        "signal": "error_ratio",
+        "window": "15m"
+      },
+      "running": true,
+      "purpose": "PURPOSE-TEXT never shown",
+      "runningServer": "other"
+    },
+    {
+      "kind": "sleep",
+      "ms": 60000
+    }
+  ]
+}

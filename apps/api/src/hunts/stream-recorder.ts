@@ -1,4 +1,5 @@
 import { appendFile } from 'node:fs/promises';
+import { withoutPurpose } from '@haunted-ops/exorcist-mcp/schemas';
 import { redact } from '@haunted-ops/exorcist-mcp/untrusted';
 
 /** A line longer than this is dropped, not kept. */
@@ -12,6 +13,11 @@ const pick = (source: Record<string, unknown>, keys: readonly string[]): Record<
   return out;
 };
 
+/** The input without the key `__tool_use_purpose`, at the top and in the `arguments` of a `Tool Call` wrapper. */
+function withoutPurposeDeep(rawInput: unknown): unknown {
+  const top = withoutPurpose(rawInput);
+  return isRecord(top) && 'arguments' in top ? { ...top, arguments: withoutPurpose(top.arguments) } : top;
+}
 /**
  * Reduces one line of the `kiro-cli` stream to what is needed to see its shapes and to build a fixture
  * from it: tool calls with their title and input, tool call updates without the tool output, the
@@ -37,6 +43,8 @@ export function reduceStreamLine(line: string, secrets: readonly string[]): stri
     if (u.sessionUpdate === 'tool_call') update = pick(u, ['sessionUpdate', 'toolCallId', 'title', 'kind', 'rawInput', '_meta']);
     else if (u.sessionUpdate === 'tool_call_update') update = pick(u, ['sessionUpdate', 'toolCallId', 'status', 'title', 'kind', 'rawInput', '_meta']);
     else if (u.sessionUpdate === 'session_info_update') update = pick(u, ['sessionUpdate', '_meta']);
+    // `__tool_use_purpose` is model text added by kiro-cli: it is never written.
+    if (update !== null && 'rawInput' in update) update.rawInput = withoutPurposeDeep(update.rawInput);
     if (update !== null) kept = { type: 'sessionUpdate', data: { sessionId: 'session-1', update } };
   }
   return kept === null ? null : redact(JSON.stringify(kept), secrets);

@@ -135,16 +135,23 @@ async function runScript(script, agent) {
       case 'call': {
         const input = fill(step.input ?? {});
         const wrapped = step.wrap === true;
+        // `running: true` is the form of kiro-cli 3.3.0 with an API key login: the title `Running: @exorcist/<tool>`, the stable
+        // names in `_meta.kiro`, and `__tool_use_purpose` (model text) in the input of the stream. `runningServer` and
+        // `runningTool` give a wrong server or tool name, `purpose` the text.
+        const running = step.running === true;
+        const title = `${running ? 'Running: ' : ''}@exorcist/${step.tool}`;
+        const meta = running ? { kiro: { toolName: step.runningTool ?? step.tool, mcpServerName: step.runningServer ?? 'exorcist' } } : undefined;
+        const shown = running ? { ...input, __tool_use_purpose: step.purpose ?? 'Find out what changed' } : input;
         const id = wrapped
           ? emitCall('Tool Call', { tool_id: `tool::exorcist::${step.tool}`, arguments: input }, WRAPPER_META)
-          : emitCall(`@exorcist/${step.tool}`, input);
+          : emitCall(title, shown, meta);
         // A wrapped call is announced without a title and gets it when it completes, like the real one.
         emitUpdate(id, 'in_progress', wrapped ? { title: null } : {});
         if (step.echo === true) {
           // The same call again, and updates that name the same tool: none is a new call.
-          update({ sessionUpdate: 'tool_call', toolCallId: id, title: `@exorcist/${step.tool}`, kind: 'other', rawInput: input });
+          update({ sessionUpdate: 'tool_call', toolCallId: id, title, kind: 'other', rawInput: shown, ...(meta ? { _meta: meta } : {}) });
           emitUpdate(id, 'in_progress', { title: null });
-          emitUpdate(id, 'in_progress', { title: `@exorcist/${step.tool}`, rawInput: input });
+          emitUpdate(id, 'in_progress', { title, rawInput: shown, ...(meta ? { _meta: meta } : {}) });
         }
         if (step.reuse !== undefined) {
           // A bypass attempt: an update of an accepted id that names another tool. The runner must stop the Hunt.
@@ -156,7 +163,7 @@ async function runScript(script, agent) {
         } catch {
           result = { text: 'mcp call failed', isError: true };
         }
-        emitUpdate(id, result.isError ? 'failed' : 'completed', { title: wrapped ? 'Tool Call' : `@exorcist/${step.tool}`, rawOutput: { response: result.text, message: result.text } });
+        emitUpdate(id, result.isError ? 'failed' : 'completed', { title: wrapped ? 'Tool Call' : title, ...(meta ? { _meta: meta } : {}), rawOutput: { response: result.text, message: result.text } });
         break;
       }
       case 'foreign': {

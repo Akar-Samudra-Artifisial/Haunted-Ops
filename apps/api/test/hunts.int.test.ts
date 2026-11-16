@@ -349,6 +349,38 @@ describeDb('Hunts end to end (Test database, fake kiro-cli, fake lab)', () => {
     expectNoLeaks(rig, JSON.stringify(detail));
   });
 
+  it('completes a hunt whose tool calls are titled `Running: @exorcist/<tool>` (kiro-cli 3.3.0 with KIRO_API_KEY), and keeps the purpose text out of everything', async () => {
+    const rig = await startRig();
+    await rig.open('payments');
+    rig.fixture('tool-call-running-title');
+    const { id, detail } = await rig.hunt('payments');
+    expect(validateHuntDetail(detail).ok).toBe(true);
+    expect(detail).toMatchObject({ status: 'succeeded', reason: 'diagnosed', stopDetail: null, toolCalls: 12, diagnosis: { culpritSha: SHAS['error-spike'], culpritService: 'payments' } });
+    expect(detail.allSteps.map((s) => s.tool)).toEqual(['query_metrics', 'search_errors', 'tail_logs', 'recent_deploys', 'diff_commit', 'submit_diagnosis']);
+    const stream = readFileSync(join(rig.root, 'hunts', `${id}.stream.jsonl`), 'utf8');
+    expect(stream).toContain('Running: @exorcist/query_metrics');
+    expect(stream).toContain('"mcpServerName":"exorcist"');
+    const prisma = rig.server.app.get(PrismaService).client;
+    const stored = JSON.stringify(await prisma.hunt.findMany({ include: { steps: true, evidence: true } }));
+    for (const text of [JSON.stringify(detail), stream, stored, ...rig.server.logs, JSON.stringify(rig.events.map((e) => e.payload))]) {
+      expect(text).not.toContain('Find when the error ratio changed');
+      expect(text).not.toContain('__tool_use_purpose');
+    }
+    expectNoLeaks(rig, JSON.stringify(detail));
+  });
+
+  it('refuses a `Running: @exorcist/<tool>` call with another server name or another tool name, and shows no purpose text', async () => {
+    for (const fixture of ['tool-call-running-wrong-server', 'tool-call-running-wrong-tool']) {
+      const rig = await startRig();
+      await rig.open('payments');
+      rig.fixture(fixture);
+      const { id, detail } = await rig.hunt('payments');
+      expect(detail, fixture).toMatchObject({ status: 'failed', reason: 'foreign_tool', stopDetail: 'Running: @exorcist/query_metrics', diagnosis: null });
+      const stream = readFileSync(join(rig.root, 'hunts', `${id}.stream.jsonl`), 'utf8');
+      for (const text of [JSON.stringify(detail), stream, ...rig.server.logs, JSON.stringify(rig.events.map((e) => e.payload))]) expect(text, fixture).not.toContain('PURPOSE-TEXT');
+    }
+  });
+
   it('stops for a Tool Call wrapper of a built-in tool and names the tool_id', async () => {
     const rig = await startRig();
     await rig.open('payments');

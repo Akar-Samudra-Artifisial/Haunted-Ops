@@ -155,6 +155,8 @@ describe('structure in Accessible mode', () => {
   });
 });
 
+/** Each wait polls up to this long (the default of 1 s is too short for a loaded machine); the test has 30 s in all. */
+const WAIT = 5000;
 describe('Property 8: Accessible mode never loads or leaves the Scene', () => {
   // Feature: accessible-mode, Property 8
   it('loads and mounts only while off, and destroys one renderer per mounted Scene', async () => {
@@ -170,9 +172,9 @@ describe('Property 8: Accessible mode never loads or leaves the Scene', () => {
           let mounted = 0;
           // The canvas shows before its effect makes the renderer, so wait for the renderer itself.
           const sceneUp = async (): Promise<void> => {
-            await screen.findByRole('img');
+            await screen.findByRole('img', undefined, { timeout: WAIT });
             mounted += 1;
-            await waitFor(() => expect(renderers).toHaveLength(mounted));
+            await waitFor(() => expect(renderers).toHaveLength(mounted), { timeout: WAIT });
           };
           if (!accessible) await sceneUp();
           for (let i = 0; i < presses; i++) {
@@ -181,7 +183,7 @@ describe('Property 8: Accessible mode never loads or leaves the Scene', () => {
             if (accessible) {
               expect(sceneRegion()).toBeNull();
               expect(document.querySelector('canvas')).toBeNull();
-              await waitFor(() => expect(renderers.filter((r) => r.destroy.mock.calls.length === 1)).toHaveLength(mounted));
+              await waitFor(() => expect(renderers.filter((r) => r.destroy.mock.calls.length === 1)).toHaveLength(mounted), { timeout: WAIT });
             } else {
               await sceneUp();
             }

@@ -306,3 +306,85 @@ describe('Property 22: an id seen again passes only when it names the tool it wa
     expect(isSameCall(load, 'fs_read', undefined)).toBe(false);
   });
 });
+// Feature: exorcist-agent, Property 24
+describe('Property 24: a tool title is `@exorcist/<tool>` or `Running: @exorcist/<tool>` and agrees with `_meta.kiro`', () => {
+  const tool = fc.constantFrom(...HUNT_TOOLS);
+  const prefix = fc.constantFrom('', 'Running: ');
+  const args = { service: 'payments', signal: 'up', window: '5m' };
+  const callWith = (title: string, meta: { toolName?: string; mcpServerName?: string }, rawInput: unknown = args) => ({ id: 'c', title, rawInput, ...meta });
+  it('accepts both forms for every tool, with the matching or an absent toolName and mcpServerName', () => {
+    const server = fc.constantFrom<string | undefined>(undefined, 'exorcist');
+    fc.assert(
+      fc.property(tool, prefix, server, fc.boolean(), (t, p, mcpServerName, named) => {
+        const meta = { ...(named ? { toolName: t } : {}), ...(mcpServerName === undefined ? {} : { mcpServerName }) };
+        expect(checkToolCall(callWith(`${p}@exorcist/${t}`, meta))).toEqual({ kind: 'step', tool: t, id: 'c', input: args });
+        const accepted: AcceptedCall = { kind: 'step', tool: t };
+        expect(isSameCall(accepted, `${p}@exorcist/${t}`, args, meta)).toBe(true);
+        expect(isSameCall(accepted, null, undefined, meta)).toBe(true);
+      }),
+      RUNS,
+    );
+  });
+  it('refuses another tool name, any other server name, and any other prefix or suffix', () => {
+    const otherServer = fc.string({ maxLength: 12 }).filter((s) => s !== 'exorcist');
+    fc.assert(
+      fc.property(tool, tool, prefix, otherServer, (t, other, p, server) => {
+        const title = `${p}@exorcist/${t}`;
+        if (other !== t) {
+          expect(checkToolCall(callWith(title, { toolName: other })).kind).toBe('foreign');
+          expect(isSameCall({ kind: 'step', tool: t }, title, args, { toolName: other })).toBe(false);
+          expect(isSameCall({ kind: 'step', tool: other }, title, args)).toBe(false);
+        }
+        expect(checkToolCall(callWith(title, { mcpServerName: server })).kind).toBe('foreign');
+        expect(checkToolCall(callWith(title, { mcpServerName: server, toolName: t })).kind).toBe('foreign');
+        expect(isSameCall({ kind: 'step', tool: t }, title, args, { mcpServerName: server })).toBe(false);
+      }),
+      RUNS,
+    );
+    const badTitles = (t: string): string[] => [
+      `running: @exorcist/${t}`,
+      `RUNNING: @exorcist/${t}`,
+      `Running:  @exorcist/${t}`,
+      `Running:@exorcist/${t}`,
+      ` Running: @exorcist/${t}`,
+      `Running: @exorcist/${t} `,
+      `Running: @exorcist/${t}\n`,
+      `Running: Running: @exorcist/${t}`,
+      `Running: @other/${t}`,
+      `Running: @Exorcist/${t}`,
+      `Ran: @exorcist/${t}`,
+      `Running: @exorcist/${t} (done)`,
+      `Running: ${t}`,
+      `Running: tool::exorcist::${t}`,
+      `Run: @exorcist/${t}`,
+    ];
+    fc.assert(
+      fc.property(tool, fc.string({ minLength: 1, maxLength: 6 }), (t, junk) => {
+        for (const title of [...badTitles(t), `${junk}@exorcist/${t}`, `@exorcist/${t}${junk}`, `Running: @exorcist/${t}${junk}`]) {
+          if (title === `@exorcist/${t}` || title === `Running: @exorcist/${t}`) continue;
+          expect(checkToolCall(callWith(title, {})).kind).toBe('foreign');
+          expect(isSameCall({ kind: 'step', tool: t }, title, args)).toBe(false);
+        }
+        expect(checkToolCall(callWith('Running: @exorcist/shell', {})).kind).toBe('foreign');
+      }),
+      RUNS,
+    );
+  });
+  it('drops exactly `__tool_use_purpose` and keeps every other key', () => {
+    const purpose = 'Find when payments error ratio changed';
+    const verdict = checkToolCall(callWith('Running: @exorcist/query_metrics', { toolName: 'query_metrics', mcpServerName: 'exorcist' }, { ...args, __tool_use_purpose: purpose }));
+    expect(verdict).toEqual({ kind: 'step', tool: 'query_metrics', id: 'c', input: args });
+    expect(JSON.stringify(verdict)).not.toContain(purpose);
+    // Another unknown key stays in the input (the strict schema refuses it later).
+    expect(checkToolCall(callWith('@exorcist/query_metrics', {}, { ...args, __tool_use_purpose: 'x', extra: 1 }))).toMatchObject({ kind: 'step', input: { ...args, extra: 1 } });
+    expect(checkToolCall(callWith('@exorcist/query_metrics', {}, { ...args, __tool_use_Purpose: 'x' }))).toMatchObject({ input: { ...args, __tool_use_Purpose: 'x' } });
+    expect(isSameCall({ kind: 'step', tool: 'query_metrics' }, 'Running: @exorcist/query_metrics', { ...args, __tool_use_purpose: 'x' })).toBe(true);
+    expect(wrappedCall({ tool_id: 'tool::exorcist::diff_commit', arguments: { sha: 'abcdef1' }, __tool_use_purpose: 'x' })).toEqual({ tool: 'diff_commit', arguments: { sha: 'abcdef1' } });
+    expect(wrappedCall({ tool_id: 'tool::exorcist::diff_commit', arguments: { sha: 'abcdef1' }, other: 'x' })).toBeNull();
+  });
+  it('shows no purpose text and no prefix beyond the title when a `Running:` title is refused', () => {
+    const detail = describeForeign('Running: @other/query_metrics', { __tool_use_purpose: 'SECRET PURPOSE' });
+    expect(detail).toBe('Running: @other/query_metrics');
+    expect(describeForeign('Running: @exorcist/shell\u0007x', null)).toBe('Running: @exorcist/shell x');
+  });
+});

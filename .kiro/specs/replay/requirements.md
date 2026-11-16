@@ -94,3 +94,13 @@ It starts no cloud resource, opens no connection to a server, to GitHub or to th
 3. THE validator SHALL also refuse U+061C, U+2028, U+2029, U+2060 to U+2064 and U+E0000 to U+E007F, and THE Builder SHALL remove the same full set.
 4. `deploy/build-release.sh` SHALL refuse a build when `fixtures/replays` is itself a symbolic link, and THE seed SHALL count only regular files: a folder or a link named `*.json` SHALL stop it with the file name (`not_regular_file`), like an invalid file.
 5. `pnpm test:scripts` SHALL print the fast-check seed of a falsified property (`scripts/fast-check-setup.mjs`); no code change is asked for the flaky test that failed once.
+
+### Requirement 9: The IPv6 gap behind a word, and two flaky Web tests
+
+**User Story:** As the developer, I want an address behind a label such as `device:fe80::1` refused too, and the two Web property tests that failed once under heavy load to stop failing, so that a public demo never shows an address and the checks are stable.
+
+#### Acceptance Criteria
+
+1. WHEN a hex-colon run starts inside a word (the character before it is a letter, a digit or `_`) and has a single `:`, THE validator SHALL also check the part after its first `:`, without the left-boundary check and with the right-boundary check kept, so that `device:fe80::1`, `id:fe80::1`, `ipv6:2001:db8::7` and `abcde:fe80::1` are refused (the Builder already masks them: its pattern starts after the `:`); `std::vector`, `12:30:45`, `time:12:30:45`, `device:12:30:45`, `ab12fe80::1`, `zx::1` and `a:b:c:d:e:f:1:2:3` SHALL stay accepted.
+2. THE validator SHALL refuse `a::b` (and any compressed run of 1 to 7 hex groups that is not inside a word), because it is the valid address `a:0:0:0:0:0:0:b`; the design and the code agree on this, and a test names it. A 64 KiB text of any shape, the new ones included, SHALL still be read in under 200 ms.
+3. THE Web tests "has levels that follow stepHaunt over the metrics it shows" (`demo.property.test.ts`) and "loads and mounts only while off, and destroys one renderer per mounted Scene" (`accessible-mode.test.tsx`) SHALL have a timeout of 30 s of their own, and the second SHALL poll each wait for up to 5 s instead of the 1 s default; `numRuns` SHALL not change.

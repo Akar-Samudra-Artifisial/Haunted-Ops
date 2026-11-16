@@ -441,6 +441,17 @@ The other shapes of the four streams were already accepted: `Tool Load` with `{ 
 
 **G2.** The script no longer waits for one named Service. It watches the latest Hunt of every Service during a scenario (each Service shows only its latest), waits until no Hunt has changed for 25 s, reads the detail of every Hunt it saw, and passes when exactly one Hunt succeeded with the planted SHA and `culpritService` equal to the root Service and none failed.
 
+### The `Running: ` title (after the first hunt on the demo server)
+On the demo server (kiro-cli 3.3.0, login by API key, model on Bedrock) the first tool call of a hunt was this line, with only `toolCallId` changed here, and the Hunt stopped as `foreign_tool` with the stop detail `Running: @exorcist/query_metrics`:
+```json
+{"sessionUpdate":"tool_call","toolCallId":"toolu_bdrk_…","title":"Running: @exorcist/query_metrics","rawInput":{"service":"payments","signal":"error_ratio","window":"15m","__tool_use_purpose":"Find when payments error ratio changed"},"_meta":{"kiro":{"toolName":"query_metrics","mcpServerName":"exorcist"}}}
+```
+`checkToolCall` read only the title and ignored `toolName`; `mcpServerName` was not read anywhere. The fix keeps the allow-list strict:
+- `mcpToolOf(title, { toolName, mcpServerName })` in `guards.ts` is the one function that says which of the six tools a title names. The title must match `^(?:Running: )?@exorcist/([a-z_]{1,40})$` with a tool of the six. A present `mcpServerName` other than `exorcist`, or a present `toolName` other than the tool of the title, makes the call foreign. `checkToolCall` and `isSameCall` both use it (`isSameCall` takes the `_meta` fields as a fourth argument), so a `tool_call_update` with the `Running: ` title is the same call and a swapped title or server is judged again. The hunt runner passes `toolName` and `mcpServerName` of the event. The `Tool Load` and `Tool Call` titles stay as they are: the evidence shows no `Running: ` form for them.
+- `withoutPurpose` (`packages/exorcist-mcp/src/schemas.ts`, exported to the API) removes exactly `__tool_use_purpose` at the top of an input. The guard applies it before the title is judged for arguments (so `wrappedCall` still sees exactly `tool_id` and `arguments`), the runner applies it before `takeDiagnosis`, `parseToolInput` applies it before the strict schema (the step summary and the MCP server both go through it), and the recorder and the sanitizers apply it before they write. The fixer guard applies it in `judge`. No other key is dropped: `{ ..., "__tool_use_purpose": "x", "extra": 1 }` still fails as unknown arguments, and a key with another spelling stays.
+- The parser extracts `_meta.kiro.mcpServerName` as a string cut at 64 characters; a value that is not a string leaves the field absent, as the requirement says. A call with such a value is judged by its title and `toolName` alone, which is the same as a call with no `mcpServerName`, and that is how the form with no server name has always been judged.
+- The fake kiro-cli `call` step takes `running: true` (title, `_meta.kiro` and a purpose text in the input of the stream, but not in the input it sends to the MCP server), with `runningServer` and `runningTool` for the refused cases. Fixtures: `tool-call-running-title`, `tool-call-running-wrong-server`, `tool-call-running-wrong-tool`; the fixer fixtures `fixer-running-title` and `fixer-running-wrong-server`.
+
 ## Data Models
 
 Prisma changes (migration `add_hunt_runner`):
@@ -664,6 +675,12 @@ For any accepted call (one of the six tools, direct or wrapped, or a `Tool Load`
 
 For any string and cap, `sanitizeModelText` returns at most `cap` characters with no control, direction or invisible character and no run of whitespace; for text with URLs, markdown links or tags it returns none of them; and cleaning the result again changes nothing.
 **Validates: Requirements 25.8**
+
+### Property 24: A tool title is `@exorcist/<tool>` or `Running: @exorcist/<tool>` and agrees with `_meta.kiro`
+
+For every tool `t` of the six, `checkToolCall` answers a step of `t` for the titles `@exorcist/t` and `Running: @exorcist/t` when `toolName` is absent or `t` and `mcpServerName` is absent or `exorcist`, and `isSameCall` agrees for the same title or no title. It answers `foreign` for any other `toolName`, for any other `mcpServerName`, and for any other prefix, case, spacing or suffix. The key `__tool_use_purpose`, and only that key, is removed from the input the verdict carries; the purpose text is in no step summary, stop detail, recorded line or sanitized line.
+
+**Validates: Requirements 26.1, 26.2, 26.3, 26.5**
 
 ## Error Handling
 

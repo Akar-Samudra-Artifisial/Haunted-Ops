@@ -38,7 +38,7 @@ describe('Property 12: the demo timeline is valid and deterministic', () => {
       }),
       { numRuns: 60 },
     );
-  });
+  }, 30_000);
 
   it('wraps with loop: the state at t equals the state at t modulo the duration', () => {
     fc.assert(

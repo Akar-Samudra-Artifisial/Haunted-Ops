@@ -12,6 +12,8 @@
 //   reuse    { title, input }                 an update of the last call's id that names another tool
 //   edit-command  { path, oldStr, newStr }    the `Editing <file>` call of kiro-cli 3.3.0 (`strReplace`), then the file is edited
 //   read-dynamic  { path }                    the `Reading <file>:<line>` call of kiro-cli 3.3.0 (`operations`, `toolName`)
+//   `running: true` on edit-command and read-dynamic writes the form of kiro-cli 3.3.0 with `KIRO_API_KEY`: the title starts with
+//   `Running: ` and the input carries `__tool_use_purpose` (model text). `server` adds `_meta.kiro.mcpServerName` (a built-in tool has none).
 //   escape   { path }                         an `fs_write` call to a path (nothing is written)
 //   symlink  { path, target }                 makes a symlink in the folder with no tool call (a model that found a way)
 //   remove   { path }                         deletes a file with no tool call
@@ -130,8 +132,11 @@ async function run(script) {
         // The dynamic shape of kiro-cli 3.3.0 (task 20): title `Editing <file>`, `strReplace`, `_meta.kiro.toolName` `write`.
         const id = `call-${++counter}`;
         const input = { command: 'strReplace', path: step.path, oldStr: step.oldStr, newStr: step.newStr };
-        update({ sessionUpdate: 'tool_call', toolCallId: id, title: `Editing ${basename(step.path)}`, kind: 'edit', rawInput: input, _meta: { kiro: { toolName: 'write' } } });
-        emitUpdate(id, 'pending', { title: null, rawInput: input });
+        const shown = step.running === true ? { ...input, __tool_use_purpose: 'Fix the bad line' } : input;
+        const title = `${step.running === true ? 'Running: ' : ''}Editing ${basename(step.path)}`;
+        const meta = { kiro: { toolName: 'write', ...(step.server === undefined ? {} : { mcpServerName: step.server }) } };
+        update({ sessionUpdate: 'tool_call', toolCallId: id, title, kind: 'edit', rawInput: shown, _meta: meta });
+        emitUpdate(id, 'pending', { title: null, rawInput: shown });
         last = { id, tool: 'fs_write' };
         let ok = true;
         try {
@@ -142,16 +147,19 @@ async function run(script) {
         } catch {
           ok = false;
         }
-        emitUpdate(id, ok ? 'completed' : 'failed', { rawInput: input });
+        emitUpdate(id, ok ? 'completed' : 'failed', { rawInput: shown });
         break;
       }
       case 'read-dynamic': {
         // The batch read of kiro-cli 3.3.0 (task 19): title `Reading <file>:<line>`, `operations`, `toolName` `read`.
         const id = `call-${++counter}`;
         const input = { operations: [{ mode: 'Line', path: step.path }] };
-        update({ sessionUpdate: 'tool_call', toolCallId: id, title: `Reading ${basename(step.path)}:1`, kind: 'read', rawInput: input, _meta: { kiro: { toolName: 'read' } } });
+        const shown = step.running === true ? { ...input, __tool_use_purpose: 'Read the file' } : input;
+        const title = `${step.running === true ? 'Running: ' : ''}Reading ${basename(step.path)}:1`;
+        const meta = { kiro: { toolName: 'read', ...(step.server === undefined ? {} : { mcpServerName: step.server }) } };
+        update({ sessionUpdate: 'tool_call', toolCallId: id, title, kind: 'read', rawInput: shown, _meta: meta });
         last = { id, tool: 'fs_read' };
-        emitUpdate(id, 'completed', { title: `Reading ${basename(step.path)}:1`, rawInput: input });
+        emitUpdate(id, 'completed', { title, rawInput: shown });
         break;
       }
       case 'escape': {
