@@ -7,8 +7,9 @@
 // It reads the Incident, its latest Hunt with the Steps and the Evidence, the latest Proposal of that Hunt and the Signal
 // rows of the window, and writes one file of frames. Every string goes through the scrubber of
 // `tools/sanitize-replay/sanitize-hunt-stream.mjs` and through `sanitizePrText` (the rules of the pull request text); ids
-// become stable fake ids derived from the replay id; times are moved to the recording date so that the hour of the real
-// incident is not in the file. If the result still fails `validateReplayFile` the tool stops with field paths, never values.
+// become stable fake ids derived from the replay id; times are moved so that the window starts at 12:00:00 UTC of the
+// recording date, and every clock time inside a string gets the same shift (`rewriteClocks`), so that the hour of the real
+// incident is not in the file and the file has one clock. If the result still fails `validateReplayFile` the tool stops with field paths, never values.
 // The database URL comes from the environment variable `DATABASE_URL` only (an argument would show in `ps` and in the shell
 // history) and is never printed. A person reads and approves the file afterwards with `review-replay.mjs`.
 import { createHash } from 'node:crypto';
@@ -41,6 +42,89 @@ function maskNetwork(text, deps) {
   return text
     .replace(/[A-Za-z0-9._-]+/g, (m) => (deps.hasHostName(m) ? '[host]' : m))
     .replace(/(?<![A-Za-z0-9_])[0-9A-Fa-f:]{2,}(?![A-Za-z0-9_])/g, (m) => (deps.hasIpv6(m) ? '[ip]' : m));
+}
+const DAY_MS = 86_400_000;
+/** A clock that lands further than this from the window is not rewritten and stops the build (`clock_out_of_range`). */
+export const CLOCK_RANGE_MS = 7 * 3_600_000;
+/** The recording date of a window and the instant 12:00:00 UTC of that date, where the window start is moved to. */
+export function replayBase(startMs) {
+  const recordedOn = new Date(startMs).toISOString().slice(0, 10);
+  return { recordedOn, baseMs: Date.parse(`${recordedOn}T12:00:00.000Z`) };
+}
+/** The epoch numbers that count: 10 digits (seconds) in 1400000000..2100000000 and 13 digits (milliseconds) in 1400000000000..2100000000000. */
+const EPOCH_MIN_S = 1_400_000_000;
+const EPOCH_MAX_S = 2_100_000_000;
+// One pass over the text, left to right: a full ISO time with `Z` or an offset `+HH:MM` / `-HH:MM` first (one instant, so the clock and the offset
+// inside it are not read twice), then a bare date, then an epoch number of 10 or 13 digits that stands alone (no letter, digit, `_` or `.` before
+// it, no letter, digit or `_` after it), then a clock `HH:MM:SSZ`, `HH:MM:SS` or `HH:MM` that is not part of a longer number or of an offset
+// (a digit, `:`, `.`, `+` or `-` before; a digit, or `:` and a digit, after).
+const CLOCK_TOKEN = /(?<![\d])(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})|(?<![\d-])(\d{4}-\d{2}-\d{2})(?![\d-])|(?<![A-Za-z0-9_.])(\d{10}|\d{13})(?![A-Za-z0-9_])|(?<![\d:.+-])([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?(Z)?(?!\d)(?!:\d)/g;
+const two = (n) => String(n).padStart(2, '0');
+/**
+ * Moves every clock time inside `text` with the shift the timestamps of the file get (`shift = base - start of the window`, base
+ * 12:00 UTC of the recording date), each kept in its own format: `YYYY-MM-DDTHH:MM:SS(.sss)Z` (an ISO time with an offset `+HH:MM` or `-HH:MM` is one
+ * instant, shifted and written in `Z` form), `HH:MM:SSZ`, `HH:MM:SS`, `HH:MM`, an epoch number (10 digits of seconds or 13 of milliseconds,
+ * kept in its own number of digits) whose instant is within one day of the window, and a bare date of the incident or of the day before (both
+ * stay as written: the recording date is the date of the window start). A bare clock is read on the date of the window start, the day before
+ * or the day after, whichever lands nearest to the window. A clock or an ISO time more than 7 hours from the window is left as it is and
+ * `outOfRange` is true; an epoch-shaped number more than one day from the window is left as it is too (the validator refuses it, as its date is
+ * not the recording date). The result is as long as the text, except that an offset is replaced by `Z`.
+ * @param {string} text @param {{ startMs: number, endMs: number }} win
+ * @returns {{ text: string, outOfRange: boolean }}
+ */
+export function rewriteClocks(text, win) {
+  const { recordedOn, baseMs } = replayBase(win.startMs);
+  const shift = baseMs - win.startMs;
+  const day0 = Date.parse(`${recordedOn}T00:00:00.000Z`);
+  const distance = (t) => (t < win.startMs ? win.startMs - t : t > win.endMs ? t - win.endMs : 0);
+  let outOfRange = false;
+  const out = text.replace(CLOCK_TOKEN, (match, isoHead, frac, zone, date, epoch, hh, mm, ss, z) => {
+    if (isoHead !== undefined) {
+      // Milliseconds from the first 3 digits of the fraction; digits past them are kept as written.
+      const ms3 = frac === undefined ? '000' : frac.slice(0, 3).padEnd(3, '0');
+      const t = Date.parse(`${isoHead}.${ms3}${zone}`);
+      if (Number.isNaN(t) || distance(t) > CLOCK_RANGE_MS) {
+        outOfRange = true;
+        return match;
+      }
+      const moved = new Date(t + shift).toISOString();
+      if (frac === undefined) return `${moved.slice(0, 19)}Z`;
+      return `${moved.slice(0, 19)}.${moved.slice(20, 20 + Math.min(3, frac.length))}${frac.slice(3)}Z`;
+    }
+    if (epoch !== undefined) {
+      const n = Number(epoch);
+      const seconds = epoch.length === 10;
+      const inRange = (seconds ? n : n / 1000) >= EPOCH_MIN_S && (seconds ? n : n / 1000) <= EPOCH_MAX_S;
+      const t = seconds ? n * 1000 : n;
+      if (!inRange || distance(t) > DAY_MS) return match;
+      return String(seconds ? Math.floor((t + shift) / 1000) : t + shift);
+    }
+    if (date !== undefined) {
+      const d = Date.parse(`${date}T00:00:00.000Z`);
+      // The incident date and the day before map to the recording date and the day before it. The recording date is the
+      // date of the window start, so the shift moves no bare date to another day: both stay as written. Other dates are left alone.
+      if (Number.isNaN(d) || (d !== day0 && d !== day0 - DAY_MS)) return match;
+      return new Date(d).toISOString().slice(0, 10);
+    }
+    const secs = ss === undefined ? 0 : Number(ss);
+    const inDay = (Number(hh) * 3600 + Number(mm) * 60 + secs) * 1000;
+    const best = [0, -1, 1].map((k) => day0 + k * DAY_MS + inDay).reduce((a, b) => (distance(b) < distance(a) ? b : a));
+    if (distance(best) > CLOCK_RANGE_MS) {
+      outOfRange = true;
+      return match;
+    }
+    const m = new Date(best + shift);
+    return `${two(m.getUTCHours())}:${two(m.getUTCMinutes())}${ss === undefined ? '' : `:${two(m.getUTCSeconds())}`}${z ?? ''}`;
+  });
+  return { text: out, outOfRange };
+}
+/** The field paths (`$.frames[2].hunt.summary`) of the strings of `value` that are in `bad`. Never the strings. */
+function pathsOfStrings(value, bad, path = '$', out = []) {
+  if (typeof value === 'string') {
+    if (bad.has(value)) out.push(path);
+  } else if (Array.isArray(value)) value.forEach((v, i) => pathsOfStrings(v, bad, `${path}[${i}]`, out));
+  else if (value !== null && typeof value === 'object') for (const [k, v] of Object.entries(value)) pathsOfStrings(v, bad, `${path}.${k}`, out);
+  return out;
 }
 export class ReplayBuildError extends Error {
   /** @param {string} code @param {string[]} [paths] */
@@ -151,9 +235,12 @@ export function buildReplay(rows, opts, deps) {
   const endMs = rows.window.endMs;
   if (!(endMs > startMs)) throw new ReplayBuildError('bad_window');
   if (endMs - startMs > MAX_DURATION_MS) throw new ReplayBuildError('window_too_long');
-  const recordedOn = new Date(startMs).toISOString().slice(0, 10);
-  const baseMs = Date.parse(`${recordedOn}T00:00:00.000Z`);
+  // One clock for the whole file: the window start is moved to 12:00:00 UTC of the recording date (so a `since` up to 6 hours
+  // before the incident stays on that date), timestamps and the clock times inside strings get the same shift.
+  const { recordedOn, baseMs } = replayBase(startMs);
   const iso = (t) => new Date(baseMs + (t - startMs)).toISOString();
+  /** Final texts that hold a clock far from the window (left as they are): their field paths stop the build. */
+  const farClock = new Set();
   const fake = idMaker(opts.id);
   const scrubAll = (text) => {
     let out = scrub(text);
@@ -171,7 +258,10 @@ export function buildReplay(rows, opts, deps) {
       if (next === out) break;
       out = next;
     }
-    return out;
+    // Once, after the text is stable (the rewrite is not idempotent: a second pass would move the clocks again).
+    const moved = rewriteClocks(out, rows.window);
+    if (moved.outOfRange) farClock.add(moved.text);
+    return moved.text;
   };
   // `min1` fields (step summary, evidence ref, diagnosis summary) cannot be empty.
   const cleanReq = (text, cap) => clean(text, cap) || '[removed]';
@@ -253,16 +343,21 @@ export function buildReplay(rows, opts, deps) {
   const thinned = thin(frames);
   const lastT = (thinned[thinned.length - 1] ?? { t: 0 }).t;
   const durationMs = Math.max(1000, Math.min(MAX_DURATION_MS, Math.ceil((endMs - startMs) / 1000) * 1000), lastT);
+  const cleanTitle = cleanReq(opts.title, 80);
+  const title = cleanTitle.replace(/\s+/g, ' ');
+  if (farClock.has(cleanTitle)) farClock.add(title);
   const file = {
     version: 1,
     id: opts.id,
-    title: cleanReq(opts.title, 80).replace(/\s+/g, ' '),
+    title,
     scenario: opts.scenario,
     recordedOn,
     durationMs,
     review: null,
     frames: thinned,
   };
+  const farPaths = farClock.size === 0 ? [] : pathsOfStrings(file, farClock);
+  if (farPaths.length > 0) throw new ReplayBuildError('clock_out_of_range', farPaths);
   const checked = deps.validateReplayFile(file);
   if (!checked.ok) throw new ReplayBuildError('invalid_replay', checked.errors);
   return file;

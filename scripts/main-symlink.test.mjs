@@ -50,9 +50,122 @@ test('demo-env-check.mjs accepts a good file and refuses a bad one through a sym
 });
 test('the pre-flight requires the env ok line of the guard, not only the exit status', () => {
   const pre = readFileSync(join(REPO, 'deploy/server/preflight.sh'), 'utf8');
-  assert.match(pre, /grep -qx "env ok: \$2"/);
+  // The line is required inside env-guard.sh, which the pre-flight, install.sh and the units all use.
+  assert.match(readFileSync(join(REPO, 'deploy/server/env-guard.sh'), 'utf8'), /grep -qxF "env ok: \$PROFILE"/);
+  assert.match(pre, /deploy\/server\/env-guard\.sh/);
   assert.equal((pre.match(/check "env guard accepts [a-z]+\.env" env_guard /g) ?? []).length, 3);
   assert.ok(!/check "env guard[^\n]*\bnode\b/.test(pre), 'no guard check runs node directly');
+});
+// --- the env guard wrapper (deploy/server/env-guard.sh) through a symbolic link to the release folder ---
+const GUARD_REAL = join(dir, 'release-real');
+const GUARD_LINK = join(dir, 'release-link');
+// The node binary comes from the option `--node` only (tests pass the running node); the environment is not read for it.
+const guardRun = (file, profile, node = process.execPath) => spawnSync('bash', [join(GUARD_LINK, 'deploy/server/env-guard.sh'), '--node', node, file, profile], { encoding: 'utf8' });
+const checkScript = join(GUARD_REAL, 'scripts/demo-env-check.mjs');
+const realCheck = readFileSync(join(SCRIPTS, 'demo-env-check.mjs'), 'utf8');
+mkdirSync(join(GUARD_REAL, 'deploy/server'), { recursive: true });
+mkdirSync(join(GUARD_REAL, 'scripts'), { recursive: true });
+writeFileSync(join(GUARD_REAL, 'deploy/server/env-guard.sh'), readFileSync(join(REPO, 'deploy/server/env-guard.sh'), 'utf8'), { mode: 0o755 });
+writeFileSync(join(GUARD_REAL, 'scripts/is-main.mjs'), readFileSync(join(SCRIPTS, 'is-main.mjs'), 'utf8'));
+symlinkSync(GUARD_REAL, GUARD_LINK);
+const badKeyFile = join(dir, 'guard-bad.env');
+writeFileSync(badKeyFile, `KIRO_API_KEY=${KEY}\nEXTRA=1\n`);
+const apiFile = join(dir, 'guard-api.env');
+writeFileSync(apiFile, 'NODE_ENV=production\n');
+
+test('env-guard.sh through a symlinked release folder: exit 0 with a good file, 1 with a bad one', () => {
+  writeFileSync(checkScript, realCheck);
+  const ok = guardRun(keyFile, 'kiro');
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stderr, /^env ok: kiro$/m);
+  assert.ok(!ok.stderr.includes(KEY) && !ok.stdout.includes(KEY));
+  const bad = guardRun(badKeyFile, 'kiro');
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /refused: EXTRA/);
+  assert.ok(!bad.stderr.includes(KEY));
+});
+test('env-guard.sh exits 1 when the guard exits 0 and prints nothing', () => {
+  writeFileSync(checkScript, 'process.exit(0);\n');
+  const res = guardRun(badKeyFile, 'kiro');
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /did not print its ok line/);
+  writeFileSync(checkScript, realCheck);
+});
+test('env-guard.sh exits 1 when the guard prints the ok line of another profile', () => {
+  writeFileSync(checkScript, "process.stderr.write('env ok: lab\\n');\n");
+  const res = guardRun(apiFile, 'api');
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /did not print its ok line for api/);
+  writeFileSync(checkScript, realCheck);
+});
+test('env-guard.sh exits 1 for a wrong argument count and for a node that is missing, relative, not executable or not a file', () => {
+  writeFileSync(checkScript, realCheck);
+  const sh = join(GUARD_LINK, 'deploy/server/env-guard.sh');
+  assert.equal(spawnSync('bash', [sh, keyFile], { encoding: 'utf8' }).status, 1);
+  assert.equal(spawnSync('bash', [sh, keyFile, 'kiro'], { encoding: 'utf8' }).status, 1, 'no --node option');
+  assert.equal(spawnSync('bash', [sh, '--node', process.execPath, keyFile], { encoding: 'utf8' }).status, 1);
+  assert.equal(spawnSync('bash', [sh, '--other', process.execPath, keyFile, 'kiro'], { encoding: 'utf8' }).status, 1);
+  const plain = join(dir, 'plain-file');
+  writeFileSync(plain, '#!/bin/sh\nexit 0\n', { mode: 0o644 });
+  for (const node of [join(dir, 'no-such-node'), 'node', './node', plain, dir]) {
+    const res = guardRun(keyFile, 'kiro', node);
+    assert.equal(res.status, 1, node);
+    assert.match(res.stderr, /^env-guard: --node (must be an absolute path|is not an executable file)$/m, node);
+  }
+});
+test('env-guard.sh never reads the node binary from the environment', () => {
+  writeFileSync(checkScript, realCheck);
+  // A HAUNTED_NODE (or NODE) that would fail or pass on its own changes nothing: the option is the only source.
+  const sh = join(GUARD_LINK, 'deploy/server/env-guard.sh');
+  const env = { ...process.env, HAUNTED_NODE: '/usr/bin/false', NODE: '/usr/bin/false' };
+  const withOption = spawnSync('bash', [sh, '--node', process.execPath, keyFile, 'kiro'], { encoding: 'utf8', env });
+  assert.equal(withOption.status, 0, withOption.stderr);
+  const without = spawnSync('bash', [sh, keyFile, 'kiro'], { encoding: 'utf8', env: { ...process.env, HAUNTED_NODE: process.execPath } });
+  assert.equal(without.status, 1);
+  // And the script has no code that names the variable (its comments do).
+  const code = readFileSync(join(REPO, 'deploy/server/env-guard.sh'), 'utf8').split('\n').filter((l) => !l.trimStart().startsWith('#')).join('\n');
+  assert.ok(!code.includes('HAUNTED_NODE'));
+});
+test('no unit or shell file under deploy/server/ runs demo-env-check.mjs except env-guard.sh', () => {
+  const found = [];
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const full = join(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (e.isFile() && !e.name.endsWith('.example')) found.push(full);
+    }
+  };
+  walk(join(REPO, 'deploy/server'));
+  assert.ok(found.length > 10);
+  for (const file of found) {
+    const rel = relative(REPO, file).split(sep).join('/');
+    if (rel === 'deploy/server/env-guard.sh') continue;
+    assert.ok(!readFileSync(file, 'utf8').includes('demo-env-check.mjs'), `${rel} calls the guard directly: use env-guard.sh`);
+  }
+  assert.match(readFileSync(join(REPO, 'deploy/server/env-guard.sh'), 'utf8'), /demo-env-check\.mjs/);
+});
+test('isMain fails closed: a module whose base name is the started file but another real path throws, exit code 1', () => {
+  const a = join(dir, 'ismain-a');
+  const b = join(dir, 'ismain-b');
+  mkdirSync(a);
+  mkdirSync(b);
+  const isMainText = readFileSync(join(SCRIPTS, 'is-main.mjs'), 'utf8');
+  writeFileSync(join(b, 'is-main.mjs'), isMainText);
+  writeFileSync(join(b, 'probe.mjs'), "import { isMain } from './is-main.mjs';\nexport default () => isMain(import.meta.url);\n");
+  writeFileSync(join(a, 'probe.mjs'), "import run from '../ismain-b/probe.mjs';\nconsole.log(String(run()));\n");
+  writeFileSync(join(a, 'other.mjs'), "import run from '../ismain-b/probe.mjs';\nconsole.log(String(run()));\n");
+  const clash = run(join(a, 'probe.mjs'));
+  assert.equal(clash.status, 1);
+  assert.match(clash.stderr, /is-main: cannot confirm that probe\.mjs is the started file/);
+  assert.ok(!clash.stderr.includes(a), 'the message holds no path');
+  const other = run(join(a, 'other.mjs'));
+  assert.equal(other.status, 0);
+  assert.equal(other.stdout.trim(), 'false');
+  // The started file itself, directly and through a link, is still true.
+  writeFileSync(join(b, 'main.mjs'), "import { isMain } from './is-main.mjs';\nconsole.log(String(isMain(import.meta.url)));\n");
+  assert.equal(run(join(b, 'main.mjs')).stdout.trim(), 'true');
+  symlinkSync(b, join(a, 'dirlink'));
+  assert.equal(run(join(a, 'dirlink/main.mjs')).stdout.trim(), 'true');
 });
 test('no script keeps the old main-module check, and every one that starts main() behind a check uses isMain', () => {
   const files = [];
@@ -88,6 +201,8 @@ test('the release ships is-main.mjs and the release check refuses a shipped scri
   mkdirSync(join(root, 'scripts'), { recursive: true });
   mkdirSync(join(root, 'fixtures/replays'), { recursive: true });
   writeFileSync(join(root, 'fixtures/replays/README.md'), '# r\n');
+  mkdirSync(join(root, 'deploy/server'), { recursive: true });
+  writeFileSync(join(root, 'deploy/server/env-guard.sh'), '#!/usr/bin/env bash\n');
   writeFileSync(join(root, 'scripts/read-env-value.mjs'), "import { isMain } from './is-main.mjs';\n");
   assert.deepEqual(checkTree(root).map((f) => `${f.kind}:${f.path}`), ['script_import_missing:scripts/read-env-value.mjs']);
   writeFileSync(join(root, 'scripts/is-main.mjs'), 'export const isMain = () => false;\n');

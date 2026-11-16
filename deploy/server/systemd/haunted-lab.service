@@ -15,7 +15,8 @@ Environment=NODE_ENV=production
 Environment=HOME=/var/lib/haunted-lab
 EnvironmentFile=/etc/haunted/lab.env
 WorkingDirectory=/opt/haunted-lab
-ExecStartPre=/usr/local/bin/node /opt/haunted-ops/current/scripts/demo-env-check.mjs /etc/haunted/lab.env lab
+# Passes only with the guard's `env ok: lab` line, not on an exit status alone.
+ExecStartPre=/opt/haunted-ops/current/deploy/server/env-guard.sh --node /usr/local/bin/node /etc/haunted/lab.env lab
 ExecStart=/usr/local/bin/node supervisor/src/main.ts
 Restart=on-failure
 RestartSec=5

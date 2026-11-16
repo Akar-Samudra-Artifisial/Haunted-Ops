@@ -29,6 +29,9 @@ export function loadDeps(options?: { check?: boolean }): Promise<BuildDeps>;
 export function readIncidentRows(prisma: unknown, incidentId: string, options?: { leadMs?: number; tailMs?: number }): Promise<IncidentRows>;
 export function buildReplay(rows: IncidentRows, opts: { id: string; title: string; scenario: string }, deps: BuildDeps): ReplayFile;
 export function writeReplay(file: ReplayFile, outDir: string): string;
+export const CLOCK_RANGE_MS: number;
+export function replayBase(startMs: number): { recordedOn: string; baseMs: number };
+export function rewriteClocks(text: string, win: { startMs: number; endMs: number }): { text: string; outOfRange: boolean };
 export function main(
   argv: string[],
   io?: { out: (s: string) => void; err: (s: string) => void },

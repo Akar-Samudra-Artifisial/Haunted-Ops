@@ -290,37 +290,74 @@ describe('Property 4: sanitized pull request text has no HTML, mention, image or
   });
 });
 
-// A text of 64 KiB that is built to be slow (long runs of `<`, `[`, `@`, `!`, backticks, `http`, nested brackets) is
+// Linear time is measured as growth, not as wall-clock time (a busy machine makes every run slower, not steeper): the minimum time
+// per call at 128 KiB divided by the minimum at 16 KiB is at most 20 (linear is about 8, quadratic about 64). Each sample repeats the
+// call until 20 ms of wall time have passed and records the CPU time of the thread per call; the minimum of 7 samples per size, after one
+// warm-up and with the two sizes alternating, is the run with the least interference (replay task 13).
+const SMALL = 16 * 1024;
+const LARGE = 128 * 1024;
+/** CPU time of this thread in ms: the time it waits for a core on a busy machine is not in it. */
+const cpuMs = (): number => {
+  const used = process.threadCpuUsage();
+  return (used.user + used.system) / 1000;
+};
+/** One sample: the call repeated until 20 ms of wall time have passed, as CPU time of the thread per call. */
+const sampleMs = (run: () => void): number => {
+  let calls = 0;
+  const started = performance.now();
+  const cpu = cpuMs();
+  do {
+    run();
+    calls++;
+  } while (performance.now() - started < 20);
+  return (cpuMs() - cpu) / calls;
+};
+const expectLinearGrowth = (label: string, small: () => void, large: () => void): void => {
+  small();
+  large();
+  // The samples of the two sizes alternate, so a slow stretch of the machine falls on both.
+  let s = Infinity;
+  let l = Infinity;
+  for (let i = 0; i < 7; i++) {
+    s = Math.min(s, sampleMs(small));
+    l = Math.min(l, sampleMs(large));
+  }
+  expect(l, `${label}: ceiling`).toBeLessThan(2000);
+  expect(l / s, `${label}: growth for 8x the text (${s.toFixed(3)} ms to ${l.toFixed(3)} ms)`).toBeLessThanOrEqual(20);
+};
+/** `unit` repeated to at least `size` characters. */
+const repeated = (unit: string, size: number): string => unit.repeat(Math.ceil(size / unit.length));
+
+// A text of 16 and 128 KiB that is built to be slow (long runs of `<`, `[`, `@`, `!`, backticks, `http`, nested brackets) is
 // sanitized in linear time. The markdown link and reference patterns of `sanitizeModelText` took quadratic time on a
 // run of `[` (562 ms at 24 000 characters, about 4 s at 80 000), a denial of service on any route that sanitizes text.
 describe('sanitizePrText on adversarial input', () => {
   const adversarial: Record<string, string> = {
-    '<': '<'.repeat(65_536),
-    '[': '['.repeat(65_536),
-    '@': '@'.repeat(65_536),
-    '!': '!'.repeat(65_536),
-    '`': '`'.repeat(65_536),
-    http: 'http'.repeat(16_384),
-    'nested [a](': '[a]('.repeat(16_384),
-    'nested [[a]': '[[a]'.repeat(16_384),
-    'ref [a][b': '[a][b'.repeat(13_000),
-    'image ![[': '![['.repeat(21_000),
-    'open [x': '[x'.repeat(32_768),
-    'scheme a://': 'a://'.repeat(16_384),
-    'www.': 'www.'.repeat(16_384),
-    'mixed': '<[@!`http[[a]('.repeat(4_700),
+    '<': '<',
+    '[': '[',
+    '@': '@',
+    '!': '!',
+    '`': '`',
+    http: 'http',
+    'nested [a](': '[a](',
+    'nested [[a]': '[[a]',
+    'ref [a][b': '[a][b',
+    'image ![[': '![[',
+    'open [x': '[x',
+    'scheme a://': 'a://',
+    'www.': 'www.',
+    'mixed': '<[@!`http[[a](',
   };
-  for (const [name, input] of Object.entries(adversarial)) {
-    it(`sanitizes about 64 KiB of ${name} in under 200 ms, for every cap`, () => {
-      expect(input.length).toBeGreaterThanOrEqual(60_000);
+  for (const [name, unit] of Object.entries(adversarial)) {
+    it(`sanitizes 16 KiB and 128 KiB of ${name} in linear time, for every cap`, () => {
+      const small = repeated(unit, SMALL);
+      const large = repeated(unit, LARGE);
+      expect(large.length).toBeGreaterThanOrEqual(LARGE);
       for (const cap of [72, 400, 6_000, 20_000]) {
-        const started = performance.now();
-        const out = sanitizePrText(input, cap);
-        const ms = performance.now() - started;
-        expect(ms, `cap ${cap}`).toBeLessThan(200);
-        expect(out.length).toBeLessThanOrEqual(cap);
+        expectLinearGrowth(`cap ${cap}`, () => void sanitizePrText(small, cap), () => void sanitizePrText(large, cap));
+        expect(sanitizePrText(large, cap).length).toBeLessThanOrEqual(cap);
       }
-    });
+    }, 60_000);
   }
 });
 
@@ -336,10 +373,11 @@ describe('image marks in a run', () => {
     expect(sanitizePrText('wow! [x', 100)).toBe('wow! [x');
   });
   it('is linear on a long run of "!" with or without a "[" after it', () => {
-    for (const text of ['!'.repeat(65_536), `${'!'.repeat(65_535)}[`, '![!['.repeat(16_000)]) {
-      const started = performance.now();
-      sanitizePrText(text, 20_000);
-      expect(performance.now() - started).toBeLessThan(200);
+    const shapes: Array<(size: number) => string> = [(n) => '!'.repeat(n), (n) => `${'!'.repeat(n - 1)}[`, (n) => repeated('![![', n)];
+    for (const make of shapes) {
+      const small = make(SMALL);
+      const large = make(LARGE);
+      expectLinearGrowth(JSON.stringify(small.slice(0, 6)), () => void sanitizePrText(small, 20_000), () => void sanitizePrText(large, 20_000));
     }
-  });
+  }, 60_000);
 });

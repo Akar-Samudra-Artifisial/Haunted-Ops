@@ -7,7 +7,7 @@ import { join, relative, sep, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isMain } from './is-main.mjs';
 
-/** @typedef {'native_binary' | 'env_file' | 'forbidden_path' | 'source_map' | 'vite_dir' | 'home_path' | 'token' | 'replay_unreviewed' | 'replay_invalid' | 'replay_folder_missing' | 'script_import_missing'} FindingKind */
+/** @typedef {'native_binary' | 'env_file' | 'forbidden_path' | 'source_map' | 'vite_dir' | 'home_path' | 'token' | 'replay_unreviewed' | 'replay_invalid' | 'replay_folder_missing' | 'script_import_missing' | 'env_guard_missing'} FindingKind */
 
 /** First bytes of ELF and Mach-O files (thin and fat, both byte orders). */
 const MAGIC = [
@@ -160,6 +160,12 @@ export function checkTree(root, options = {}) {
     if (!lstatSync(join(root, 'fixtures', 'replays')).isDirectory() && !out.some((f) => f.path === 'fixtures/replays')) add('fixtures/replays', 'replay_folder_missing');
   } catch {
     add('fixtures/replays', 'replay_folder_missing');
+  }
+  // The units, install.sh and the pre-flight run the env guard only through this wrapper; without it nothing checks the env files.
+  try {
+    if (!lstatSync(join(root, 'deploy', 'server', 'env-guard.sh')).isFile()) throw new Error('not a file');
+  } catch {
+    add('deploy/server/env-guard.sh', 'env_guard_missing');
   }
   return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0));
 }

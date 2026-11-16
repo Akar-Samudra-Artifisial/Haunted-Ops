@@ -86,5 +86,5 @@ export function spoken(ms: number): string {
 export const positionText = (position: number, durationMs: number): string => `${spoken(position)} of ${spoken(durationMs)}`;
 /** The banner and the table caption: the date is the recording date, never the time of the recording. */
 export const bannerText = (recordedOn: string): string => `Replay of ${recordedOn}, not live`;
-/** The wall-clock time the scene reads as "now" for a position: midnight of the recording date plus the position, to the second. */
-export const sceneClock = (recordedOn: string, position: number): number => Date.parse(`${recordedOn}T00:00:00.000Z`) + Math.floor(position / 1000) * 1000;
+/** The wall-clock time the scene reads as "now" for a position: 12:00 UTC of the recording date (the base of replay time) plus the position, to the second. */
+export const sceneClock = (recordedOn: string, position: number): number => Date.parse(`${recordedOn}T12:00:00.000Z`) + Math.floor(position / 1000) * 1000;

@@ -5,6 +5,9 @@
 # The rotation is error-spike, fog, dark-room; its position is kept in /var/lib/haunted/scenario-next.
 # CHAOS_TOKEN comes from the environment of the unit. It goes to curl through a private header file, never through an argument.
 set -euo pipefail
+# Under `bash -x` the trace must never print the token: it is switched off around the lines that hold it and restored after.
+XTRACE=0
+case "$-" in *x*) XTRACE=1 ;; esac
 
 SCENARIOS=(error-spike fog dark-room)
 STATE_FILE="${STATE_FILE:-/var/lib/haunted/scenario-next}"
@@ -16,12 +19,14 @@ fail() {
   exit 1
 }
 
+{ set +x; } 2>/dev/null
 [ -n "${CHAOS_TOKEN:-}" ] || fail "CHAOS_TOKEN is not set"
 
 HEADER_FILE="$(mktemp)"
 trap 'rm -f -- "$HEADER_FILE"' EXIT
 chmod 600 "$HEADER_FILE"
 printf 'Authorization: Bearer %s\n' "$CHAOS_TOKEN" >"$HEADER_FILE"
+if [ "$XTRACE" = 1 ]; then set -x; fi
 
 post() {
   curl --silent --show-error --fail --max-time 30 --request POST --header "@${HEADER_FILE}" --output /dev/null "${BASE_URL}$1"

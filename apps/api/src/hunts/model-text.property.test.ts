@@ -99,12 +99,39 @@ describe('replaceMarkdownLinks', () => {
       { numRuns: 2000 },
     );
   });
+  // Linear time as growth, not wall-clock time (replay task 13): the minimum time per call at 128 KiB over the minimum at 16 KiB is at most 20
+  // (linear is about 8, quadratic about 64). Each sample repeats the call until 20 ms have passed; the minimum of 7 samples follows one warm-up.
   it('takes linear time on a long run of brackets', () => {
-    for (const unit of ['[', '[x', '![[', '[a][b', '[a](']) {
-      const text = unit.repeat(Math.ceil(80_000 / unit.length));
+    // CPU time of the thread per call (the time it waits for a core is not in it), over a sample of at least 20 ms of wall time.
+    const cpuMs = (): number => {
+      const used = process.threadCpuUsage();
+      return (used.user + used.system) / 1000;
+    };
+    const sampleMs = (run: () => void): number => {
+      let calls = 0;
       const started = performance.now();
-      replaceMarkdownLinks(replaceMarkdownLinks(text, 'link'), 'reference');
-      expect(performance.now() - started, unit).toBeLessThan(100);
+      const cpu = cpuMs();
+      do {
+        run();
+        calls++;
+      } while (performance.now() - started < 20);
+      return (cpuMs() - cpu) / calls;
+    };
+    for (const unit of ['[', '[x', '![[', '[a][b', '[a](']) {
+      const both = (text: string) => () => void replaceMarkdownLinks(replaceMarkdownLinks(text, 'link'), 'reference');
+      const small = both(unit.repeat(Math.ceil((16 * 1024) / unit.length)));
+      const large = both(unit.repeat(Math.ceil((128 * 1024) / unit.length)));
+      small();
+      large();
+      // The samples of the two sizes alternate, so a slow stretch of the machine falls on both.
+      let s = Infinity;
+      let l = Infinity;
+      for (let i = 0; i < 7; i++) {
+        s = Math.min(s, sampleMs(small));
+        l = Math.min(l, sampleMs(large));
+      }
+      expect(l, `${unit}: ceiling`).toBeLessThan(2000);
+      expect(l / s, `${unit}: growth for 8x the text (${s.toFixed(3)} ms to ${l.toFixed(3)} ms)`).toBeLessThanOrEqual(20);
     }
-  });
+  }, 60_000);
 });

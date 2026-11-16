@@ -10,10 +10,12 @@ import { checkTree, formatFindings } from './release-check.mjs';
 const SCRIPT = fileURLToPath(new URL('./release-check.mjs', import.meta.url));
 const roots = [];
 /** A fixture tree: { 'relative/path': string | Buffer }. */
-function tree(files) {
+function tree(files, { guard = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'release-check-'));
   roots.push(root);
-  for (const [rel, content] of Object.entries(files)) {
+  // A release always carries the env guard wrapper (the release check refuses one without it).
+  const all = guard ? { 'deploy/server/env-guard.sh': '#!/usr/bin/env bash\n', ...files } : files;
+  for (const [rel, content] of Object.entries(all)) {
     const full = join(root, rel);
     mkdirSync(dirname(full), { recursive: true });
     writeFileSync(full, content);
@@ -176,4 +178,13 @@ test('refuses a release without fixtures/replays/, and accepts the folder holdin
   assert.equal(res.status, 1);
   assert.match(res.stderr, /release-check: replay_folder_missing: fixtures\/replays/);
   assert.deepEqual(checkTree(tree({ 'fixtures/replays/README.md': '# Replays\n' })), []);
+});
+test('refuses a release without deploy/server/env-guard.sh', () => {
+  const files = { 'fixtures/replays/README.md': '# Replays\n', 'deploy/server/env/api.env.example': 'NODE_ENV=production\n' };
+  const missing = tree(files, { guard: false });
+  assert.deepEqual(checkTree(missing).map((f) => `${f.kind}:${f.path}`), ['env_guard_missing:deploy/server/env-guard.sh']);
+  const res = spawnSync(process.execPath, [SCRIPT, missing], { encoding: 'utf8' });
+  assert.equal(res.status, 1);
+  assert.equal(res.stderr.trim(), 'release-check: env_guard_missing: deploy/server/env-guard.sh');
+  assert.deepEqual(checkTree(tree(files)), []);
 });

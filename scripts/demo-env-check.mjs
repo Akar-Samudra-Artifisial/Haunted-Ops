@@ -121,11 +121,13 @@ export function checkEnv(vars, profile = 'api') {
   };
   if (profile === 'kiro') {
     // `/etc/haunted/kiro.env`: one variable, KIRO_API_KEY. Any other name is refused (by name, never its value).
+    // That includes HAUNTED_NODE: the node binary of the guard is the option `--node` of env-guard.sh, never a variable of a file.
     rule('KIRO_API_KEY', isKiroApiKey(v('KIRO_API_KEY')));
     for (const name of Object.keys(vars)) if (name !== 'KIRO_API_KEY') bad.push(name);
     return bad;
   }
   if (profile === 'lab') {
+    rule('HAUNTED_NODE', !has(vars, 'HAUNTED_NODE'));
     rule('NODE_ENV', v('NODE_ENV') === 'production');
     rule('FIX_RUN_AS_USER', !has(vars, 'FIX_RUN_AS_USER'));
     rule('GITHUB_TOKEN', !has(vars, 'GITHUB_TOKEN'));
@@ -135,6 +137,7 @@ export function checkEnv(vars, profile = 'api') {
     rule('TRAFFIC_RPS', !has(vars, 'TRAFFIC_RPS') || intIn(v('TRAFFIC_RPS'), 0, 50));
     return bad;
   }
+  rule('HAUNTED_NODE', !has(vars, 'HAUNTED_NODE'));
   rule('NODE_ENV', v('NODE_ENV') === 'production');
   rule('DATABASE_URL', isDatabaseUrl(v('DATABASE_URL')));
   rule('PORT', intIn(v('PORT'), 1, 65535));

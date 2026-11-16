@@ -1,6 +1,6 @@
 # Implementation Plan: replay
 ## Overview
-Add the replay feature end to end: the file format and its validator, the tools that build and review a file, the store and the read-only API, and the playback in the Web (scene and Accessible mode), then close the two flaky tests and the three review findings of `deploy-demo` that the same pass touches. It is 8 top-level tasks. Each task ships with its tests. Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: replay, Property N`. Nothing here touches AWS, a server, GitHub or the real `kiro-cli`, and no test makes a network call.
+Add the replay feature end to end: the file format and its validator, the tools that build and review a file, the store and the read-only API, and the playback in the Web (scene and Accessible mode), then close the two flaky tests and the three review findings of `deploy-demo` that the same pass touches. It is 13 top-level tasks (tasks 8 to 13 hold the fixes found by the reviews and by the first real replay). Each task ships with its tests. Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: replay, Property N`. Nothing here touches AWS, a server, GitHub or the real `kiro-cli`, and no test makes a network call.
 ## Tasks
 - [x] 1. The Replay file (`packages/shared/src/replays.ts`)
   - [x] 1.1 Add `ReplayFile`, the limits, the forbidden string kinds and `validateReplayFile` built with `makeValidator`, reusing `checkServiceState`, `checkHuntDetail` and `checkProposalView`; export them from the package index and set `"sideEffects": false` in its `package.json`
@@ -111,6 +111,32 @@ Add the replay feature end to end: the file format and its validator, the tools 
 - [x] 11. The replay folder reaches the server
   - [x] 11.1 `build-release.sh` copies `fixtures/replays/README.md` into the stage so the folder is never empty in the tarball; `release-check.mjs` refuses a release without `fixtures/replays/` (`replay_folder_missing`); the seed keeps its rule (a missing folder is an error) and seeds 0 replays from a folder with only the README; tests for the pack list, the check and the seed; one sentence in `docs/DEPLOY.md`
     - _Requirements: 10.1, 10.2, 10.3, 10.4_
+- [x] 12. Replay text, one clock and load-proof timing tests
+  - [x] 12.1 `CODE_OBJECTS` and `isCodeName` in `hasHostName` (the Builder keeps using the same function); the doc comment says `os.path` is now accepted; the new accepted and refused examples, every old one unchanged
+    - _Requirements: 11.1, 11.2, 11.3_
+  - [x]* 12.2 Property test: a code object and an identifier are not a host name, a third label makes one (Property 7)
+    - _Requirements: 11.1, 11.2_
+  - [x] 12.3 Builder: base 12:00 UTC (`replayBase`), `rewriteClocks` on every string after the sanitizer, `clock_out_of_range` with field paths; validator `foreign_date`; the Web scene clock at 12:00; the synthetic file rebuilt; the README of `fixtures/replays/`; tests with the strings of the real hunt
+    - _Requirements: 11.4, 11.5, 11.6_
+  - [x]* 12.4 Property test: a rewritten clock keeps its offset from the base (Property 8)
+    - _Requirements: 11.4_
+  - [x] 12.5 Timing tests: growth ratio of the 64 KiB test with a 2 s ceiling and a 60 s timeout; Property 2b measured alone and given 60 s; `[fast-check] timed out` with the seed in the Vitest setup, tested; the checks and the `docs/KIRO_USAGE.md` line
+    - _Requirements: 11.7, 11.8_
+- [x] 13. Host-like code members, epoch numbers, zone offsets and load-proof timing
+  - [x] 13.1 `HOST_LIKE_MEMBERS` (exported, frozen) and its use in `isCodeName`; the accepted and refused examples in `replays.hosts.test.ts` and the Builder test (`app.corp` becomes `[host]`, `(Promise.all)` stays)
+    - _Requirements: 12.1_
+  - [x]* 13.2 Property test: Property 7 also covers `X.<host-like>` (host) and an identifier outside the set (code)
+    - _Requirements: 12.1_
+  - [x] 13.3 Builder: an ISO time with `Z` or an offset is one instant written in `Z`, the clock alternative has a lookbehind, epoch numbers of 10 and 13 digits within one day of the window are shifted; validator: an epoch of another date and an offset other than `Z` or `+00:00` are refused; the wording of bare clocks and bare dates settled in the requirements and the design; unit tests for each case
+    - _Requirements: 12.2, 12.3, 12.4, 12.5, 12.7_
+  - [x]* 13.4 Property test: an epoch number or an ISO time with an offset is rewritten to the base plus its offset (Property 9)
+    - _Requirements: 12.2, 12.3_
+  - [x] 13.5 Timing tests: 16 and 128 KiB, the minimum of 7 alternating samples of at least 20 ms (CPU time of the thread per call), ratio at most 20, no floor, 60 s timeout, in `replays.hosts.test.ts`, `pr-text.test.ts` and `model-text.property.test.ts`; the `packages/shared` tests run 5 times while `apps/web` tests run
+    - _Requirements: 12.6, 12.8_
+  - [x] 13.6 The Web test "loads and mounts only while off, and destroys one renderer per mounted Scene" gets the 30 s timeout that requirement 9.3 and its comment name (it was missing, and the test timed out at the 5 s default in a loaded `pnpm test`)
+    - _Requirements: 12.8_
+  - [x] 13.7 Documents and verification: `docs/DEV.md`, `docs/KIRO_USAGE.md`, the checks of requirement 12.8
+    - _Requirements: 12.7, 12.8_
 ## Notes
 - Name: the feature is always "replay". The fake `kiro-cli` has a mode with a similar name; this spec does not touch it and shares no code or name with it.
 - The Builder needs the built packages (`pnpm build`): it imports the validator of `packages/shared/dist` and `sanitizePrText` of `apps/api/dist`. Tests that run in vitest inject the source functions instead.
@@ -119,6 +145,22 @@ Add the replay feature end to end: the file format and its validator, the tools 
 - A replay frame carries `hunt` and `proposal` for the detail panel; the table and the Scene read the summaries inside `services`, so the frame holds both and the builder emits them together.
 - Out of scope: real replay files (the orchestrator builds, reviews and commits them), a replay of the fixer stream, editing or deleting a replay through the API.
 ## Task Dependency Graph
+```mermaid
+graph TD
+  T1[1 Replay file] --> T2[2 Builder and Review tool]
+  T1 --> T3[3 Store and API]
+  T2 --> T3
+  T3 --> T4[4 Playback in the Web]
+  T4 --> T5[5 Flaky tests]
+  T5 --> T6[6 deploy-demo findings]
+  T6 --> T7[7 Steering and records]
+  T7 --> T8[8 Review findings]
+  T8 --> T9[9 Last validator gaps]
+  T9 --> T10[10 IPv6 and flaky Web tests]
+  T10 --> T11[11 Replay folder]
+  T11 --> T12[12 Replay text and timing]
+  T12 --> T13[13 Host-like members, epochs and timing]
+```
 ```json
 {
   "waves": [
@@ -135,7 +177,12 @@ Add the replay feature end to end: the file format and its validator, the tools 
     { "id": 10, "tasks": ["9.3"] },
     { "id": 11, "tasks": ["10.1", "10.2"] },
     { "id": 12, "tasks": ["10.3"] },
-    { "id": 13, "tasks": ["11.1"] }
+    { "id": 13, "tasks": ["11.1"] },
+    { "id": 14, "tasks": ["12.1", "12.3", "12.5"] },
+    { "id": 15, "tasks": ["12.2", "12.4"] },
+    { "id": 16, "tasks": ["13.1", "13.3", "13.5"] },
+    { "id": 17, "tasks": ["13.2", "13.4", "13.6"] },
+    { "id": 18, "tasks": ["13.7"] }
   ]
 }
 ```

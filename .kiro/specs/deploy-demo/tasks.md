@@ -1,6 +1,6 @@
 # Implementation Plan: deploy-demo
 ## Overview
-Write the files that turn a bare Debian instance into the Demo server, and the local tests that keep them honest: a release bundle with a check, an environment guard, systemd units and a timer, a firewall, Caddy, an install script, a smoke test and a pre-flight, and the documents. It is 12 top-level tasks (task 10 holds the fixes found by the check and the review, task 11 the fixes of the first real install, task 12 the Kiro API key). Each task ships with its tests. Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: deploy-demo, Property N`. Nothing here touches AWS, a server, GitHub or the real `kiro-cli`.
+Write the files that turn a bare Debian instance into the Demo server, and the local tests that keep them honest: a release bundle with a check, an environment guard, systemd units and a timer, a firewall, Caddy, an install script, a smoke test and a pre-flight, and the documents. It is 15 top-level tasks (task 10 holds the fixes found by the check and the review, task 11 the fixes of the first real install, task 12 the Kiro API key, task 13 scripts started through a link, task 14 the fail-closed env guard, task 15 the node option of the guard, quiet tracing and the closed release tree). Each task ships with its tests. Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: deploy-demo, Property N`. Nothing here touches AWS, a server, GitHub or the real `kiro-cli`.
 ## Tasks
 - [x] 1. Release bundle
   - [x] 1.1 Add `scripts/release-check.mjs` (`checkTree`, a CLI): native binaries, `.env` files, `spike/`, `spikes/`, `.agents/`, source maps, `.vite/`, home paths and token patterns; findings hold a path and a kind, never the matched text
@@ -92,6 +92,24 @@ Write the files that turn a bare Debian instance into the Demo server, and the l
 - [x] 13. Scripts started through a symbolic link
   - [x] 13.1 `scripts/is-main.mjs` (realpath on both sides) used by every script that had the old main-module check; shipped by `build-release.sh`, checked by the Release check; the Env guard prints `env ok: <profile>`, the Pre-flight requires it; `read-env-value.mjs` exits non-zero for an absent or empty key; tests through a symbolic link (a bad file is refused) and a static test against the old pattern; one troubleshooting sentence in `docs/DEPLOY.md`; the `docs/KIRO_USAGE.md` line
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
+- [x] 14. The env guard fails closed
+  - [x] 14.1 `scripts/is-main.mjs` throws (exit 1, one line, no path) when `argv[1]` has the module's base name but another real path; `deploy/server/env-guard.sh` (exit 0 only with node status 0 and `env ok: <profile>`); used by both `ExecStartPre` of the API unit, the Lab unit, `install.sh` and `preflight.sh`; shipped by `build-release.sh` and required by the Release check (`env_guard_missing`); one note in `docs/DEPLOY.md`
+    - _Requirements: 12.1, 12.2, 12.3, 12.4_
+  - [x] 14.2 Tests: `env-guard.sh` through a symlinked release folder (good file, bad file, silent stub, wrong-profile stub, missing node), `isMain` fail-closed, a static test that only `env-guard.sh` calls the guard under `deploy/server/`, the updated unit and install checks; `bash -n`; the `docs/KIRO_USAGE.md` line
+    - _Requirements: 12.3, 12.5_
+  - [x]* 14.3 Property test: the wrapper passes only on the ok line of its profile (Property 5)
+    - _Requirements: 12.2, 12.5_
+- [x] 15. The node option, quiet tracing and the closed release tree
+  - [x] 15.1 `env-guard.sh --node <path>` (absolute, executable, else exit 1 with a fixed message; no node from the environment); the units, `install.sh` and `preflight.sh` pass `/usr/local/bin/node`; `HAUNTED_NODE` is gone from both units; the `api`, `lab` and `kiro` profiles refuse a `HAUNTED_NODE` key
+    - _Requirements: 13.1, 13.2, 13.3_
+  - [x] 15.2 `{ set +x; } 2>/dev/null` around every line of `install.sh`, `preflight.sh` and `scenario.sh` that holds a secret, with the restore only when tracing was on; `install.sh` locks the release tree on every run (`chown -R root:hops`, `chmod -R u+w,go-w,a+rX`) and the pre-flight has the check `release tree is root owned and not writable by hops`
+    - _Requirements: 13.4, 13.5, 13.6_
+  - [x] 15.3 Tests: `env-guard.sh` with `--node` (a good file, a bad file, a missing, relative, not executable and not regular path, no option, the environment ignored), the refusal of `HAUNTED_NODE` in each profile, the unit lines, the static checks of the tracing switches, the install lock and the pre-flight check, the key reading under `bash -x`; `bash -n`
+    - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7_
+  - [x]* 15.4 Property test: the key reading of the pre-flight under `bash -x` never prints the key (Property 6)
+    - _Requirements: 13.4_
+  - [x] 15.5 Documents and verification: `docs/DEPLOY.md`, `docs/KIRO_USAGE.md`, the checks of requirement 13.7
+    - _Requirements: 13.7_
 ## Task Dependency Graph
 ```mermaid
 graph TD
@@ -109,6 +127,9 @@ graph TD
   T9 --> T10[10 Review fixes]
   T10 --> T11[11 First install fixes]
   T11 --> T12[12 Kiro API key]
+  T12 --> T13[13 Scripts through a link]
+  T13 --> T14[14 Fail-closed env guard]
+  T14 --> T15[15 Node option, quiet tracing, closed release tree]
 ```
 ```json
 {
@@ -123,7 +144,9 @@ graph TD
     { "id": 7, "tasks": ["10"] },
     { "id": 8, "tasks": ["11"] },
     { "id": 9, "tasks": ["12"] },
-    { "id": 10, "tasks": ["13"] }
+    { "id": 10, "tasks": ["13"] },
+    { "id": 11, "tasks": ["14"] },
+    { "id": 12, "tasks": ["15"] }
   ]
 }
 ```

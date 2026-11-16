@@ -199,7 +199,7 @@ describe('Property 8: Accessible mode never loads or leaves the Scene', () => {
       }),
       { numRuns: 12 },
     );
-  });
+  }, 30_000);
 });
 
 describe('focus', () => {

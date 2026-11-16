@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { MAX_FRAMES, ReplayBuildError, assertBuildFresh, buildReplay, loadDeps, main, readIncidentRows, writeReplay } from './build-replay.mjs';
+import { MAX_FRAMES, ReplayBuildError, assertBuildFresh, buildReplay, loadDeps, main, readIncidentRows, rewriteClocks, writeReplay } from './build-replay.mjs';
 import { PLANTED, SHA, at, makeRows } from './test-support.mjs';
 let deps;
 const dir = mkdtempSync(join(tmpdir(), 'replay-build-'));
@@ -32,7 +32,190 @@ test('only frames where something changed, and the times are those of the record
   }
   const text = JSON.stringify(file);
   assert.ok(!text.includes('2026-11-15T09:'), 'the hour of the incident is in the file');
-  assert.ok(text.includes('2026-11-15T00:'));
+  // The window start is moved to 12:00:00 UTC of the recording date.
+  assert.ok(text.includes('2026-11-15T12:00:'));
+  assert.equal(file.frames[0].services[0].updatedAt, '2026-11-15T12:00:00.000Z');
+});
+// Real-looking strings of a hunt (replay task 12): the window starts at 04:20:00 UTC on 2026-11-16.
+const CLOCK_START = Date.UTC(2026, 10, 16, 4, 20, 0);
+const clockWindow = { startMs: CLOCK_START, endMs: CLOCK_START + 10 * 60_000 };
+test('rewriteClocks moves every clock of a hunt into the replay clock, each in its own format', () => {
+  const cases = [
+    ['errors orders since 04:21', 'errors orders since 12:01'],
+    ['deploys since 03:30', 'deploys since 11:10'],
+    ['(04:25:55Z)', '(12:05:55Z)'],
+    ['04:26:44 2026-11-16T04:26:44.885Z orders req POST /orders 200 1622ms rid=r-57a77f9c09504281', '12:06:44 2026-11-16T12:06:44.885Z orders req POST /orders 200 1622ms rid=r-57a77f9c09504281'],
+    ['d-107 orders scenario/fog 739d121 04:25:55', 'd-107 orders scenario/fog 739d121 12:05:55'],
+    ['on 2026-11-16 and 2026-11-15', 'on 2026-11-16 and 2026-11-15'],
+    ['2026-11-16T04:26:44Z', '2026-11-16T12:06:44Z'],
+  ];
+  for (const [input, want] of cases) {
+    const r = rewriteClocks(input, clockWindow);
+    assert.equal(r.text, want, input);
+    assert.equal(r.outOfRange, false, input);
+  }
+});
+test('rewriteClocks leaves durations, ratios in prose, versions and longer numbers alone', () => {
+  for (const text of ['200 1622ms', 'a ratio of 3:2 in prose', 'v1.2.3 and 12:30:45:10', '0.35 error ratio', '1:04:21', 'd-107', 'id 12345:67', '24:00 and 12:60']) {
+    const r = rewriteClocks(text, clockWindow);
+    assert.equal(r.text, text, text);
+    assert.equal(r.outOfRange, false, text);
+  }
+});
+// Replay task 13: epoch numbers and zone offsets. The window is 04:20:00 to 04:30:00 UTC on 2026-11-16; the shift is +7 h 40 min.
+const SHIFT_MS = 27_600_000;
+test('rewriteClocks shifts an epoch number of seconds or milliseconds of the window, in its own number of digits', () => {
+  const t = Date.UTC(2026, 10, 16, 4, 21, 5);
+  const r = rewriteClocks(`ts=${t / 1000} and ${t} and (${t / 1000}).`, clockWindow);
+  assert.equal(r.text, `ts=${(t + SHIFT_MS) / 1000} and ${t + SHIFT_MS} and (${(t + SHIFT_MS) / 1000}).`);
+  assert.equal(r.outOfRange, false);
+  // Within one day of the window (19 hours after its end) it is still shifted.
+  const later = Date.UTC(2026, 10, 17, 0, 30, 0);
+  assert.equal(rewriteClocks(String(later / 1000), clockWindow).text, String((later + SHIFT_MS) / 1000));
+});
+test('rewriteClocks leaves an epoch number more than a day from the window, out of range or not alone, as it is', () => {
+  const far = Date.UTC(2026, 10, 12, 4, 21, 5) / 1000;
+  const near = Date.UTC(2026, 10, 16, 4, 21, 5) / 1000;
+  for (const text of [String(far), String(far * 1000), '1399999999', '2100000001', '9999999999', `x${near}`, `${near}x`, `r-${near}a`, `0.${near}`, `${near}0`, `${near}${near}`, '12345678901234', '123456789']) {
+    const r = rewriteClocks(text, clockWindow);
+    assert.equal(r.text, text, text);
+    assert.equal(r.outOfRange, false, text);
+  }
+  // The same number at the edges of the range of a day: 1 ms after the day, not shifted; just inside it, shifted.
+  const end = clockWindow.endMs;
+  assert.equal(rewriteClocks(String(end + 86_400_001), clockWindow).text, String(end + 86_400_001));
+  assert.equal(rewriteClocks(String(end + 86_400_000), clockWindow).text, String(end + 86_400_000 + SHIFT_MS));
+});
+test('rewriteClocks reads an ISO time with an offset as one instant and writes it in Z form', () => {
+  // 12:26:44+08:00 and 22:56:44-05:30 (the day before) are both 04:26:44Z, a minute inside the window.
+  assert.equal(rewriteClocks('2026-11-16T12:26:44+08:00', clockWindow).text, '2026-11-16T12:06:44Z');
+  assert.equal(rewriteClocks('2026-11-16T12:26:44.123+08:00 done', clockWindow).text, '2026-11-16T12:06:44.123Z done');
+  assert.equal(rewriteClocks('2026-11-15T22:56:44-05:30', clockWindow).outOfRange, false);
+  assert.equal(rewriteClocks('2026-11-15T22:56:44-05:30', clockWindow).text, '2026-11-16T12:06:44Z');
+  assert.equal(rewriteClocks('2026-11-16T04:26:44+00:00', clockWindow).text, '2026-11-16T12:06:44Z');
+  // An offset of a time far from the window stops the build as any far clock does; the text is kept.
+  const far = rewriteClocks('2026-11-16T22:00:00+08:00', clockWindow);
+  assert.equal(far.outOfRange, true);
+  assert.equal(far.text, '2026-11-16T22:00:00+08:00');
+});
+test('rewriteClocks never starts a clock inside an offset or a longer number, and leaves a far clock in prose as it is', () => {
+  for (const text of ['at +08:00 only', 'zone -05:30 only', 'v1.2.3 and 3:1', '1.04:21 and 5:04:21', 'version 1.2.3, ratio 3:1']) {
+    const r = rewriteClocks(text, clockWindow);
+    assert.equal(r.text, text, text);
+    assert.equal(r.outOfRange, false, text);
+  }
+  // A clock of prose that is far from the window is not moved; the build stops on it (`clock_out_of_range`).
+  const prose = rewriteClocks('about 12:30 in prose', clockWindow);
+  assert.equal(prose.text, 'about 12:30 in prose');
+  assert.equal(prose.outOfRange, true);
+});
+test('rewriteClocks keeps a bare date of the incident day and of the day before as written', () => {
+  assert.equal(rewriteClocks('on 2026-11-16, since 2026-11-15, not 2026-11-14', clockWindow).text, 'on 2026-11-16, since 2026-11-15, not 2026-11-14');
+});
+test('rewriteClocks reads a bare clock on the day of the window start, the day before or the day after, whichever is nearest', () => {
+  const start = Date.UTC(2026, 10, 16, 23, 50, 0);
+  const win = { startMs: start, endMs: start + 600_000 };
+  // The window ends at midnight: 00:02 is read on the next day, 23:45 on the day of the start; the shift is -11 h 50 min.
+  assert.equal(rewriteClocks('at 00:02 and 23:45', win).text, 'at 12:12 and 11:55');
+});
+test('a built replay keeps no epoch number or zone offset of the source window', () => {
+  const rows = makeRows();
+  // makeRows starts the window at 09:57:30 on 2026-11-15; the replay clock starts at 12:00:00.
+  const t = Date.UTC(2026, 10, 15, 9, 58, 5);
+  rows.hunt.fixHint = `job ${t / 1000} then ${t} then 2026-11-15T17:58:05+08:00 and 2026-11-15T09:58:05Z`;
+  const file = build(rows);
+  assert.equal(deps.validateReplayFile(file).ok, true);
+  const hint = lastOf(file, 'hunt').fixHint;
+  const shifted = t + (Date.UTC(2026, 10, 15, 12, 0, 0) - rows.window.startMs);
+  assert.equal(hint, `job ${shifted / 1000} then ${shifted} then ${new Date(shifted).toISOString().slice(0, 19)}Z and ${new Date(shifted).toISOString().slice(0, 19)}Z`);
+});
+test('a built replay masks a code object with a host ending and keeps a code name', () => {
+  const rows = makeRows();
+  rows.hunt.fixHint = 'check (Promise.all), Array.from and app.corp, fs.internal and crypto.com';
+  const hint = lastOf(build(rows), 'hunt').fixHint;
+  assert.equal(hint, 'check (Promise.all), Array.from and [host], [host] and [host]');
+});
+test('the validator refuses an epoch number of another date and an ISO time with an offset, field path only', () => {
+  const file = build();
+  const hunt = file.frames.find((f) => f.hunt)?.hunt;
+  assert.ok(hunt);
+  const refuse = (text) => {
+    hunt.fixHint = text;
+    const r = deps.validateReplayFile(file);
+    assert.equal(r.ok, false, text);
+    assert.ok(r.errors.some((p) => p.endsWith('.hunt.fixHint')), text);
+    assert.ok(!r.errors.join(' ').match(/\d{9}/), text);
+  };
+  const accept = (text) => {
+    hunt.fixHint = text;
+    assert.equal(deps.validateReplayFile(file).ok, true, text);
+  };
+  const sameDay = Date.UTC(2026, 10, 15, 12, 0, 1);
+  const otherDay = Date.UTC(2026, 10, 16, 12, 0, 1);
+  refuse(`at ${otherDay / 1000}`);
+  refuse(`at ${otherDay}`);
+  refuse('at 2026-11-15T12:00:01+08:00');
+  refuse('at 2026-11-15T12:00:01-05:30');
+  refuse('at 2026-11-15T12:00:01.5+01:00');
+  accept(`at ${sameDay / 1000} and ${sameDay}`);
+  accept('at 2026-11-15T12:00:01+00:00 and 2026-11-15T12:00:01Z');
+  // Numbers outside the epoch ranges, longer numbers and ids are not epochs.
+  accept('numbers 1399999999 and 2100000001 and 99999999999 and r-1a2b3c4d5e and 20261116');
+});
+test('rewriteClocks reads a clock just before midnight on the day before when that is nearer', () => {
+  const start = Date.UTC(2026, 10, 16, 0, 10, 0);
+  const r = rewriteClocks('since 23:50 and at 00:12', { startMs: start, endMs: start + 600_000 });
+  assert.equal(r.text, 'since 11:40 and at 12:02');
+  const iso = rewriteClocks('2026-11-15T23:50:00.000Z', { startMs: start, endMs: start + 600_000 });
+  assert.equal(iso.text, '2026-11-16T11:40:00.000Z');
+});
+test('a built replay of the hunt strings has one clock: no clock of the source window, ISO dates equal recordedOn, base 12:00 UTC', () => {
+  const rows = makeRows();
+  // makeRows starts the window at 09:57:30 on 2026-11-15 (moved to 12:00:00, a shift of 2:02:30); these strings use that clock.
+  rows.hunt.steps = [
+    { index: 1, tool: 'search_errors', summary: 'errors orders since 09:57', at: at(45) },
+    { index: 2, tool: 'recent_deploys', summary: 'deploys since 09:00', at: at(50) },
+    { index: 3, tool: 'tail_logs', summary: '09:58:44 2026-11-15T09:58:44.885Z orders req POST /orders 200 1622ms rid=r-57a77f9c09504281', at: at(55) },
+  ];
+  rows.hunt.summary = 'The bad deploy landed (09:58:05Z), a ratio of 3:2 in prose.';
+  rows.hunt.evidence = [{ order: 1, kind: 'deploy', ref: 'deploy:d-107', detail: 'd-107 orders scenario/fog 739d121 09:58:05', cited: true }];
+  rows.hunt.fixHint = 'run the warehouse freshness checks in parallel (Promise.all)';
+  const file = build(rows);
+  assert.equal(deps.validateReplayFile(file).ok, true);
+  const text = JSON.stringify(file);
+  for (const clock of ['09:57', '09:00', '09:58', 'T09:']) assert.ok(!text.includes(clock), `${clock} of the source window is in the file`);
+  for (const m of text.matchAll(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g)) assert.equal(m[0].slice(0, 10), file.recordedOn);
+  const hunt = lastOf(file, 'hunt');
+  assert.deepEqual(hunt.allSteps.map((s) => s.summary), [
+    'errors orders since 11:59',
+    'deploys since 11:02',
+    '12:01:14 2026-11-15T12:01:14.885Z orders req POST /orders 200 1622ms rid=r-57a77f9c09504281',
+  ]);
+  assert.equal(hunt.diagnosis.summary, 'The bad deploy landed (12:00:35Z), a ratio of 3:2 in prose.');
+  assert.equal(hunt.evidence[0].detail, 'd-107 orders scenario/fog 739d121 12:00:35');
+  // A code name is not a host: it stays as written.
+  assert.equal(hunt.fixHint, 'run the warehouse freshness checks in parallel (Promise.all)');
+  assert.equal(hunt.queuedAt.slice(0, 13), '2026-11-15T12');
+});
+test('a clock far from the window stops the build with clock_out_of_range and the field path, never the value', () => {
+  const rows = makeRows();
+  rows.hunt.fixHint = 'the job ran at 18:30 yesterday';
+  assert.throws(
+    () => build(rows),
+    (err) => err instanceof ReplayBuildError && err.code === 'clock_out_of_range' && err.paths.length > 0 && err.paths.every((p) => p.endsWith('.fixHint')) && !err.message.includes('18:30'),
+  );
+});
+test('the validator refuses a full ISO time of another date in a string (foreign_date), field path only', () => {
+  const file = build();
+  const hunt = file.frames.find((f) => f.hunt)?.hunt;
+  assert.ok(hunt);
+  hunt.fixHint = 'seen at 2026-11-14T10:00:00Z';
+  const r = deps.validateReplayFile(file);
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.some((p) => p.endsWith('.hunt.fixHint')));
+  assert.ok(!r.errors.join(' ').includes('2026-11-14'));
+  hunt.fixHint = 'seen at 2026-11-15T12:00:01Z, also 04:21 and 3:2';
+  assert.equal(deps.validateReplayFile(file).ok, true);
 });
 test('merges the polls of one second into one frame', () => {
   const rows = makeRows();

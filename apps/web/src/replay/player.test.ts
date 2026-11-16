@@ -87,7 +87,7 @@ describe('words', () => {
   });
   it('banner and scene clock use the recording date only', () => {
     expect(bannerText('2026-11-15')).toBe('Replay of 2026-11-15, not live');
-    expect(sceneClock('2026-11-15', 0)).toBe(Date.parse('2026-11-15T00:00:00.000Z'));
-    expect(sceneClock('2026-11-15', 61_900)).toBe(Date.parse('2026-11-15T00:01:01.000Z'));
+    expect(sceneClock('2026-11-15', 0)).toBe(Date.parse('2026-11-15T12:00:00.000Z'));
+    expect(sceneClock('2026-11-15', 61_900)).toBe(Date.parse('2026-11-15T12:01:01.000Z'));
   });
 });

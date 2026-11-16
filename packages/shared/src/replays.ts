@@ -90,6 +90,30 @@ const FILE_ENDINGS = new Set(['py', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'jso
 const AMBIGUOUS_ENDINGS = new Set(['py', 'md', 'sh']);
 /** Common host endings: a last label with one of these, in any case, is a host ending. */
 const HOST_ENDINGS = new Set('com net org io dev app co ai id me info biz cloud xyz tech site online sg us uk de jp internal local lan corp home'.split(' '));
+/**
+ * Well-known code objects: a name of exactly two labels whose first label is one of these (case-sensitive) and whose second
+ * label is an identifier (`Promise.all`, `Array.from`, `Object.keys`, `fs.readFile`) is code, not a host name. The Builder
+ * uses `hasHostName`, so a built file keeps such a name as written.
+ */
+export const CODE_OBJECTS: readonly string[] = Object.freeze(
+  'Promise Array Object JSON Math Number String Boolean Date Map Set WeakMap Reflect Symbol BigInt Intl Error URL Buffer process console fs path os crypto http https util stream child_process res req ctx app router prisma this window document'.split(' '),
+);
+const CODE_OBJECT_SET: ReadonlySet<string> = new Set(CODE_OBJECTS);
+/**
+ * Second labels that read as a host ending (compared in lower case): `fs.internal`, `app.corp`, `crypto.com` are host names
+ * even though the first label is a code object. A two-label name is code only when its second label is not in this set.
+ */
+export const HOST_LIKE_MEMBERS: ReadonlySet<string> = Object.freeze(
+  new Set('com net org io dev app ai co cloud internal local localhost localdomain corp lan home intranet private test example site online tech me us uk id sg eu biz info xyz'.split(' ')),
+);
+const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+/** Whether `token` is `X.y` with `X` in `CODE_OBJECTS` and `y` an identifier that is not in `HOST_LIKE_MEMBERS`. Three or more labels are never a code name (`Promise.all.com`). */
+function isCodeName(token: string): boolean {
+  const dot = token.indexOf('.');
+  if (dot < 1 || token.indexOf('.', dot + 1) !== -1) return false;
+  const member = token.slice(dot + 1);
+  return CODE_OBJECT_SET.has(token.slice(0, dot)) && IDENTIFIER.test(member) && !HOST_LIKE_MEMBERS.has(member.toLowerCase());
+}
 const NAME_RUN = /[A-Za-z0-9._-]+/g;
 /** Without the `.`, `_` and `-` at both ends (a loop: a regular expression with `$` would be quadratic on a long run). */
 function trimSeparators(token: string): string {
@@ -105,14 +129,17 @@ function trimSeparators(token: string): string {
  * `github.com` (a link to the lab goes in a `prUrl`, where it is checked by its own pattern). Accepted (tested): service
  * and tool names (`payments`, `query_metrics`: no dot), lab file names (`payments/app.py`, `config.yaml`, `app.test.ts`),
  * version numbers and decimals (`1.2.3`, `0.35`, `3.12.1`: the last label has a digit), timestamps, a sentence that
- * lost its space (`Done.Next`: mixed case), `e.g.` (one letter). A code name such as `os.path` is refused too: the Builder
- * writes `[host]` in its place. One pass over the text, linear.
+ * lost its space (`Done.Next`: mixed case), `e.g.` (one letter), and a code name of exactly two labels whose first label is in
+ * `CODE_OBJECTS` (`Promise.all`, `Array.from`, `fs.readFile`: see `isCodeName`). `os.path` was refused before `CODE_OBJECTS`
+ * existed; it is now accepted by that rule, and any other code name (`foo.bar`) with a real ending is still refused and
+ * written `[host]` by the Builder. `Promise.all.com` (three labels) stays refused. One pass over the text, linear.
  */
 export function hasHostName(text: string): boolean {
   for (const match of text.matchAll(NAME_RUN)) {
     const token = trimSeparators(match[0]);
     const last = token.lastIndexOf('.');
     if (last < 1) continue;
+    if (isCodeName(token)) continue;
     const tld = token.slice(last + 1);
     if (tld.length < 2 || tld.length > 24 || !/^[A-Za-z]+$/.test(tld)) continue;
     const lower = tld.toLowerCase();
@@ -319,16 +346,41 @@ function checkFrames(input: unknown, path: string, errors: string[], durationMs:
  * Two kinds of string are not read as text: the hash of the review (64 hex characters) and a `prUrl` that is the pull
  * request URL of the lab (checked by its own pattern, the one place a link may be).
  */
-function checkStrings(value: unknown, path: string, errors: string[], depth = 0): void {
+function checkStrings(value: unknown, path: string, errors: string[], recordedOn: string | null, depth = 0): void {
   if (depth > 12) {
     errors.push(path);
     return;
   }
   if (isString(value)) {
     if (path === '$.review.sha256' || (path.endsWith('.prUrl') && REPLAY_PR_URL_PATTERN.test(value))) return;
-    if (replayForbiddenKind(value) !== null) errors.push(path);
-  } else if (Array.isArray(value)) value.forEach((v, i) => checkStrings(v, `${path}[${i}]`, errors, depth + 1));
-  else if (isPlainObject(value)) for (const [k, v] of Object.entries(value)) checkStrings(v, `${path}.${k}`, errors, depth + 1);
+    if (replayForbiddenKind(value) !== null || (recordedOn !== null && hasForeignDate(value, recordedOn))) errors.push(path);
+  } else if (Array.isArray(value)) value.forEach((v, i) => checkStrings(v, `${path}[${i}]`, errors, recordedOn, depth + 1));
+  else if (isPlainObject(value)) for (const [k, v] of Object.entries(value)) checkStrings(v, `${path}.${k}`, errors, recordedOn, depth + 1);
+}
+const FULL_ISO_TIME = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(Z|[+-]\d{2}:\d{2})/g;
+/** An epoch number of seconds (10 digits) or milliseconds (13 digits), alone: no letter, digit, `_` or `.` before it, no letter, digit or `_` after it. */
+const EPOCH_NUMBER = /(?<![A-Za-z0-9_.])(\d{10}|\d{13})(?![A-Za-z0-9_])/g;
+/** The epoch ranges that count: 1400000000 to 2100000000 seconds (13 May 2014 to 18 Jul 2036) and the same in milliseconds. */
+const EPOCH_S = { min: 1_400_000_000, max: 2_100_000_000 };
+/**
+ * `foreign_date`: a full ISO time (`YYYY-MM-DDTHH:MM:SS(.sss)Z`) inside a string whose date is not `recordedOn`, an ISO time with a zone offset other than
+ * `Z` and `+00:00`, or an epoch number (10 digits in seconds or 13 in milliseconds, 1400000000 to 2100000000 and the same in milliseconds) whose UTC date is not
+ * `recordedOn`. A replay has one clock, the recording date; the Builder moves every time of the incident onto it, in `Z` form. A bare `HH:MM` is prose and is
+ * not checked. The finding is the field path only.
+ */
+export function hasForeignDate(text: string, recordedOn: string): boolean {
+  for (const match of text.matchAll(FULL_ISO_TIME)) {
+    if (match[1] !== 'Z' && match[1] !== '+00:00') return true;
+    if (match[0].slice(0, 10) !== recordedOn) return true;
+  }
+  for (const match of text.matchAll(EPOCH_NUMBER)) {
+    const digits = match[1] as string;
+    const n = Number(digits);
+    const seconds = digits.length === 10 ? n : n / 1000;
+    if (seconds < EPOCH_S.min || seconds > EPOCH_S.max) continue;
+    if (new Date(digits.length === 10 ? n * 1000 : n).toISOString().slice(0, 10) !== recordedOn) return true;
+  }
+  return false;
 }
 /** JSON with the keys of every object in sorted order and no spaces: the same text for the same data, in any key order (PostgreSQL `jsonb` does not keep the order). */
 export function canonicalJson(value: unknown): string {
@@ -368,7 +420,8 @@ const checkReplayFile: Check = (input, path, errors) => {
   checkFrames(input.frames, `${path}.frames`, errors, input.durationMs);
   const before = errors.length;
   // The id has its own pattern (it may be a long run of letters and digits).
-  for (const [key, value] of Object.entries(input)) if (key !== 'id') checkStrings(value, `${path}.${key}`, errors);
+  const recordedOn = isString(input.recordedOn) && REPLAY_DATE_PATTERN.test(input.recordedOn) ? input.recordedOn : null;
+  for (const [key, value] of Object.entries(input)) if (key !== 'id') checkStrings(value, `${path}.${key}`, errors, recordedOn);
   if (before === errors.length && utf8Length(JSON.stringify(input)) > REPLAY_LIMITS.bytes) errors.push(path);
   // The review is bound to the content: checked last, and only for a file that is otherwise valid (the hash reads all of it).
   if (errors.length === 0 && isPlainObject(input.review) && input.review.sha256 !== replayReviewHash(input)) errors.push(`${path}.review.sha256`);

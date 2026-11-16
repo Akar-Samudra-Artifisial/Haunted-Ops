@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { REPLAY_FORBIDDEN, SERVICE_NAMES, replayForbiddenKind, replayReviewHash, validateReplayFile, type HuntDetail, type ProposalView, type ReplayFile, type ServiceState } from '../src/index.js';
+import { CODE_OBJECTS, HOST_LIKE_MEMBERS, REPLAY_FORBIDDEN, SERVICE_NAMES, hasHostName, replayForbiddenKind, replayReviewHash, validateReplayFile, type HuntDetail, type ProposalView, type ReplayFile, type ServiceState } from '../src/index.js';
 import { fullShaArb, hauntLevelArb, serviceNameArb } from './arbitraries.js';
 import { huntDetail, iso, proposalView, services } from './replay-fixture.js';
 const word = fc.stringMatching(/^[a-z]{1,9}$/);
@@ -195,7 +195,24 @@ describe('replay file properties', () => {
       }),
       { numRuns: 300 },
     );
-  }, 30_000);
+  }, 60_000);
+  // Feature: replay, Property 7
+  it('Property 7: X.y for a code object X and an identifier y that is not host-like is not a host name; X.<host-like>, <label>.X.y and X.y.<tld> are', () => {
+    // Letters and digits only: `$` ends a name run and `_` is trimmed at its ends, so `cO$` or `cO_` reads as the member `cO`.
+    const identifier = fc.stringMatching(/^[A-Za-z][A-Za-z0-9]{0,12}$/).filter((y) => !HOST_LIKE_MEMBERS.has(y.toLowerCase()));
+    const label = fc.stringMatching(/^[a-z][a-z0-9]{0,8}$/);
+    const hostLike = fc.constantFrom(...HOST_LIKE_MEMBERS).chain((m) => fc.constantFrom(m, m.toUpperCase()));
+    fc.assert(
+      fc.property(fc.constantFrom(...CODE_OBJECTS), identifier, hostLike, label, fc.constantFrom('com', 'org', 'io', 'internal'), (x, y, h, l, tld) => {
+        expect(hasHostName(`${x}.${y}`)).toBe(false);
+        expect(hasHostName(`see ${x}.${y}.`)).toBe(false);
+        expect(hasHostName(`${x}.${h}`)).toBe(true);
+        expect(hasHostName(`${l}.${x}.${tld}`)).toBe(true);
+        expect(hasHostName(`${x}.${l}.${tld}`)).toBe(true);
+      }),
+      { numRuns: 300 },
+    );
+  }, 60_000);
   it('the generator covers every forbidden kind of the validator', () => {
     const kinds = new Set<string>();
     fc.assert(

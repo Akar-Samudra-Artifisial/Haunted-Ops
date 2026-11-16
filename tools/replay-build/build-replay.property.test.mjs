@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
 import fc from 'fast-check';
-import { MAX_FRAMES, buildReplay, loadDeps } from './build-replay.mjs';
+import { MAX_FRAMES, buildReplay, loadDeps, replayBase, rewriteClocks } from './build-replay.mjs';
 import { BASE, PLANTED, SHA } from './test-support.mjs';
 let deps;
 before(async () => {
@@ -156,5 +156,69 @@ test('Property 3: any rows of a valid incident give a valid file, within the lim
       assert.equal(JSON.stringify(buildReplay(rows, { id, title: 'Synthetic property run', scenario }, deps)), text);
     }),
     { numRuns: 120 },
+  );
+});
+// Feature: replay, Property 9
+test('Property 9: an epoch number or an ISO time with an offset inside any window is rewritten to the base plus its offset, and the source value is gone', () => {
+  const pad = (n) => String(n).padStart(2, '0');
+  fc.assert(
+    fc.property(
+      fc.integer({ min: Date.UTC(2026, 0, 1), max: Date.UTC(2027, 11, 31) }),
+      fc.integer({ min: 1, max: 900 }),
+      fc.double({ min: 0, max: 1, noNaN: true }),
+      fc.constantFrom('epochS', 'epochMs', 'isoOffset'),
+      fc.integer({ min: -47, max: 56 }),
+      (startMs, lengthS, where, form, quarters) => {
+        const win = { startMs, endMs: startMs + lengthS * 1000 };
+        const { recordedOn, baseMs } = replayBase(startMs);
+        const shift = baseMs - startMs;
+        // Whole seconds, so that every format holds the instant exactly.
+        const instant = Math.floor((startMs + Math.floor(where * lengthS * 1000)) / 1000) * 1000;
+        const sign = quarters < 0 ? '-' : '+';
+        const minutes = Math.abs(quarters) * 15;
+        const offset = `${sign}${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+        const local = new Date(instant + (quarters < 0 ? -1 : 1) * minutes * 60_000).toISOString().slice(0, 19);
+        const source = { epochS: String(instant / 1000), epochMs: String(instant), isoOffset: `${local}${offset}` }[form];
+        const want = { epochS: String(Math.floor((instant + shift) / 1000)), epochMs: String(instant + shift), isoOffset: `${new Date(instant + shift).toISOString().slice(0, 19)}Z` }[form];
+        const r = rewriteClocks(`see ${source} now`, win);
+        assert.equal(r.outOfRange, false);
+        assert.equal(r.text, `see ${want} now`, `${form} ${source}`);
+        // The rewritten instant is on the recording date, and the source value is gone unless the shift is zero.
+        const back = form === 'epochS' ? Number(want) * 1000 : form === 'epochMs' ? Number(want) : Date.parse(want);
+        assert.equal(new Date(back).toISOString().slice(0, 10), recordedOn);
+        if (want !== source) assert.ok(!r.text.includes(source), `${source} survived`);
+      },
+    ),
+    { numRuns: 300 },
+  );
+});
+// Feature: replay, Property 8
+test('Property 8: a clock at any offset inside any window, rewritten and read back, has the same offset from the base', () => {
+  const pad = (n, w = 2) => String(n).padStart(w, '0');
+  fc.assert(
+    fc.property(
+      fc.integer({ min: Date.UTC(2026, 0, 1), max: Date.UTC(2027, 11, 31) }),
+      fc.integer({ min: 1, max: 900 }),
+      fc.double({ min: 0, max: 1, noNaN: true }),
+      fc.constantFrom('iso', 'isoMs', 'z', 'hms', 'hm'),
+      (startMs, lengthS, where, form) => {
+        const win = { startMs, endMs: startMs + lengthS * 1000 };
+        // Each format has its precision: the clock is the instant at the offset, cut to that precision.
+        const unit = { iso: 1000, isoMs: 1, z: 1000, hms: 1000, hm: 60_000 }[form];
+        const clockMs = Math.floor((startMs + Math.floor(where * lengthS * 1000)) / unit) * unit;
+        const c = new Date(clockMs);
+        const hms = `${pad(c.getUTCHours())}:${pad(c.getUTCMinutes())}:${pad(c.getUTCSeconds())}`;
+        const text = { iso: `${c.toISOString().slice(0, 19)}Z`, isoMs: c.toISOString(), z: `${hms}Z`, hms, hm: hms.slice(0, 5) }[form];
+        const r = rewriteClocks(`at ${text} done`, win);
+        assert.equal(r.outOfRange, false);
+        const out = r.text.slice(3, -5);
+        const { recordedOn, baseMs } = replayBase(startMs);
+        const back = form === 'iso' || form === 'isoMs' ? Date.parse(out) : Date.parse(`${recordedOn}T${form === 'hm' ? `${out}:00` : out.replace('Z', '')}${form === 'isoMs' ? '' : '.000'}Z`);
+        // Read back on the recording date, it is the base plus the same offset (cut to the precision of the format).
+        assert.equal(back, Math.floor((baseMs + (clockMs - startMs)) / unit) * unit, `${form} ${text} -> ${out}`);
+        if (form === 'iso' || form === 'isoMs') assert.equal(out.slice(0, 10), recordedOn);
+      },
+    ),
+    { numRuns: 300 },
   );
 });

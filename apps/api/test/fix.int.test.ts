@@ -249,7 +249,14 @@ describeDb('The fix flow end to end (Test database, fake kiro-cli fixer, fake Gi
 
     // The SSE stream carried the events in the order of the graph, each valid for its validator.
     const names = ['proposal.started', 'proposal.checks', 'proposal.opened', 'proposal.merged', 'proposal.deployed'];
-    const frames = await sse.take(names.length, 10_000);
+    // A `heartbeat` frame can come between them when the run is slow (a loaded machine); it is not part of the graph.
+    const frames: Awaited<ReturnType<typeof sse.take>> = [];
+    const until = Date.now() + 10_000;
+    while (frames.length < names.length && Date.now() < until) {
+      const [frame] = await sse.take(1, Math.max(1, until - Date.now()));
+      if (frame === undefined) break;
+      if (frame.event !== 'heartbeat') frames.push(frame);
+    }
     expect(frames.map((f) => f.event)).toEqual(names);
     for (const f of frames) expect(validateSseEvent(f.event, f.data).ok).toBe(true);
     expect(frames[2]?.data).toMatchObject({ prNumber: 1, kind: 'ai_patch', prUrl: `https://github.com/${REPO}/pull/1` });

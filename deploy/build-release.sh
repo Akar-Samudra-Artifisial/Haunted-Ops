@@ -77,6 +77,8 @@ for path in \
   [ -e "$ROOT/$path" ] || fail "missing: $path"
   copy "$path"
 done
+# The units, install.sh and the pre-flight run the env guard only through this wrapper (the release check refuses a release without it).
+[ -f "$ROOT/deploy/server/env-guard.sh" ] || fail "missing: deploy/server/env-guard.sh"
 
 # The replays: only the files of fixtures/replays/*.json and the one README go in. The README keeps the folder in the tarball
 # (pack-release.sh packs files only, so an empty folder would be lost and the seed would refuse the missing folder). The release check

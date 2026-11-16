@@ -225,3 +225,15 @@ test('the api profile refuses KIRO_API_KEY (it belongs in kiro.env), by name onl
   assert.ok(!result.includes(key));
   assert.deepEqual(checkEnv({ ...VALID_API, KIRO_API_KEY: key }, 'lab').includes('KIRO_API_KEY'), false);
 });
+test('every profile refuses a HAUNTED_NODE key (the node binary of the guard is the --node option, never a variable), by name only', () => {
+  // A path that looks harmless, and an empty value: both are refused.
+  for (const value of ['/usr/local/bin/node', '']) {
+    assert.deepEqual(checkEnv({ ...VALID_API, HAUNTED_NODE: value }), ['HAUNTED_NODE']);
+    assert.deepEqual(checkEnv({ ...VALID_LAB, HAUNTED_NODE: value }, 'lab'), ['HAUNTED_NODE']);
+    assert.deepEqual(checkEnv({ KIRO_API_KEY: 'k'.repeat(30), HAUNTED_NODE: value }, 'kiro'), ['HAUNTED_NODE']);
+  }
+  const bad = run(`${toText(VALID_API)}\nHAUNTED_NODE=/tmp/evil-node\n`);
+  assert.equal(bad.status, 1);
+  assert.equal(bad.stderr.trim(), 'demo-env-check: refused: HAUNTED_NODE');
+  assert.ok(!bad.stderr.includes('evil-node'));
+});

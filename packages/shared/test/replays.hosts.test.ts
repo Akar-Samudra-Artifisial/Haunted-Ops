@@ -48,6 +48,20 @@ describe('host names, addresses and markup', () => {
     'README.md, run.sh, test_app.py',
     'Done.Next',
     'std::vector and 12:30:45 and zab12fe80::1',
+    // Code names: a well-known code object and an identifier (replay task 12).
+    'run the warehouse freshness checks in parallel (Promise.all)',
+    'Promise.allSettled, Array.from(x), Object.keys, JSON.parse and Math.max',
+    'fs.readFile, path.join, os.path, process.env, console.log, res.send and req.body',
+    'this.state, window.location, document.title, prisma.user, ctx.state, router.get',
+    'Buffer.from then Number.isInteger then String.raw.',
+    // A second label that is not a host ending stays code (replay task 13).
+    'Promise.all',
+    'Array.from',
+    'Object.keys',
+    'fs.readFile',
+    'res.json',
+    'Date.now',
+    'JSON.parse',
   ];
   for (const text of ACCEPTED) it(`accepts ${JSON.stringify(text)}`, () => expect(replayForbiddenKind(text)).toBeNull());
   /** Real host names, addresses and markup, in prose. */
@@ -65,6 +79,23 @@ describe('host names, addresses and markup', () => {
     ['hostname', 'example.Com'],
     ['hostname', 'Staging.Example.Com'],
     ['hostname', 'api.Example.IO'],
+    ['hostname', 'promise.all.example.com'],
+    ['hostname', 'Promise.all.com'],
+    ['hostname', 'console.kaktua.com'],
+    ['hostname', 'process.example.org'],
+    ['hostname', 'Promise.example.com'],
+    ['hostname', 'www.Promise.all'],
+    ['hostname', 'promise.all'],
+    ['hostname', 'Foo.bar'],
+    // A code object with a host ending as its second label is a host name (replay task 13).
+    ['hostname', 'fs.internal'],
+    ['hostname', 'app.corp'],
+    ['hostname', 'res.dev'],
+    ['hostname', 'prisma.io'],
+    ['hostname', 'crypto.com'],
+    ['hostname', 'Date.com'],
+    ['hostname', 'console.IO'],
+    ['hostname', 'path.Local'],
     ['ipv6 address', 'addr:fe80::1'],
     ['ipv6 address', 'ip:2001:db8::7'],
     ['ipv6 address', 'host=fe80::1'],
@@ -134,52 +165,107 @@ describe('host names, addresses and markup', () => {
     (other.frames[3] as { proposal: unknown }).proposal = { ...proposalView, prUrl: 'https://github.com/someone/else/pull/1' };
     expect(bad(other).some((p) => p.endsWith('.prUrl'))).toBe(true);
   });
-  it('reads a 64 KiB adversarial text of every shape in under 200 ms, and a file of such strings too', () => {
-    const size = 64 * 1024;
-    const shapes = [
-      'a'.repeat(size),
-      '-'.repeat(size),
-      `a${'-'.repeat(size)}a`,
-      `a${'.'.repeat(size)}`,
-      'a.'.repeat(size / 2),
-      'a@'.repeat(size / 2),
-      `a@${'b'.repeat(size)}`,
-      'a@b.'.repeat(size / 4),
-      ':'.repeat(size),
-      '::1'.repeat(size / 3),
-      'a:'.repeat(size / 2),
-      '1.'.repeat(size / 2),
-      '1.2.3.'.repeat(size / 6),
-      ' '.repeat(size),
-      `Bearer${' '.repeat(size)}`,
-      'Bearer '.repeat(size / 7),
-      'sk-'.repeat(size / 3),
-      'ghp_'.repeat(size / 4),
-      '/Users/'.repeat(size / 7),
-      '<'.repeat(size),
-      'http'.repeat(size / 4),
-      '9'.repeat(size),
-      ':a'.repeat(size / 2),
-      'a.b.py.'.repeat(size / 7),
-      'a.Com.'.repeat(size / 6),
+  /**
+   * Linear time, measured as growth and not as wall-clock time (a busy machine makes every run slower, not steeper): for each
+   * adversarial shape, the minimum time per call at 128 KiB divided by the minimum at 16 KiB is at most 20 (linear is about 8,
+   * quadratic about 64). Each sample repeats the call until 20 ms of wall time have passed and records the CPU time of the thread
+   * per call (`process.threadCpuUsage`), so neither a clock tick nor the time the thread waits for a core on a busy machine is in
+   * it; the minimum of 7 samples per size (after one warm-up) is the run with the least interference (a median is not), and the
+   * samples of the two sizes alternate so that a slow stretch of the machine falls on both. One generous ceiling of 2 s per call
+   * at 128 KiB only guards against a hang.
+   */
+  const SMALL = 16 * 1024;
+  const LARGE = 128 * 1024;
+  const SAMPLES = 7;
+  const SAMPLE_MS = 20;
+  const CEILING_MS = 2000;
+  let largestRatio = 0;
+  /** CPU time of this thread in ms: time spent waiting for a core (other processes) is not in it. */
+  const cpuMs = (): number => {
+    const used = process.threadCpuUsage();
+    return (used.user + used.system) / 1000;
+  };
+  /** The time per call of one sample: the call repeated until `SAMPLE_MS` of wall time have passed, as CPU time of the thread per call. */
+  const sampleMs = (run: () => void): number => {
+    let calls = 0;
+    const started = performance.now();
+    const cpu = cpuMs();
+    do {
+      run();
+      calls++;
+    } while (performance.now() - started < SAMPLE_MS);
+    return (cpuMs() - cpu) / calls;
+  };
+  const expectLinear = (label: string, small: () => void, large: () => void): void => {
+    small(); // warm-up
+    large();
+    // The samples of the two sizes alternate, so a slow stretch of the machine (another process, a slower core) falls on both.
+    let s = Infinity;
+    let l = Infinity;
+    for (let i = 0; i < SAMPLES; i++) {
+      s = Math.min(s, sampleMs(small));
+      l = Math.min(l, sampleMs(large));
+    }
+    largestRatio = Math.max(largestRatio, l / s);
+    if (process.env.TIMING_REPORT === 'all') process.stderr.write(`[timing] ${label}: ${s.toFixed(3)} ms to ${l.toFixed(3)} ms, ratio ${(l / s).toFixed(2)}\n`);
+    expect(l, `${label}: ceiling`).toBeLessThan(CEILING_MS);
+    expect(l / s, `${label}: growth for 8x the text (${s.toFixed(3)} ms to ${l.toFixed(3)} ms)`).toBeLessThanOrEqual(20);
+  };
+  it('reads a 128 KiB adversarial text of every shape in linear time, and a file of such strings too', () => {
+    const shapes: Array<[string, (size: number) => string]> = [
+      ['a', (n) => 'a'.repeat(n)],
+      ['-', (n) => '-'.repeat(n)],
+      ['a-..-a', (n) => `a${'-'.repeat(n)}a`],
+      ['a....', (n) => `a${'.'.repeat(n)}`],
+      ['a.a.', (n) => 'a.'.repeat(n / 2)],
+      ['a@a@', (n) => 'a@'.repeat(n / 2)],
+      ['a@bbb', (n) => `a@${'b'.repeat(n)}`],
+      ['a@b.', (n) => 'a@b.'.repeat(n / 4)],
+      [':', (n) => ':'.repeat(n)],
+      ['::1', (n) => '::1'.repeat(n / 3)],
+      ['a:', (n) => 'a:'.repeat(n / 2)],
+      ['1.', (n) => '1.'.repeat(n / 2)],
+      ['1.2.3.', (n) => '1.2.3.'.repeat(n / 6)],
+      ['spaces', (n) => ' '.repeat(n)],
+      ['Bearer+spaces', (n) => `Bearer${' '.repeat(n)}`],
+      ['Bearer ', (n) => 'Bearer '.repeat(n / 7)],
+      ['sk-', (n) => 'sk-'.repeat(n / 3)],
+      ['ghp_', (n) => 'ghp_'.repeat(n / 4)],
+      ['/Users/', (n) => '/Users/'.repeat(n / 7)],
+      ['<', (n) => '<'.repeat(n)],
+      ['http', (n) => 'http'.repeat(n / 4)],
+      ['9', (n) => '9'.repeat(n)],
+      [':a', (n) => ':a'.repeat(n / 2)],
+      ['a.b.py.', (n) => 'a.b.py.'.repeat(n / 7)],
+      ['a.Com.', (n) => 'a.Com.'.repeat(n / 6)],
+      ['Promise.all.', (n) => 'Promise.all.'.repeat(n / 12)],
+      ['fs.readFile ', (n) => 'fs.readFile '.repeat(n / 12)],
+      ['2026-11-15T12:00:00Z ', (n) => '2026-11-15T12:00:00Z '.repeat(n / 21)],
     ];
-    for (const shape of shapes) {
-      const started = performance.now();
-      for (const f of REPLAY_FORBIDDEN) f.test(shape);
-      expect(performance.now() - started, shape.slice(0, 8)).toBeLessThan(200);
-    }
-    // The same inside a file: 64 steps of 1000 characters (about 64 KiB of text).
-    for (const shape of ['a@'.repeat(500), `a${'-'.repeat(998)}a`, 'a.'.repeat(500), '::1'.repeat(333)]) {
-      const f = structuredClone(goodReplay());
-      (f.frames[2] as { hunt: unknown }).hunt = {
-        ...huntDetail,
-        allSteps: Array.from({ length: 64 }, (_, i) => ({ ...huntDetail.allSteps[0], index: i + 1, summary: shape })),
+    for (const [label, make] of shapes) {
+      const small = make(SMALL);
+      const large = make(LARGE);
+      const readAll = (text: string) => () => {
+        for (const f of REPLAY_FORBIDDEN) f.test(text);
       };
-      const started = performance.now();
-      validateReplayFile(f);
-      expect(performance.now() - started, shape.slice(0, 8)).toBeLessThan(200);
+      expectLinear(label, readAll(small), readAll(large));
     }
-  });
+    // The same inside a file: 16 and 128 steps of 1000 characters (about 128 KiB of text at the large size).
+    for (const shape of ['a@'.repeat(500), `a${'-'.repeat(998)}a`, 'a.'.repeat(500), '::1'.repeat(333)]) {
+      const fileOf = (steps: number): ReplayFile => {
+        const f = structuredClone(goodReplay());
+        (f.frames[2] as { hunt: unknown }).hunt = {
+          ...huntDetail,
+          allSteps: Array.from({ length: steps }, (_, i) => ({ ...huntDetail.allSteps[0], index: i + 1, summary: shape })),
+        };
+        return f;
+      };
+      const small = fileOf(16);
+      const large = fileOf(128);
+      expectLinear(`file of ${shape.slice(0, 8)}`, () => void validateReplayFile(small), () => void validateReplayFile(large));
+    }
+    if (process.env.TIMING_REPORT !== undefined) process.stderr.write(`[timing] largest growth ratio ${largestRatio.toFixed(2)}\n`);
+  }, 60_000);
   it('hasHostName reads the last two labels of a name', () => {
     expect(hasHostName('a.b')).toBe(false);
     expect(hasHostName('a.bc')).toBe(true);

@@ -87,9 +87,11 @@ test('the API unit: user hops, production, env file, guard first, 1G, 256 tasks,
   assert.deepEqual(values(unit, 'Service', 'ReadWritePaths'), ['/var/lib/hops']);
   const pre = values(unit, 'Service', 'ExecStartPre');
   assert.equal(pre.length, 2);
-  assert.match(pre[0] ?? '', /^\/usr\/local\/bin\/node \S+\/demo-env-check\.mjs \/etc\/haunted\/api\.env api$/);
+  assert.match(pre[0] ?? '', /^\/opt\/haunted-ops\/current\/deploy\/server\/env-guard\.sh --node \/usr\/local\/bin\/node \/etc\/haunted\/api\.env api$/);
   // The key file is root:root 0600, so its guard runs as root ("+"); hops could not read it.
-  assert.match(pre[1] ?? '', /^\+\/usr\/local\/bin\/node \S+\/demo-env-check\.mjs \/etc\/haunted\/kiro\.env kiro$/);
+  assert.match(pre[1] ?? '', /^\+\/opt\/haunted-ops\/current\/deploy\/server\/env-guard\.sh --node \/usr\/local\/bin\/node \/etc\/haunted\/kiro\.env kiro$/);
+  // The node binary is an option of the guard, never a variable: an EnvironmentFile could override an Environment= line.
+  assert.ok(!values(unit, 'Service', 'Environment').some((e) => e.startsWith('HAUNTED_NODE')), 'no HAUNTED_NODE in the unit');
   assert.match(one(unit, 'Service', 'ExecStart') ?? '', /apps\/api\/dist\/main\.js$/);
   const home = values(unit, 'Service', 'Environment').find((e) => e.startsWith('HOME='));
   assert.equal(home, 'HOME=/var/lib/hops');
@@ -101,7 +103,8 @@ test('the lab unit: user hlab, 512M, production, guard first, writes only in its
   assert.equal(one(unit, 'Service', 'MemoryMax'), '512M');
   assert.ok(values(unit, 'Service', 'Environment').includes('NODE_ENV=production'));
   assert.deepEqual(values(unit, 'Service', 'ReadWritePaths'), ['/var/lib/haunted-lab']);
-  assert.match(one(unit, 'Service', 'ExecStartPre') ?? '', /demo-env-check\.mjs \/etc\/haunted\/lab\.env lab$/);
+  assert.match(one(unit, 'Service', 'ExecStartPre') ?? '', /^\/opt\/haunted-ops\/current\/deploy\/server\/env-guard\.sh --node \/usr\/local\/bin\/node \/etc\/haunted\/lab\.env lab$/);
+  assert.ok(!values(unit, 'Service', 'Environment').some((e) => e.startsWith('HAUNTED_NODE')), 'no HAUNTED_NODE in the unit');
 });
 
 test('the scenario service: apply, wait and reset, at most 30 minutes, reset on stop', () => {
@@ -210,7 +213,7 @@ test('Kiro API key file: install.sh only fixes owner and mode, never writes or p
   assert.ok(block, 'install.sh has a block for kiro.env that runs only when the file exists');
   assert.match(block, /chmod 0600 \/etc\/haunted\/kiro\.env/);
   assert.match(block, /chown root:root \/etc\/haunted\/kiro\.env/);
-  assert.match(block, /demo-env-check\.mjs" \/etc\/haunted\/kiro\.env kiro/);
+  assert.match(block, /deploy\/server\/env-guard\.sh" --node \/usr\/local\/bin\/node \/etc\/haunted\/kiro\.env kiro/);
   // No write, copy, redirect into, echo or template of the file anywhere in the script.
   assert.ok(!/>\s*\/etc\/haunted\/kiro\.env|put [^\n]*kiro\.env|install [^\n]*kiro\.env|tee [^\n]*kiro\.env|cp [^\n]*kiro\.env|KIRO_API_KEY=/.test(sh), 'install.sh never writes the key file');
   assert.ok(!/cat [^\n]*kiro\.env|echo [^\n]*KIRO_API_KEY|printf [^\n]*KIRO_API_KEY/.test(sh), 'install.sh never prints the key');
@@ -308,9 +311,11 @@ test('every shell file passes bash -n, and shellcheck when it is installed', (t)
 });
 
 test('the scripts with a strict mode: set -euo pipefail', () => {
-  for (const file of shellFiles.filter((f) => !f.endsWith('preflight.sh'))) {
+  for (const file of shellFiles.filter((f) => !f.endsWith('preflight.sh') && !f.endsWith('env-guard.sh'))) {
     assert.match(readFileSync(file, 'utf8'), /^set -euo pipefail$/m, relative(ROOT, file));
   }
+  // The env guard wrapper has no -e: it reads the exit status of node and the output itself, and exits 1 on every failure.
+  assert.match(read('deploy/server/env-guard.sh'), /^set -u$/m);
   // The pre-flight runs every check even when one fails, so it has no -e.
   assert.match(read('deploy/server/preflight.sh'), /^set -uo pipefail$/m);
 });
@@ -325,8 +330,8 @@ test('install.sh: root only, verifies the sha256 before unpacking, never compile
   assert.match(sh, /migrate deploy/);
   assert.match(sh, /openssl rand -hex 24/);
   assert.match(sh, /if \[ ! -f \/etc\/haunted\/api\.env \]/);
-  assert.match(sh, /demo-env-check\.mjs" \/etc\/haunted\/api\.env api/);
-  assert.match(sh, /demo-env-check\.mjs" \/etc\/haunted\/lab\.env lab/);
+  assert.match(sh, /deploy\/server\/env-guard\.sh" --node \/usr\/local\/bin\/node \/etc\/haunted\/api\.env api/);
+  assert.match(sh, /deploy\/server\/env-guard\.sh" --node \/usr\/local\/bin\/node \/etc\/haunted\/lab\.env lab/);
   assert.match(sh, /--shell \/usr\/sbin\/nologin/);
   assert.ok(!/git push|git commit/.test(sh), 'the lab is never written');
   assert.match(read('deploy/server/rollback.sh'), /there is no previous release/);
@@ -392,7 +397,7 @@ test('install.sh: the release install is the API workspace only, as hops, with t
   assert.ok(!/prisma-cli/.test(sh), 'no separate Prisma install');
   assert.match(sh, /as_hops\(\) \{ runuser -u hops --/);
   assert.match(sh, /tar -xzf "\$REL_FILE" -C "\$REL_DIR" --no-same-owner/);
-  assert.match(sh, /chown -R root:hops "\$REL_DIR"\n\s*chmod -R u-w,go-w,a\+rX "\$REL_DIR"/);
+  assert.match(sh, /\nchown -R root:hops "\$REL_DIR"\nchmod -R u\+w,go-w,a\+rX "\$REL_DIR"\n/);
   assert.ok(sh.indexOf('migrate deploy') < sh.indexOf('chown -R root:hops'), 'the release is locked after the installs');
   // Prisma comes from the lockfile of the repository, at the version the API names.
   const api = JSON.parse(read('apps/api/package.json'));
@@ -407,6 +412,80 @@ test('install.sh: the temporary policy-rc.d is removed in the exit trap too', ()
   assert.equal([...sh.matchAll(/>\/usr\/sbin\/policy-rc\.d/g)].length, 1);
   assert.ok(sh.indexOf('POLICY_RC_SET=1') < sh.indexOf('>/usr/sbin/policy-rc.d'));
   assert.ok(sh.indexOf('rm -f -- /usr/sbin/policy-rc.d\n  POLICY_RC_SET=0') > sh.indexOf('apt-get install'));
+});
+// --- deploy-demo task 15: bash -x safety and the release tree ---
+/** The lines of a shell file that are not whole-line comments, with their numbers (1-based). */
+const codeLines = (rel) => read(rel).split('\n').map((text, i) => ({ text, n: i + 1 })).filter((l) => !/^\s*#/.test(l.text));
+test('every shell line that holds a secret runs with tracing off: { set +x; } 2>/dev/null comes before it, and no set -x between', () => {
+  const secretLines = {
+    'deploy/server/install.sh': [/\bLAB_READ=/, /\$LAB_READ\b/, /\bPW_DB="\$\(/, /\$PW_DB\b/, /\bDATABASE_URL="\$\(/],
+    'deploy/server/preflight.sh': [/^\s*[ab]="\$\(/, /^\s*key="\$\(/, /export KIRO_API_KEY=/],
+    'deploy/server/scenario.sh': [/\$\{?CHAOS_TOKEN/],
+  };
+  for (const [rel, patterns] of Object.entries(secretLines)) {
+    const lines = codeLines(rel);
+    const marks = lines.filter((l) => /^\s*\{ set \+x; \} 2>\/dev\/null/.test(l.text)).map((l) => l.n);
+    const restores = lines.filter((l) => /\bset -x\b/.test(l.text)).map((l) => l.n);
+    assert.ok(marks.length > 0, `${rel} switches tracing off`);
+    let held = 0;
+    for (const line of lines) {
+      if (!patterns.some((p) => p.test(line.text))) continue;
+      held++;
+      const off = Math.max(0, ...marks.filter((n) => n < line.n));
+      const on = Math.max(0, ...restores.filter((n) => n < line.n));
+      assert.ok(off > 0 && off > on, `${rel}:${line.n} holds a secret with tracing on`);
+    }
+    assert.ok(held > 0, `${rel} has secret lines`);
+  }
+  // Where the script is not a subshell, tracing is switched on again only when it was on (`bash -x`), never forced.
+  for (const rel of ['deploy/server/install.sh', 'deploy/server/scenario.sh']) {
+    const sh = read(rel);
+    assert.match(sh, /^XTRACE=0\ncase "\$-" in \*x\*\) XTRACE=1 ;; esac$/m, rel);
+    for (const l of codeLines(rel).filter((x) => /\bset -x\b/.test(x.text))) assert.match(l.text, /^\s*if \[ "\$XTRACE" = 1 \]; then set -x; fi$/, `${rel}:${l.n}`);
+  }
+});
+test('under bash -x the key reading of the pre-flight prints no key', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'trace-'));
+  try {
+    const pre = read('deploy/server/preflight.sh');
+    const fn = /^kiro_whoami_key\(\) \([\s\S]*?\n\)\n/m.exec(pre)?.[0];
+    assert.ok(fn, 'kiro_whoami_key is in the pre-flight');
+    // A fake key. The real node runs the real reader; kiro-cli (runuser) is replaced by a function that does nothing.
+    const KEY = `trace-test-${'k'.repeat(30)}-SENTINEL`;
+    const envFile = join(dir, 'kiro.env');
+    writeFileSync(envFile, `KIRO_API_KEY=${KEY}\n`);
+    const run = (text) => {
+      const body = text.replaceAll('/usr/local/bin/node', `'${process.execPath}'`);
+      const script = `CURRENT='${ROOT.replace(/\/$/, '')}'\nKIRO_ENV='${envFile}'\nrunuser() { :; }\n${body}kiro_whoami_key\n`;
+      return spawnSync('bash', ['-x', '-c', script], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '' } });
+    };
+    const traced = run(fn);
+    assert.equal(traced.status, 0, traced.stderr);
+    assert.ok(!traced.stderr.includes(KEY) && !traced.stdout.includes(KEY), 'the key is not in the trace');
+    assert.match(traced.stderr, /kiro_whoami_key/, 'tracing was on when the function was called');
+    // The test can see a leak: without the switch the same function prints the key under bash -x.
+    const leaky = run(fn.replace(/^\s*\{ set \+x; \} 2>\/dev\/null.*$/m, ''));
+    assert.ok(leaky.stderr.includes(KEY), 'without set +x the trace holds the key (the test is able to fail)');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+test('the release tree is root owned and not writable by hops: install.sh locks it, the pre-flight checks it', () => {
+  const sh = commands('deploy/server/install.sh');
+  assert.match(sh, /\nchown -R root:hops "\$REL_DIR"\nchmod -R u\+w,go-w,a\+rX "\$REL_DIR"\n/);
+  // The lock runs on every install (also for a release that was installed before), after the install steps that run as hops.
+  assert.ok(sh.indexOf('chown -R root:hops "$REL_DIR"') > sh.indexOf('seed.mjs'));
+  assert.ok(!/^[ \t]+chown -R root:hops/m.test(sh), 'the lock is not inside the first-install branch');
+  const pre = commands('deploy/server/preflight.sh');
+  assert.match(pre, /check "release tree is root owned and not writable by hops" release_tree_locked/);
+  const fn = /release_tree_locked\(\) \{[^\n]*\}/.exec(pre)?.[0] ?? '';
+  assert.match(fn, /find "\$CURRENT\/"/);
+  assert.match(fn, /! -user root/);
+  assert.match(fn, /-perm \/022/);
+  assert.match(fn, /-print -quit/);
+  // ExecStartPre=+ runs files of the tree as root: that is why the tree must be closed to hops.
+  assert.match(read('deploy/server/systemd/haunted-api.service'), /^ExecStartPre=\+\/opt\/haunted-ops\/current\//m);
+  assert.match(read('docs/DEPLOY.md'), /release tree is root owned and not writable by hops/);
 });
 test('no deploy file holds a home path, a real address, a forbidden string or a secret', () => {
   const forbidden = [

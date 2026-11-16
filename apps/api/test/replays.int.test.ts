@@ -19,6 +19,12 @@ const deps = { validateReplayFile, initialHauntState, stepHaunt, sanitizePrText,
 /** The file with its review bound to its content, as `review-replay.mjs --approve` writes it. */
 const reviewed = (file: ReplayFile): ReplayFile => ({ ...file, review: { ...REVIEW, sha256: replayReviewHash(file) } });
 const readFixture = (): ReplayFile => JSON.parse(readFileSync(FIXTURE, 'utf8')) as ReplayFile;
+/** The fixture recorded on another date: `recordedOn` and every full ISO time in it move together (one clock, no `foreign_date`). */
+const olderFile = (): ReplayFile => {
+  const fixture = readFixture();
+  const moved = JSON.parse(JSON.stringify(fixture).replaceAll(`${fixture.recordedOn}T`, '2026-10-01T')) as ReplayFile;
+  return reviewed({ ...moved, id: 'synthetic-older', recordedOn: '2026-10-01' });
+};
 describeDb('replays (Test database)', () => {
   let server: TestServer;
   let prisma: PrismaClient;
@@ -81,8 +87,9 @@ describeDb('replays (Test database)', () => {
       const proposal = built.frames.flatMap((f) => (f.proposal ? [f.proposal] : [])).pop();
       expect(proposal?.mergedBy).toBe('reviewer');
       expect(proposal?.prUrl).toBe('https://github.com/Akar-Samudra-Artifisial/Haunted-Lab/pull/7');
-      // The times are those of the recording date at midnight, not the hour of the incident.
+      // The times are those of the recording date from 12:00 UTC, not the hour of the incident.
       expect(text).not.toContain('2026-11-15T09:');
+      expect(text).toContain('2026-11-15T12:00:');
       expect(built.recordedOn).toBe('2026-11-15');
     });
     it('is read only: it changed no row', async () => {
@@ -172,7 +179,7 @@ describeDb('replays (Test database)', () => {
       await seedReplays(prisma, dir);
     });
     it('lists id, title, scenario, recordedOn and durationMs, newest first, cached for 5 minutes', async () => {
-      const older = reviewed({ ...readFixture(), id: 'synthetic-older', recordedOn: '2026-10-01' });
+      const older = olderFile();
       writeFileSync(join(dir, 'synthetic-older.json'), JSON.stringify(older));
       await seedReplays(prisma, dir);
       const res = await fetch(`${server.url}/api/replays`);
@@ -185,7 +192,7 @@ describeDb('replays (Test database)', () => {
       ]);
     });
     it('leaves out a row that no longer validates or whose sha256 is not the hash of its body, and logs the id only', async () => {
-      const older = reviewed({ ...readFixture(), id: 'synthetic-older', recordedOn: '2026-10-01' });
+      const older = olderFile();
       writeFileSync(join(dir, 'synthetic-older.json'), JSON.stringify(older));
       await seedReplays(prisma, dir);
       const ids = async (): Promise<string[]> => ((await (await fetch(`${server.url}/api/replays`)).json()) as Array<{ id: string }>).map((r) => r.id);

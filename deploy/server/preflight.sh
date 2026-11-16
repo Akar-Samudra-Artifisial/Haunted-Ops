@@ -21,10 +21,11 @@ check() { # check <name> <command...>
 }
 
 CURRENT=/opt/haunted-ops/current
-env_guard() ( # env_guard <file> <profile>: exit status 0 and the line `env ok: <profile>` (a guard that did not run prints nothing)
-  out="$(/usr/local/bin/node "$CURRENT/scripts/demo-env-check.mjs" "$1" "$2" 2>&1)" || exit 1
-  printf '%s\n' "$out" | grep -qx "env ok: $2"
-)
+# env_guard <file> <profile>: env-guard.sh passes only with exit status 0 AND the line `env ok: <profile>` (a guard that did not run prints nothing)
+env_guard() { "$CURRENT/deploy/server/env-guard.sh" --node /usr/local/bin/node "$1" "$2"; }
+# The files of the release run as root (`ExecStartPre=+`), so hops must not be able to change one: no file under current/ has another owner
+# than root or a write bit for group or other (find does not follow the link of current/ itself, so the trailing slash resolves it).
+release_tree_locked() { [ -z "$(find "$CURRENT/" \( ! -user root -o -perm /022 \) ! -type l -print -quit)" ]; }
 for unit in haunted-api haunted-lab caddy postgresql prometheus nftables haunted-scenario.timer; do
   check "unit $unit is active" systemctl is-active --quiet "$unit"
 done
@@ -52,9 +53,11 @@ caddy_recent() { # `caddy version` prints "v2.6.2 h1:..."; the installed version
 }
 check "Caddy is at least the version of the Caddyfile" caddy_recent
 check "systemd units are valid" systemd-analyze verify /etc/systemd/system/haunted-api.service /etc/systemd/system/haunted-lab.service /etc/systemd/system/haunted-scenario.service /etc/systemd/system/haunted-scenario.timer
+check "release tree is root owned and not writable by hops" release_tree_locked
 check "env guard accepts api.env" env_guard /etc/haunted/api.env api
 check "env guard accepts lab.env" env_guard /etc/haunted/lab.env lab
 same_read_token() ( # read the way the env guard reads: `LAB_READ_TOKEN = "x"` and `LAB_READ_TOKEN=x` are the same value
+  { set +x; } 2>/dev/null # under `bash -x` the trace must never print the token; this subshell ends with the check
   a="$(/usr/local/bin/node "$CURRENT/scripts/read-env-value.mjs" /etc/haunted/api.env LAB_READ_TOKEN)" || exit 1
   b="$(/usr/local/bin/node "$CURRENT/scripts/read-env-value.mjs" /etc/haunted/lab.env LAB_READ_TOKEN)" || exit 1
   [ -n "$a" ] && [ "$a" = "$b" ]
@@ -63,6 +66,7 @@ check "api.env and lab.env share LAB_READ_TOKEN" same_read_token
 KIRO_ENV=/etc/haunted/kiro.env
 kiro_env_mode() { [ -f "$KIRO_ENV" ] && [ ! -L "$KIRO_ENV" ] && [ "$(stat -c '%U:%G %a' "$KIRO_ENV")" = "root:root 600" ]; }
 kiro_whoami_key() ( # the key is read by root and handed to kiro-cli through the environment (never an argument, never printed)
+  { set +x; } 2>/dev/null # under `bash -x` the trace must never print the key; this subshell ends with the check
   key="$(/usr/local/bin/node "$CURRENT/scripts/read-env-value.mjs" "$KIRO_ENV" KIRO_API_KEY)"
   [ -n "$key" ] || exit 1
   export KIRO_API_KEY="$key"

@@ -16,6 +16,8 @@ function make(files) {
   // A release always carries the replay folder (the README keeps it in the tarball).
   mkdirSync(join(dir, 'fixtures/replays'), { recursive: true });
   writeFileSync(join(dir, 'fixtures/replays/README.md'), '# Replays\n');
+  mkdirSync(join(dir, 'deploy/server'), { recursive: true });
+  writeFileSync(join(dir, 'deploy/server/env-guard.sh'), '#!/usr/bin/env bash\n');
   for (const [rel, content] of files) {
     const full = join(dir, rel);
     mkdirSync(dirname(full), { recursive: true });

@@ -118,7 +118,7 @@ test('build-release.sh: two builds of one commit give the same sha256, and RELEA
     mkdirSync(dirname(join(repo, rel)), { recursive: true });
     copyFileSync(join(repoRoot, rel), join(repo, rel));
   }
-  for (const rel of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'apps/web/package.json', 'apps/api/package.json', 'apps/api/prisma.config.ts', 'apps/api/prisma/schema.prisma', 'apps/api/prisma/migrations/m.sql', 'packages/shared/package.json', 'packages/exorcist-mcp/package.json', 'packages/exorcist-mcp/bin/launcher', '.kiro/agents/exorcist.json', 'deploy/server/install.sh', 'deploy/server/versions.env']) {
+  for (const rel of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'apps/web/package.json', 'apps/api/package.json', 'apps/api/prisma.config.ts', 'apps/api/prisma/schema.prisma', 'apps/api/prisma/migrations/m.sql', 'packages/shared/package.json', 'packages/exorcist-mcp/package.json', 'packages/exorcist-mcp/bin/launcher', '.kiro/agents/exorcist.json', 'deploy/server/install.sh', 'deploy/server/env-guard.sh', 'deploy/server/versions.env']) {
     put(rel, `fixture ${rel}\n`);
   }
   put('fixtures/replays/README.md', '# Replays\n');

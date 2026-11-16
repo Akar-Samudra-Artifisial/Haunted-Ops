@@ -12,6 +12,10 @@
 set -euo pipefail
 umask 022
 cd /
+# Under `bash -x` the trace must never print a secret: it is switched off with `{ set +x; } 2>/dev/null` around the lines that hold
+# one (the database password, the lab read token) and switched on again after them when it was on.
+XTRACE=0
+case "$-" in *x*) XTRACE=1 ;; esac
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=versions.env
@@ -221,6 +225,7 @@ fi
 
 # ---------------------------------------------------------------- secrets and env files
 stage "env files"
+{ set +x; } 2>/dev/null
 PW_DB=""
 if [ ! -f /etc/haunted/api.env ] || [ ! -f /etc/haunted/lab.env ]; then
   LAB_READ=""
@@ -252,9 +257,11 @@ if [ ! -f /etc/haunted/api.env ] || [ ! -f /etc/haunted/lab.env ]; then
   fi
   unset TEXT LAB_READ
 fi
+if [ "$XTRACE" = 1 ]; then set -x; fi
 [ "$(env_value /etc/haunted/api.env WEB_ORIGIN)" = "https://${HAUNTED_DOMAIN}" ] || fail "/etc/haunted/api.env names another domain; edit WEB_ORIGIN there first"
-node "$REL_DIR/scripts/demo-env-check.mjs" /etc/haunted/api.env api
-node "$REL_DIR/scripts/demo-env-check.mjs" /etc/haunted/lab.env lab
+# env-guard.sh passes only when the guard exits 0 AND prints `env ok: <profile>` (a guard that ran nothing is a failure).
+"$REL_DIR/deploy/server/env-guard.sh" --node /usr/local/bin/node /etc/haunted/api.env api
+"$REL_DIR/deploy/server/env-guard.sh" --node /usr/local/bin/node /etc/haunted/lab.env lab
 # The Kiro API key file is optional (docs/DEPLOY.md). This script never creates, writes or prints it: if it exists, only its
 # owner and mode are fixed (root:root 0600), and the guard checks its format (names only).
 if [ -f /etc/haunted/kiro.env ] && [ ! -L /etc/haunted/kiro.env ]; then
@@ -264,7 +271,7 @@ if [ -f /etc/haunted/kiro.env ] && [ ! -L /etc/haunted/kiro.env ]; then
     CHANGED=$((CHANGED + 1))
     log "fixed owner and mode of /etc/haunted/kiro.env"
   fi
-  node "$REL_DIR/scripts/demo-env-check.mjs" /etc/haunted/kiro.env kiro
+  "$REL_DIR/deploy/server/env-guard.sh" --node /usr/local/bin/node /etc/haunted/kiro.env kiro
 fi
 printf 'HAUNTED_DOMAIN=%s\n' "$HAUNTED_DOMAIN" >"$WORK/caddy.env"
 put "$WORK/caddy.env" /etc/caddy/haunted.env 0644 root:root
@@ -288,10 +295,12 @@ for _ in $(seq 1 30); do
 done
 runuser -u postgres -- psql -tAc 'SELECT 1' >/dev/null 2>&1 || fail "PostgreSQL does not answer"
 if [ "$(runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'hops'")" != "1" ]; then
+  { set +x; } 2>/dev/null
   [ -n "$PW_DB" ] || PW_DB="$(env_value /etc/haunted/api.env DATABASE_URL | sed -n 's|^postgresql://hops:\([^@]*\)@.*|\1|p')"
   [ -n "$PW_DB" ] || fail "no database password in /etc/haunted/api.env"
   # The password goes through stdin, never through an argument.
   printf "CREATE ROLE hops LOGIN PASSWORD '%s';\n" "$PW_DB" | runuser -u postgres -- psql -v ON_ERROR_STOP=1 -q
+  if [ "$XTRACE" = 1 ]; then set -x; fi
   CHANGED=$((CHANGED + 1))
   log "created the database role"
 fi
@@ -318,6 +327,7 @@ if [ "$REL_READY" -eq 0 ]; then
     as_hops pnpm --filter @haunted-ops/api rebuild @prisma/engines
   )
   (
+    { set +x; } 2>/dev/null # this subshell holds the database URL (with its password); it ends here, so no restore
     DATABASE_URL="$(env_value /etc/haunted/api.env DATABASE_URL)"
     export DATABASE_URL
     cd "$REL_DIR/apps/api"
@@ -326,11 +336,12 @@ if [ "$REL_READY" -eq 0 ]; then
     as_hops /usr/local/bin/node "$REL_DIR/deploy/server/seed.mjs"
   )
   printf '%s' "$RELEASE_SHA256" >"$REL_DIR/.installed"
-  # Lock the release: owner root, group hops, nobody can write. Caddy reads the web files as "other".
-  chown -R root:hops "$REL_DIR"
-  chmod -R u-w,go-w,a+rX "$REL_DIR"
   CHANGED=$((CHANGED + 1))
 fi
+# Lock the release, also when it was installed before: owner root, group hops, only root can write. `ExecStartPre=+` runs files of this
+# tree as root, so hops must never be able to change one (the pre-flight checks it). Caddy reads the web files as "other".
+chown -R root:hops "$REL_DIR"
+chmod -R u+w,go-w,a+rX "$REL_DIR"
 CURRENT_TARGET="$(readlink /opt/haunted-ops/current 2>/dev/null || true)"
 if [ "$CURRENT_TARGET" != "$REL_DIR" ]; then
   if [ -n "$CURRENT_TARGET" ]; then
