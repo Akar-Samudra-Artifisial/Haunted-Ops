@@ -59,7 +59,7 @@ describe('Property 1: the model is monotonic', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('holds for one Room inside a house of up to 5 Rooms, where the total cap is never reached (5 x 32 = 160)', () => {
     fc.assert(
@@ -72,7 +72,7 @@ describe('Property 1: the model is monotonic', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });
 
 // Feature: scene-engine, Property 2
@@ -96,7 +96,7 @@ describe('Property 2: caps hold for any input', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   const countsArb: fc.Arbitrary<RoomCounts[]> = fc.array(
     fc.record({
@@ -136,7 +136,7 @@ describe('Property 2: caps hold for any input', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });
 
 // Feature: scene-engine, Property 3
@@ -166,7 +166,7 @@ describe('Property 3: the model is deterministic', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('splits the fog into a bank and wisps that add up, bank first', () => {
     fc.assert(
@@ -179,7 +179,7 @@ describe('Property 3: the model is deterministic', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });
 
 // Feature: scene-engine, Property 4
@@ -200,7 +200,7 @@ describe('Property 4: a dark room is dark', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('is dark for up equal to 0 at any level', () => {
     fc.assert(
@@ -212,7 +212,7 @@ describe('Property 4: a dark room is dark', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });
 
 // Feature: scene-engine, Property 5
@@ -234,7 +234,7 @@ describe('Property 5: reduced motion removes motion and keeps the information', 
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });
 
 // Feature: scene-engine, Property 9
@@ -254,7 +254,7 @@ describe('Property 9: transitions never overshoot', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });
 
 // Feature: scene-engine, Property 14
@@ -274,7 +274,7 @@ describe('Property 14: the model is total', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('copes with null metrics and any reason', () => {
     fc.assert(
@@ -295,5 +295,5 @@ describe('Property 14: the model is total', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });

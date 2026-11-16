@@ -28,6 +28,7 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
     globalSetup: ['test/global-setup.ts'],
+    setupFiles: [fileURLToPath(new URL('../../packages/shared/test/setup-fast-check.ts', import.meta.url))],
     // Integration tests share one Test database, so files run one at a time.
     fileParallelism: false,
     testTimeout: 30_000,

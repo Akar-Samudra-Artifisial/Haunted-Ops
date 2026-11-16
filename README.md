@@ -11,4 +11,6 @@ Accessible mode turns the page into a table-first view: the house scene is not l
 
 Live demo: <https://3-209-32-188.sslip.io/> (read-only; a scheduled incident and hunt run a few times a day). Scripted incident without the API: <https://3-209-32-188.sslip.io/?demo=1>. Table-first view: <https://3-209-32-188.sslip.io/?mode=accessible>. Deploy runbook: [docs/DEPLOY.md](docs/DEPLOY.md).
 
+Replays of past incidents (sanitized, reviewed by a person): <https://3-209-32-188.sslip.io/replays>.
+
 Status: work in progress.

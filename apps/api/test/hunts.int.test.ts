@@ -495,8 +495,8 @@ describeDb('Hunts end to end (Test database, fake kiro-cli, fake lab)', () => {
     const next = await rig.post('/api/hunts', { service: 'payments' });
     expect(next.status).toBe(202);
     expect(await next.json()).toMatchObject({ status: 'cancelled', reason: 'disabled' });
-    await new Promise((r) => setTimeout(r, 300));
-    expect(leftoverProcesses()).toBe(0);
+    await noLeftoverProcesses(rig.root);
+    expect(leftoverProcesses(rig.root)).toBe(0);
   });
 
   it('stops a running Hunt when the app shuts down', async () => {
@@ -510,8 +510,8 @@ describeDb('Hunts end to end (Test database, fake kiro-cli, fake lab)', () => {
     const prisma = rig.server.app.get(PrismaService).client;
     const row = await prisma.hunt.findUniqueOrThrow({ where: { id: huntId } });
     expect(row).toMatchObject({ status: 'cancelled', endReason: 'shutdown' });
-    await new Promise((r) => setTimeout(r, 300));
-    expect(leftoverProcesses()).toBe(0);
+    await noLeftoverProcesses(rig.root);
+    expect(leftoverProcesses(rig.root)).toBe(0);
   });
 
   it('records a request while a Hunt runs as queued, and the one after as busy', async () => {
@@ -590,12 +590,28 @@ describeDb('Hunt routes (Test database)', () => {
   });
 });
 
-/** Fake kiro-cli or MCP server processes of these tests that still run. */
-function leftoverProcesses(): number {
+/** Polls until no process of this rig is left, for at most 5 s (a killed process needs a moment to be reaped). */
+async function noLeftoverProcesses(root: string, deadlineMs = 5_000): Promise<void> {
+  const end = Date.now() + deadlineMs;
+  while (leftoverProcesses(root) > 0 && Date.now() < end) await new Promise((r) => setTimeout(r, 25));
+}
+const LEFTOVER = /fake-kiro-cli\.mjs|haunted-exorcist-mcp|exorcist-mcp\/dist\/main/;
+/**
+ * Fake kiro-cli or MCP server processes of the rig at `root` that still run. A process belongs to the rig when its
+ * environment names a path under `root` (the ledger of the hunt is in the rig's HUNT_WORKDIR, and the MCP server
+ * inherits the environment of kiro-cli), so a second test run on the same machine is not counted.
+ */
+function leftoverProcesses(root: string): number {
+  let out: string;
   try {
-    const out = execFileSync('pgrep', ['-f', 'fake-kiro-cli.mjs|haunted-exorcist-mcp|exorcist-mcp/dist/main'], { encoding: 'utf8' });
-    return out.split('\n').filter(Boolean).length;
+    // `-E` adds the environment to the command column (macOS and BSD `ps`, for processes of the same user).
+    out = execFileSync('ps', ['-E', '-ww', '-A', '-o', 'command='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   } catch {
-    return 0;
+    try {
+      out = execFileSync('pgrep', ['-af', LEFTOVER.source], { encoding: 'utf8' });
+    } catch {
+      return 0;
+    }
   }
+  return out.split('\n').filter((line) => LEFTOVER.test(line) && line.includes(`=${root}/`)).length;
 }

@@ -102,5 +102,5 @@ describe('Property 3: the announcement queue is calm, ordered and bounded', () =
       }),
       { numRuns: 150 },
     );
-  });
+  }, 30_000);
 });

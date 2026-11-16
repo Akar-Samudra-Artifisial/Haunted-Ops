@@ -196,3 +196,32 @@ test('formatResult', () => {
   assert.equal(formatResult([], 'api'), 'demo-env-check: ok (api)');
   assert.equal(formatResult(['A', 'B'], 'api'), 'demo-env-check: refused: A, B');
 });
+test('the kiro profile also refuses a backslash, a double quote and a single quote in the key (systemd reads them as escapes and quotes)', () => {
+  const key = 'k'.repeat(30);
+  assert.deepEqual(checkEnv({ KIRO_API_KEY: key }, 'kiro'), []);
+  for (const bad of ['\\', '"', "'"]) {
+    for (const value of [`${bad}${key}`, `${key}${bad}`, `${key.slice(0, 15)}${bad}${key.slice(15)}`]) {
+      assert.deepEqual(checkEnv({ KIRO_API_KEY: value }, 'kiro'), ['KIRO_API_KEY'], JSON.stringify(bad));
+    }
+  }
+  // Other punctuation, a hash among them, stays allowed.
+  assert.deepEqual(checkEnv({ KIRO_API_KEY: `${key}#$%&*+,-./:;<=>?@[]^_\`{|}~!` }, 'kiro'), []);
+  // The line of a file: the quotes that wrap the value are stripped by the parser first, a quote inside is not.
+  assert.deepEqual(checkEnvText(`KIRO_API_KEY="${key}"\n`, 'kiro'), []);
+  assert.deepEqual(checkEnvText(`KIRO_API_KEY=${key}"x\n`, 'kiro'), ['KIRO_API_KEY']);
+  assert.deepEqual(checkEnvText(`KIRO_API_KEY=${key}\\x\n`, 'kiro'), ['KIRO_API_KEY']);
+  assert.deepEqual(checkEnvText(`KIRO_API_KEY=${key}'x\n`, 'kiro'), ['KIRO_API_KEY']);
+  // A pair of single quotes around the value is the syntax of the line, not part of the key.
+  assert.deepEqual(checkEnvText(`KIRO_API_KEY='${key}'\n`, 'kiro'), []);
+});
+test('the api profile refuses KIRO_API_KEY (it belongs in kiro.env), by name only', () => {
+  assert.deepEqual(checkEnv({ ...VALID_API }), []);
+  const key = 'k'.repeat(30);
+  assert.deepEqual(checkEnv({ ...VALID_API, KIRO_API_KEY: key }), ['KIRO_API_KEY']);
+  assert.deepEqual(checkEnv({ ...VALID_API, KIRO_API_KEY: '' }), ['KIRO_API_KEY']);
+  const text = Object.entries({ ...VALID_API, KIRO_API_KEY: key }).map(([k, v]) => `${k}=${v}`).join('\n');
+  const result = formatResult(checkEnvText(text), 'api');
+  assert.equal(result, 'demo-env-check: refused: KIRO_API_KEY');
+  assert.ok(!result.includes(key));
+  assert.deepEqual(checkEnv({ ...VALID_API, KIRO_API_KEY: key }, 'lab').includes('KIRO_API_KEY'), false);
+});

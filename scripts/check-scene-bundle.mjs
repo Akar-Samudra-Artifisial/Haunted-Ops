@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// Bundle check for the scene: run after `pnpm build`.
+// Bundle check for the scene and the replay player: run after `pnpm build`.
 //   - the entry chunk (and what it imports at start) must not contain PixiJS code;
-//   - the scene chunk (behind the dynamic import) and the entry chunk must stay under their budgets (gzip).
+//   - the scene chunk (behind the dynamic import) and the entry chunk must stay under their budgets (gzip);
+//   - the replay chunk (behind its own dynamic import, loaded on /replays only) must stay under its budget, and the entry
+//     chunk must not reach it with a static import.
 // It reads Vite's manifest (apps/web/dist/.vite/manifest.json), so the build needs `build.manifest: true`.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,12 +16,18 @@ const KIB = 1024;
  *   - `sceneFile`: the SceneCanvas chunk itself (the file Vite prints, 98 kB = 95.2 KiB): budget measured + 25 percent;
  *   - `scene`: every file the scene chunk imports statically and the entry does not have (6 files, 156.5 KiB): + 15 percent;
  *   - `entry`: the entry chunk and its static imports (80.2 KiB): + 15 percent.
+ *   - `replay`: the replay player chunk (ReplayApp, the player, the controls and the file validator; 5665 bytes = 5.53 KiB on
+ *     16 Nov 2026, after the validator got the host, address and markup rules and the SHA-256 of the review; it was 4117 bytes
+ *     on 15 Nov), loaded on `/replays` only: measured + 20 percent (6800 bytes). The entry chunk grew from 92122 to 92603 bytes
+ *     (0.47 KiB) for the route check and the lazy import; that growth is capped at 0.5 KiB by the replay spec.
  * PixiJS also loads a few small renderer chunks on demand (15.8 KiB more, 172.3 KiB in all); they are reported, not budgeted.
  */
-export const BUDGETS = Object.freeze({ entry: 92 * KIB, scene: 180 * KIB, sceneFile: 119 * KIB });
+export const BUDGETS = Object.freeze({ entry: 92 * KIB, scene: 180 * KIB, sceneFile: 119 * KIB, replay: 6800 });
 
 /** The scene source that `SceneMount` loads with a dynamic import. */
 export const SCENE_ENTRY_SUFFIX = 'src/scene/SceneCanvas.tsx';
+/** The replay source that `Root` loads with a dynamic import, on `/replays` routes only. */
+export const REPLAY_ENTRY_SUFFIX = 'src/replay/ReplayApp.tsx';
 
 export function gzipSize(buffer) {
   return gzipSync(buffer).length;
@@ -35,44 +43,66 @@ export function closure(manifest, key, seen = new Set(), dynamic = false) {
   return seen;
 }
 
-/** Splits the manifest into the files of the entry chunk and the files only the scene needs. */
+/** Splits the manifest into the files of the entry chunk, the files only the scene needs and the files only the replay player needs. */
 export function splitChunks(manifest) {
   const entryKey = Object.keys(manifest).find((k) => manifest[k].isEntry);
   if (!entryKey) throw new Error('no entry chunk in the manifest');
   const sceneKey = Object.keys(manifest).find((k) => k.endsWith(SCENE_ENTRY_SUFFIX));
   if (!sceneKey) throw new Error(`no dynamic chunk for ${SCENE_ENTRY_SUFFIX}: the scene is not code-split`);
+  const replayKey = Object.keys(manifest).find((k) => k.endsWith(REPLAY_ENTRY_SUFFIX));
+  if (!replayKey) throw new Error(`no dynamic chunk for ${REPLAY_ENTRY_SUFFIX}: the replay player is not code-split`);
   const entryKeys = closure(manifest, entryKey);
   const sceneKeys = closure(manifest, sceneKey);
   const lazyKeys = closure(manifest, sceneKey, new Set(), true);
+  const replayKeys = closure(manifest, replayKey);
+  // The replay chunk is reached by the entry only when the static closure of the entry holds it.
+  const replayInEntry = entryKeys.has(replayKey);
   for (const k of entryKeys) {
     sceneKeys.delete(k);
     lazyKeys.delete(k);
+    replayKeys.delete(k);
   }
   for (const k of sceneKeys) lazyKeys.delete(k);
+  for (const k of replayKeys) lazyKeys.delete(k);
   const files = (keys) => [...keys].map((k) => manifest[k].file);
-  return { entry: files(entryKeys), scene: files(sceneKeys), lazy: files(lazyKeys), sceneFile: manifest[sceneKey].file, sceneKey };
+  return { entry: files(entryKeys), scene: files(sceneKeys), lazy: files(lazyKeys), replay: files(replayKeys), sceneFile: manifest[sceneKey].file, replayFile: manifest[replayKey].file, sceneKey, replayKey, replayInEntry };
 }
-
 /** Sizes, and whether PixiJS code reached the entry chunk. `read(file)` returns a Buffer. */
 export function analyze(manifest, read) {
-  const { entry, scene, lazy, sceneFile } = splitChunks(manifest);
+  const { entry, scene, lazy, replay, sceneFile, replayFile, replayInEntry } = splitChunks(manifest);
   const sum = (files) => files.reduce((n, f) => n + gzipSize(read(f)), 0);
   const pixiInEntry = entry.filter((f) => /pixi/i.test(read(f).toString('utf8')));
-  return { entry, scene, lazy, sceneFile, entryGzip: sum(entry), sceneGzip: sum(scene), sceneFileGzip: gzipSize(read(sceneFile)), lazyGzip: sum(lazy), pixiInEntry };
+  return {
+    entry,
+    scene,
+    lazy,
+    replay,
+    sceneFile,
+    replayFile,
+    entryGzip: sum(entry),
+    sceneGzip: sum(scene),
+    sceneFileGzip: gzipSize(read(sceneFile)),
+    replayGzip: sum(replay),
+    lazyGzip: sum(lazy),
+    pixiInEntry,
+    replayInEntry,
+  };
 }
-
 export function problems(result, budgets = BUDGETS) {
   const out = [];
   if (result.pixiInEntry.length > 0) out.push(`PixiJS code is in the entry chunk: ${result.pixiInEntry.join(', ')}`);
   if (result.scene.length === 0) out.push('the scene chunk is empty');
+  if (result.replayInEntry) out.push('the entry chunk reaches the replay chunk with a static import');
+  if (result.replay.length === 0) out.push('the replay chunk is empty');
+  if (result.replay.some((f) => result.entry.includes(f))) out.push('a file of the replay chunk is also in the entry chunk');
   if (result.entryGzip > budgets.entry) out.push(`entry chunk is ${kib(result.entryGzip)} gzip, budget ${kib(budgets.entry)}`);
   if (result.sceneGzip > budgets.scene) out.push(`scene chunk is ${kib(result.sceneGzip)} gzip, budget ${kib(budgets.scene)}`);
   if (budgets.sceneFile !== undefined && result.sceneFileGzip > budgets.sceneFile) {
     out.push(`scene file ${result.sceneFile} is ${kib(result.sceneFileGzip)} gzip, budget ${kib(budgets.sceneFile)}`);
   }
+  if (budgets.replay !== undefined && result.replayGzip > budgets.replay) out.push(`replay chunk is ${kib(result.replayGzip)} gzip, budget ${kib(budgets.replay)}`);
   return out;
 }
-
 export const kib = (bytes) => `${(bytes / KIB).toFixed(1)} KiB`;
 
 function main() {
@@ -89,6 +119,7 @@ function main() {
   process.stdout.write(`scene file: ${result.sceneFile} ${kib(result.sceneFileGzip)} gzip, budget ${kib(BUDGETS.sceneFile)}\n`);
   process.stdout.write(`scene chunk: ${kib(result.sceneGzip)} gzip (${result.scene.length} files with its static imports), budget ${kib(BUDGETS.scene)}\n`);
   for (const f of result.scene) process.stdout.write(`  scene file: ${f}\n`);
+  process.stdout.write(`replay chunk: ${result.replayFile} ${kib(result.replayGzip)} gzip (${result.replay.length} files with its static imports), budget ${kib(BUDGETS.replay)}; loaded on /replays only\n`);
   process.stdout.write(`loaded on demand by PixiJS: ${kib(result.lazyGzip)} gzip (${result.lazy.length} files), not budgeted; scene in all ${kib(result.sceneGzip + result.lazyGzip)}\n`);
   const found = problems(result);
   for (const p of found) process.stderr.write(`FAIL: ${p}\n`);

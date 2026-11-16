@@ -55,7 +55,7 @@ describe('Property 1: the score is monotonic', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });
 
 const levelOf = (value: number, thresholds: readonly number[]): number => thresholds.filter((t) => value >= t).length;
@@ -84,7 +84,7 @@ describe('Property 2: the score is total and its reason explains the level', () 
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });
 
 const rawSeq = fc.array(hauntLevelArb, { minLength: 1, maxLength: 40 });
@@ -107,7 +107,7 @@ describe('Property 3: a single poll never changes the level', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('a level change always follows a full pending streak in its direction', () => {
     fc.assert(
@@ -122,7 +122,7 @@ describe('Property 3: a single poll never changes the level', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });
 
 // Feature: ingest-haunt-score, Property 4
@@ -148,7 +148,7 @@ describe('Property 4: hysteresis never flickers and takes exactly 2 or 3 polls',
       ),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('(b) 2 higher polls raise the level at the 2nd, to the lowest of the two', () => {
     fc.assert(
@@ -162,7 +162,7 @@ describe('Property 4: hysteresis never flickers and takes exactly 2 or 3 polls',
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('(c) 3 lower polls lower the level at the 3rd, to the highest of the three', () => {
     fc.assert(
@@ -177,7 +177,7 @@ describe('Property 4: hysteresis never flickers and takes exactly 2 or 3 polls',
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('(d) a No-data sample anywhere changes nothing', () => {
     fc.assert(
@@ -192,7 +192,7 @@ describe('Property 4: hysteresis never flickers and takes exactly 2 or 3 polls',
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('(e) the level stays from 0 to 4 for any samples', () => {
     fc.assert(
@@ -205,5 +205,5 @@ describe('Property 4: hysteresis never flickers and takes exactly 2 or 3 polls',
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });

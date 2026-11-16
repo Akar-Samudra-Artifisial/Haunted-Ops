@@ -249,4 +249,15 @@ pnpm --filter @haunted-ops/api db:drift   # migrations against the Prisma schema
   - Unset: they are skipped and the run prints `TEST_DATABASE_URL is not set: database integration tests are skipped.`
   - Equal to `DATABASE_URL`: the run stops with `TEST_DATABASE_URL equals DATABASE_URL: refusing to run integration tests.`
   - Set: global setup drops and recreates the `public` schema of the test database, applies the committed migrations, and each suite clears the tables it uses. Only the test database is touched.
+  - Two API test runs never share the test database: global setup first takes a PostgreSQL advisory lock (`apps/api/test/db-lock.ts`) that it keeps until teardown. A second run prints `another api test run is using the test database, waiting`, polls every 2 s for up to 10 minutes, then fails; a crashed run frees the lock with its connection.
 - To run without the database even when `apps/api/.env` sets it: `TEST_DATABASE_URL= pnpm test`.
+- `pnpm test:scripts` runs the script and tool tests with `node --test`. The replay tools import the built packages, so run `pnpm build` first (`packages/shared/dist` and `apps/api/dist`).
+## Property tests (fast-check): seed and path
+Every workspace that uses fast-check (`packages/shared`, `packages/exorcist-mcp`, `apps/api`, `apps/web`) loads `packages/shared/test/setup-fast-check.ts` as a vitest `setupFiles` entry; `pnpm test:scripts` loads `scripts/fast-check-setup.mjs` with `node --import`. Each test file runs its properties with one seed: `FC_SEED` from the environment, or a random one. A test whose property was falsified prints that seed (the failure comes from `fc.assert`, its message holds "Property failed"), with the `path` that the message names; a plain assertion, a timeout or any other failure prints no seed, because the seed says nothing about it. To replay one exact run:
+```sh
+FC_SEED=<seed> pnpm --filter @haunted-ops/api exec vitest run src/fix/pr-text.test.ts
+FC_SEED=<seed> FC_PATH=<path> pnpm --filter @haunted-ops/api exec vitest run src/fix/pr-text.test.ts   # the failing case at once
+```
+`FC_PATH` is the `path` fast-check prints with the falsified property (digits and colons); it only makes sense with the same `FC_SEED`. `numRuns` is never changed to hide a failure.
+## Replays
+A replay is a recorded incident of the lab, sanitized and read by a person (`fixtures/replays/<id>.json`, see the README there). `pnpm --filter @haunted-ops/api seed:replays [folder]` seeds the reviewed files of `fixtures/replays/` (or the folder you name) into `DATABASE_URL`; the API serves them at `GET /api/replays` and `GET /api/replays/:id`, and the Web plays them at `/replays` and `/replays/<id>`. The tests use the synthetic replay `apps/api/test/fixtures/replays/synthetic-error-spike.json`, which the builder makes from rows the integration test inserts: `UPDATE_REPLAY_FIXTURE=1 pnpm --filter @haunted-ops/api exec vitest run test/replays.int.test.ts` rewrites it (with the `TEST` review block and the hash that binds it to the content).

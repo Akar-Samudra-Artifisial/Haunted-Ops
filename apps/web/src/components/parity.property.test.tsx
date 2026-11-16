@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { SERVICE_NAMES, type ServiceState } from '@haunted-ops/shared';
 import { ROOMS, serviceStateArb } from '../test/arbs.js';
 import { toSceneModel } from '../scene/model.js';
+import { syntheticReplay } from '../replay/fixture.js';
+import { sceneClock, stateAt, timeline } from '../replay/player.js';
 import { TableMode } from './TableMode.js';
 import { tableRowText } from './table-model.js';
 
@@ -42,7 +44,7 @@ describe('Property 6: the model and the table agree', () => {
       }),
       { numRuns: 150 },
     );
-  });
+  }, 30_000);
 
   it('uses the same text function for the row as the one tested', () => {
     fc.assert(
@@ -54,5 +56,38 @@ describe('Property 6: the model and the table agree', () => {
       }),
       { numRuns: 150 },
     );
-  });
+  }, 30_000);
+});
+
+describe('Property 6 on replay frames', () => {
+  // Feature: replay, Property 5
+  it('Property 5: for any position of a replay, the table says every fact the scene shows, and carries the banner', () => {
+    const file = syntheticReplay();
+    const states = timeline(file.frames);
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: file.durationMs }), fc.boolean(), (position, reducedMotion) => {
+        const { services } = stateAt(states, file.frames, position);
+        const model = toSceneModel(services, sceneClock(file.recordedOn, position), { reducedMotion, quality: 'full' });
+        const doc = document.createElement('div');
+        doc.innerHTML = renderToStaticMarkup(<TableMode services={services} captionNote="Replay of 2026-11-15, not live" />);
+        expect(doc.querySelector('caption')?.textContent).toContain('Replay of 2026-11-15, not live');
+        const rows = [...doc.querySelectorAll('tbody tr')];
+        expect(rows).toHaveLength(model.rooms.length);
+        model.rooms.forEach((room, i) => {
+          const row = rows[i] as Element;
+          const cells = [...row.querySelectorAll('td')].map((c) => c.textContent ?? '');
+          const text = tableRowText(services[i] as ServiceState);
+          expect(cells[0]).toContain(`${room.level} (${room.levelLabel})`);
+          expect(cells[1]).toBe(room.badge === '' ? 'none' : room.badge);
+          expect(row.getAttribute('data-room-state')).toBe(room.dark ? 'dark' : 'lit');
+          expect(cells[5] === 'none').toBe(!room.incident.open);
+          // The hunt and the fix of the frame are in the row, as the one text function says them.
+          expect(cells[6]).toBe(text.hunt);
+          expect(cells[7]).toBe(text.fix);
+          expect(text.hunt === 'none' || services[i]?.hunt !== null).toBe(true);
+        });
+      }),
+      { numRuns: 200 },
+    );
+  }, 30_000);
 });

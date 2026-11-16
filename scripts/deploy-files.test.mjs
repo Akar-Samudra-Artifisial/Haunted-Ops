@@ -2,7 +2,8 @@
 // Nothing here runs a unit, Caddy or nft; those are checked on the server (deploy/server/preflight.sh).
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -422,4 +423,70 @@ test('no deploy file holds a home path, a real address, a forbidden string or a 
     for (const [what, re] of forbidden) assert.ok(!re.test(text), `${relative(ROOT, file)}: ${what}`);
     for (const ip of text.match(/\b\d{1,3}(\.\d{1,3}){3}\b/g) ?? []) assert.ok(allowedIps.has(ip), `${relative(ROOT, file)}: address ${ip}`);
   }
+});
+
+test('replays: the build refuses a link, a folder or anything that is not a regular file in fixtures/replays', () => {
+  const build = read('deploy/build-release.sh');
+  const guard = build.match(/^replay_odd=.*\n\[ -z "\$replay_odd" \].*\n/m)?.[0];
+  assert.ok(guard, 'the guard is in the build script');
+  assert.ok(build.indexOf(guard) < build.indexOf('mkdir -p "$STAGE/fixtures/replays"'), 'the guard runs before any file is copied');
+  const root = mkdtempSync(join(tmpdir(), 'replay-guard-'));
+  try {
+    const run = () => spawnSync('bash', ['-c', `set -euo pipefail; fail() { echo "build-release: $1" >&2; exit 1; }; ROOT=${JSON.stringify(root)}; ${guard}`], { encoding: 'utf8' });
+    // No folder, an empty folder and regular files only: fine.
+    assert.equal(run().status, 0);
+    mkdirSync(join(root, 'fixtures/replays'), { recursive: true });
+    assert.equal(run().status, 0);
+    writeFileSync(join(root, 'fixtures/replays/a-replay.json'), '{}');
+    writeFileSync(join(root, 'fixtures/replays/README.md'), '# x');
+    assert.equal(run().status, 0);
+    // A link (to a file, to a folder, dangling) and a folder are refused, and the message names the path.
+    for (const [name, make] of [
+      ['link-file.json', () => symlinkSync(join(root, 'fixtures/replays/a-replay.json'), join(root, 'fixtures/replays/link-file.json'))],
+      ['link-dir.json', () => symlinkSync(tmpdir(), join(root, 'fixtures/replays/link-dir.json'))],
+      ['dangling.json', () => symlinkSync(join(root, 'nowhere'), join(root, 'fixtures/replays/dangling.json'))],
+      ['folder.json', () => mkdirSync(join(root, 'fixtures/replays/folder.json'))],
+    ]) {
+      make();
+      const r = run();
+      assert.equal(r.status, 1, name);
+      assert.match(r.stderr, new RegExp(`not a regular file: fixtures/replays/${name.replace('.', '\\.')}`), name);
+      rmSync(join(root, 'fixtures/replays', name), { recursive: true, force: true });
+    }
+    assert.equal(run().status, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+test('replays: the build refuses fixtures/replays when it is itself a link', () => {
+  const build = read('deploy/build-release.sh');
+  const guard = build.match(/^\[ ! -L "\$ROOT\/fixtures\/replays" \].*\n/m)?.[0];
+  assert.ok(guard, 'the link guard is in the build script');
+  assert.ok(build.indexOf(guard) < build.indexOf('replay_odd='), 'the link guard runs before the find');
+  const root = mkdtempSync(join(tmpdir(), 'replay-link-'));
+  try {
+    const run = () => spawnSync('bash', ['-c', `set -euo pipefail; fail() { echo "build-release: $1" >&2; exit 1; }; ROOT=${JSON.stringify(root)}; ${guard}`], { encoding: 'utf8' });
+    mkdirSync(join(root, 'fixtures'));
+    mkdirSync(join(root, 'real'));
+    assert.equal(run().status, 0, 'no folder');
+    mkdirSync(join(root, 'fixtures/replays'));
+    assert.equal(run().status, 0, 'a folder');
+    rmSync(join(root, 'fixtures/replays'), { recursive: true });
+    symlinkSync(join(root, 'real'), join(root, 'fixtures/replays'));
+    const r = run();
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /fixtures\/replays is a symbolic link/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+test('replays: the build ships only fixtures/replays/*.json (the release check refuses an unreviewed one) and the seed reads that folder', () => {
+  const build = read('deploy/build-release.sh');
+  assert.match(build, /mkdir -p "\$STAGE\/fixtures\/replays"/);
+  assert.match(build, /for replay in "\$ROOT"\/fixtures\/replays\/\*\.json; do/);
+  assert.match(build, /release-check\.mjs" "\$STAGE"/);
+  const seed = read('deploy/server/seed.mjs');
+  assert.match(seed, /apps\/api\/dist\/replays\/replay-seed\.js/);
+  assert.match(seed, /\.\.\/\.\.\/fixtures\/replays/);
+  assert.ok(!/GITHUB_TOKEN|console\.log\(.*url/i.test(seed));
 });

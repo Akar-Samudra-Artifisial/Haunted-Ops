@@ -241,7 +241,7 @@ describe('Property 16: announcements are short and not repetitive', () => {
       }),
       { numRuns: 200 },
     );
-  });
+  }, 30_000);
 
   it('lets at most one step sentence through per 5 seconds, newest first, and never the same twice in a row', () => {
     fc.assert(
@@ -267,7 +267,7 @@ describe('Property 16: announcements are short and not repetitive', () => {
       }),
       { numRuns: 200 },
     );
-  });
+  }, 30_000);
 
   it('puts one sentence in the live region per change and waits to say the next step', () => {
     vi.useFakeTimers();

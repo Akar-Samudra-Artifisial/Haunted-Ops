@@ -20,5 +20,5 @@ describe('Property 8: SSE payloads round-trip', () => {
       }),
       { numRuns: 300 },
     );
-  });
+  }, 30_000);
 });

@@ -13,6 +13,7 @@ export function TableMode({
   selected = null,
   onSelect,
   loadHuntDetail,
+  captionNote,
 }: {
   services: readonly ServiceState[];
   ingest?: IngestStatus | null;
@@ -20,6 +21,8 @@ export function TableMode({
   onSelect?: (name: ServiceName | null) => void;
   /** Loads the detail of a finished Hunt; without it the section shows the summary only. */
   loadHuntDetail?: LoadHuntDetail;
+  /** Said first in the caption: "Replay of <date>, not live". */
+  captionNote?: string;
 }) {
   const selectedRow = useRef<HTMLTableRowElement | null>(null);
   const region = useRef<HTMLElement | null>(null);
@@ -39,7 +42,7 @@ export function TableMode({
       ) : null}
       <div className="table-scroll" tabIndex={0} role="group" aria-label="Services table, scrollable">
         <table>
-          <caption className="visually-hidden">Haunt level, cause and metrics of each service</caption>
+          <caption className="visually-hidden">{captionNote === undefined ? '' : `${captionNote}. `}Haunt level, cause and metrics of each service</caption>
           <thead>
             <tr>
               <th scope="col">Service</th>

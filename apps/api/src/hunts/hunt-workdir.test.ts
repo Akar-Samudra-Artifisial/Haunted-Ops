@@ -183,9 +183,9 @@ describe('HuntWorkdir: pid notes and leftover processes', () => {
       await w.writePid(ID_A, orphan.pid as number);
       await w.writePid(ID_B, bystander.pid as number);
       // Wait until `ps` can see both command lines.
-      await new Promise((r) => setTimeout(r, 300));
+      await waitUntil(() => [orphan, bystander].every((p) => spawnSync('ps', ['-o', 'command=', '-p', String(p.pid)], { encoding: 'utf8' }).stdout.trim() !== ''));
       expect(await w.reapOrphans()).toBe(1);
-      await new Promise((r) => setTimeout(r, 300));
+      await waitUntil(() => !alive(orphan.pid as number));
       expect(alive(orphan.pid as number)).toBe(false);
       expect(alive(bystander.pid as number)).toBe(true);
       expect(readdirSync(dir)).toEqual([]);
@@ -201,6 +201,11 @@ describe('HuntWorkdir: pid notes and leftover processes', () => {
   });
 });
 
+/** Polls until `condition` holds, for at most 5 s: no fixed sleep that a loaded machine can outlast. */
+async function waitUntil(condition: () => boolean, deadlineMs = 5_000): Promise<void> {
+  const end = Date.now() + deadlineMs;
+  while (!condition() && Date.now() < end) await new Promise((r) => setTimeout(r, 25));
+}
 function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);

@@ -3,9 +3,10 @@ import { test } from 'node:test';
 import { BUDGETS, analyze, closure, gzipSize, problems, splitChunks } from './check-scene-bundle.mjs';
 
 const manifest = {
-  'index.html': { file: 'assets/index-a.js', isEntry: true, imports: ['_shared.js'], dynamicImports: ['src/scene/SceneCanvas.tsx'] },
+  'index.html': { file: 'assets/index-a.js', isEntry: true, imports: ['_shared.js'], dynamicImports: ['src/scene/SceneCanvas.tsx', 'src/replay/ReplayApp.tsx'] },
   '_shared.js': { file: 'assets/shared-b.js' },
   'src/scene/SceneCanvas.tsx': { file: 'assets/SceneCanvas-c.js', isDynamicEntry: true, imports: ['_shared.js', '_pixi.js'] },
+  'src/replay/ReplayApp.tsx': { file: 'assets/ReplayApp-f.js', isDynamicEntry: true, imports: ['index.html'] },
   '_pixi.js': { file: 'assets/pixi-d.js', dynamicImports: ['_renderer.js'] },
   '_renderer.js': { file: 'assets/renderer-e.js' },
 };
@@ -15,6 +16,7 @@ const files = {
   'assets/SceneCanvas-c.js': 'export default function SceneCanvas(){}'.repeat(40),
   'assets/pixi-d.js': 'PixiJS renderer code '.repeat(200),
   'assets/renderer-e.js': 'lazy renderer part '.repeat(30),
+  'assets/ReplayApp-f.js': 'export default function ReplayApp(){}'.repeat(30),
 };
 const read = (f) => Buffer.from(files[f]);
 
@@ -50,18 +52,40 @@ test('fails when PixiJS code reaches the entry chunk', () => {
 
 test('fails over budget', () => {
   const r = analyze(manifest, read);
-  const tight = problems(r, { entry: 10, scene: 10, sceneFile: 10 });
-  assert.equal(tight.length, 3);
+  const tight = problems(r, { entry: 10, scene: 10, sceneFile: 10, replay: 10 });
+  assert.equal(tight.length, 4);
   assert.match(tight[0], /entry chunk is/);
   assert.match(tight[1], /scene chunk is/);
   assert.match(tight[2], /scene file assets\/SceneCanvas-c\.js is/);
+  assert.match(tight[3], /replay chunk is/);
   assert.equal(r.sceneFileGzip, gzipSize(read('assets/SceneCanvas-c.js')));
   assert.equal(r.lazyGzip, gzipSize(read('assets/renderer-e.js')));
   assert.ok(BUDGETS.entry > 0 && BUDGETS.scene > BUDGETS.entry && BUDGETS.sceneFile < BUDGETS.scene);
+  assert.ok(BUDGETS.replay > 0 && BUDGETS.replay <= 16 * 1024);
 });
 
 test('fails when the scene is not code-split or there is no entry', () => {
   const merged = { 'index.html': { file: 'assets/index-a.js', isEntry: true } };
-  assert.throws(() => splitChunks(merged), /not code-split/);
+  assert.throws(() => splitChunks(merged), /scene is not code-split/);
+  const noReplay = { ...merged, 'src/scene/SceneCanvas.tsx': { file: 'assets/s.js' } };
+  assert.throws(() => splitChunks(noReplay), /replay player is not code-split/);
   assert.throws(() => splitChunks({ x: { file: 'a.js' } }), /no entry chunk/);
+});
+test('splits the replay files: only the replay chunk needs them, and the scene "on demand" list does not hold them', () => {
+  const split = splitChunks(manifest);
+  assert.deepEqual(split.replay, ['assets/ReplayApp-f.js']);
+  assert.equal(split.replayFile, 'assets/ReplayApp-f.js');
+  assert.equal(split.replayInEntry, false);
+  assert.ok(!split.lazy.includes('assets/ReplayApp-f.js'));
+  const r = analyze(manifest, read);
+  assert.equal(r.replayGzip, gzipSize(read('assets/ReplayApp-f.js')));
+});
+test('fails when the entry chunk reaches the replay chunk with a static import, or the replay is over its budget', () => {
+  const eager = { ...manifest, 'index.html': { ...manifest['index.html'], imports: ['_shared.js', 'src/replay/ReplayApp.tsx'] } };
+  assert.equal(splitChunks(eager).replayInEntry, true);
+  const found = problems(analyze(eager, read));
+  assert.ok(found.some((p) => /entry chunk reaches the replay chunk with a static import/.test(p)), found.join('; '));
+  const r = analyze(manifest, read);
+  assert.deepEqual(problems(r, { ...BUDGETS, replay: r.replayGzip }), []);
+  assert.match(problems(r, { ...BUDGETS, replay: r.replayGzip - 1 })[0], /replay chunk is .* gzip, budget/);
 });

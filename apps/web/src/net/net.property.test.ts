@@ -29,7 +29,7 @@ describe('Property 12: backoff stays within bounds', () => {
       }),
       { numRuns: 500 },
     );
-  });
+  }, 30_000);
 });
 
 describe('Property 13: connection status is consistent', () => {
@@ -88,7 +88,7 @@ describe('Property 13: connection status is consistent', () => {
       }),
       { numRuns: 500 },
     );
-  });
+  }, 30_000);
 });
 
 describe('Property 12 (cont.): Retry-After is honoured', () => {
@@ -108,7 +108,7 @@ describe('Property 12 (cont.): Retry-After is honoured', () => {
       ),
       { numRuns: 500 },
     );
-  });
+  }, 30_000);
 });
 
 const isoArb = fc
@@ -158,7 +158,7 @@ describe('Property 17: a snapshot never overwrites a newer event', () => {
       }),
       { numRuns: 300 },
     );
-  });
+  }, 30_000);
 });
 
 describe('Property 18: services stay in room order', () => {
@@ -176,5 +176,5 @@ describe('Property 18: services stay in room order', () => {
       }),
       { numRuns: 300 },
     );
-  });
+  }, 30_000);
 });

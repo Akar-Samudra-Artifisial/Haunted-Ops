@@ -289,3 +289,57 @@ describe('Property 4: sanitized pull request text has no HTML, mention, image or
     );
   });
 });
+
+// A text of 64 KiB that is built to be slow (long runs of `<`, `[`, `@`, `!`, backticks, `http`, nested brackets) is
+// sanitized in linear time. The markdown link and reference patterns of `sanitizeModelText` took quadratic time on a
+// run of `[` (562 ms at 24 000 characters, about 4 s at 80 000), a denial of service on any route that sanitizes text.
+describe('sanitizePrText on adversarial input', () => {
+  const adversarial: Record<string, string> = {
+    '<': '<'.repeat(65_536),
+    '[': '['.repeat(65_536),
+    '@': '@'.repeat(65_536),
+    '!': '!'.repeat(65_536),
+    '`': '`'.repeat(65_536),
+    http: 'http'.repeat(16_384),
+    'nested [a](': '[a]('.repeat(16_384),
+    'nested [[a]': '[[a]'.repeat(16_384),
+    'ref [a][b': '[a][b'.repeat(13_000),
+    'image ![[': '![['.repeat(21_000),
+    'open [x': '[x'.repeat(32_768),
+    'scheme a://': 'a://'.repeat(16_384),
+    'www.': 'www.'.repeat(16_384),
+    'mixed': '<[@!`http[[a]('.repeat(4_700),
+  };
+  for (const [name, input] of Object.entries(adversarial)) {
+    it(`sanitizes about 64 KiB of ${name} in under 200 ms, for every cap`, () => {
+      expect(input.length).toBeGreaterThanOrEqual(60_000);
+      for (const cap of [72, 400, 6_000, 20_000]) {
+        const started = performance.now();
+        const out = sanitizePrText(input, cap);
+        const ms = performance.now() - started;
+        expect(ms, `cap ${cap}`).toBeLessThan(200);
+        expect(out.length).toBeLessThanOrEqual(cap);
+      }
+    });
+  }
+});
+
+describe('image marks in a run', () => {
+  // Found by the property of the pull request text (seed 514072386): "!![" left "![" because one replaceAll removes one "!".
+  it('leaves no "![" after any run of "!" before a "["', () => {
+    for (const text of ['!![', '!!!![x', '![![', '!`[', 'a !!![b](c) d', '![', '!!']) {
+      const out = sanitizePrText(text, 100);
+      expect(out, text).not.toContain('![');
+      expect(out, text).not.toContain('](');
+    }
+    expect(sanitizePrText('!!', 100)).toBe('!!');
+    expect(sanitizePrText('wow! [x', 100)).toBe('wow! [x');
+  });
+  it('is linear on a long run of "!" with or without a "[" after it', () => {
+    for (const text of ['!'.repeat(65_536), `${'!'.repeat(65_535)}[`, '![!['.repeat(16_000)]) {
+      const started = performance.now();
+      sanitizePrText(text, 20_000);
+      expect(performance.now() - started).toBeLessThan(200);
+    }
+  });
+});

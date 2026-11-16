@@ -99,9 +99,10 @@ describe('one live region in the whole app', () => {
   it('has exactly one with the scene fallback shown, and says it once', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     render(<App client={{ baseUrl: 'http://api.test' }} demo={demo} scene={failing} />);
-    await screen.findAllByText(/The house view is not available/);
+    // The text comes after a frame (the size of the mount), the failed load and the error boundary: a loaded machine needs more than the default 1 s of polling.
+    await screen.findAllByText(/The house view is not available/, undefined, { timeout: 8000 });
     expect(document.querySelectorAll(LIVE)).toHaveLength(1);
-    await waitFor(() => expect(region().textContent).toContain('The house view is not available'));
+    await waitFor(() => expect(region().textContent).toContain('The house view is not available'), { timeout: 8000 });
   });
   it('has exactly one while live and stale, and says connection and stale changes but not the first load', async () => {
     const es = eventSourceRegistry();

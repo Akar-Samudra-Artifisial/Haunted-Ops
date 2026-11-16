@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { HUNT_LIMITS } from '@haunted-ops/shared';
-import { sanitizeModelText } from './model-text.js';
+import { replaceMarkdownLinks, sanitizeModelText } from './model-text.js';
 
 const RUNS = { numRuns: 400 };
 
@@ -82,5 +82,29 @@ describe('Property 23: sanitizeModelText gives one short line of plain text', ()
     expect(sanitizeModelText('a\u202eb\u200bc', 50)).toBe('abc');
     expect(sanitizeModelText('x'.repeat(1000), 400)).toHaveLength(400);
     expect(sanitizeModelText(undefined, 400)).toBe('');
+  });
+});
+
+// Feature: fix-proposal-flow, Property 4 (linear time): the scanner gives the matches of the regular expressions it replaced
+describe('replaceMarkdownLinks', () => {
+  const LINK = /!?\[[^\]]*\]\([^)]*\)/g;
+  const REFERENCE = /\[[^\]]*\]\[[^\]]*\]/g;
+  const soup = fc.array(fc.constantFrom('[', ']', '(', ')', '!', 'a', ' ', '[a]', '](', ']['), { maxLength: 40 }).map((p) => p.join(''));
+  it('is the same as the regular expression for a link, and for a reference, on any text', () => {
+    fc.assert(
+      fc.property(soup, (text) => {
+        expect(replaceMarkdownLinks(text, 'link')).toBe(text.replace(LINK, ' '));
+        expect(replaceMarkdownLinks(text, 'reference')).toBe(text.replace(REFERENCE, ' '));
+      }),
+      { numRuns: 2000 },
+    );
+  });
+  it('takes linear time on a long run of brackets', () => {
+    for (const unit of ['[', '[x', '![[', '[a][b', '[a](']) {
+      const text = unit.repeat(Math.ceil(80_000 / unit.length));
+      const started = performance.now();
+      replaceMarkdownLinks(replaceMarkdownLinks(text, 'link'), 'reference');
+      expect(performance.now() - started, unit).toBeLessThan(100);
+    }
   });
 });

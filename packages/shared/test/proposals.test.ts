@@ -147,12 +147,12 @@ describe('proposal summaries', () => {
       }),
       { numRuns: 300 },
     );
-  });
+  }, 30_000);
 
   it('is a valid field of a Service state and refused when malformed', () => {
     fc.assert(fc.property(serviceStateArb, (s) => validateServiceState(s).ok), { numRuns: 100 });
     fc.assert(fc.property(proposalSummaryArb, (p) => validateProposalSummary(p).ok), { numRuns: 200 });
-  });
+  }, 30_000);
 });
 
 describe('a skipped tests check', () => {

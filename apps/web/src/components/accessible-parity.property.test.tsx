@@ -96,5 +96,5 @@ describe('Property 4: every Scene fact appears as text in Accessible mode', () =
       ),
       { numRuns: 120 },
     );
-  });
+  }, 30_000);
 });

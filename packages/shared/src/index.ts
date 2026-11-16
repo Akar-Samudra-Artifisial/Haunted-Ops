@@ -5,3 +5,5 @@ export * from './hunts.js';
 export * from './proposals.js';
 export * from './haunt.js';
 export * from './dependencies.js';
+export * from './replays.js';
+export * from './sha256.js';

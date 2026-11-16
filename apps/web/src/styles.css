@@ -243,3 +243,57 @@ body {
   font-size: 0.75em;
   white-space: nowrap;
 }
+/* Replay player: the same palette, the focus ring of the page. */
+.replay-controls {
+  margin: 0 1.25rem 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+.replay-controls h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+.replay-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.replay-speed {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.replay-controls button {
+  min-height: 2.5rem;
+  min-width: 2.5rem;
+  padding: 0 0.75rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.replay-controls button[aria-pressed='true'] {
+  background: var(--selected);
+  border-color: var(--focus);
+}
+.replay-controls a {
+  color: var(--text);
+}
+.replay-position {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.replay-position input {
+  flex: 1;
+  min-width: 8rem;
+}
+.replay-page {
+  padding: 1.25rem;
+}
+.replay-page a {
+  color: var(--text);
+}

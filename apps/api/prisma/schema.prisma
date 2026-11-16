@@ -255,3 +255,17 @@ model Proposal {
   @@index([huntId])
   @@index([status])
 }
+/// One replay: a recorded, sanitized and human-reviewed incident (`fixtures/replays/<id>.json`). `body` is the whole
+/// file; `sha256` is the hash of the canonical JSON of the file (`replayHash`), so that a seed leaves a row alone when its file did not change.
+model Replay {
+  id         String   @id
+  title      String
+  scenario   String
+  recordedOn DateTime @db.Date
+  durationMs Int
+  body       Json
+  sha256     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([recordedOn(sort: Desc)], map: "replay_recorded_on")
+}

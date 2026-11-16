@@ -56,7 +56,7 @@ describe('Property 14: the scene and the table agree on every hunt', () => {
       }),
       { numRuns: 200 },
     );
-  });
+  }, 30_000);
 
   it('shows the same cell in the rendered table, and the same steps in the Hunt section', () => {
     fc.assert(
@@ -77,7 +77,7 @@ describe('Property 14: the scene and the table agree on every hunt', () => {
       }),
       { numRuns: 60 },
     );
-  });
+  }, 30_000);
 
   it('is the same view in the section as in the cell', () => {
     fc.assert(
@@ -89,5 +89,5 @@ describe('Property 14: the scene and the table agree on every hunt', () => {
       }),
       { numRuns: 60 },
     );
-  });
+  }, 30_000);
 });

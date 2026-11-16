@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { focusIsFreeOrIn, focusRow } from './a11y/focus.js';
 import { useAccessibleMode } from './a11y/useAccessibleMode.js';
-import type { IngestStatus, ServiceName, ServiceState } from '@haunted-ops/shared';
+import type { IngestStatus, ProposalView, ServiceName, ServiceState } from '@haunted-ops/shared';
 import { Header } from './components/Header.js';
 import { LiveAnnouncer, type Notice } from './components/LiveAnnouncer.js';
 import { SkipLink } from './components/SkipLink.js';
 import { SceneMount, type SceneMountProps } from './components/SceneMount.js';
+import type { LoadHuntDetail } from './components/HuntSection.js';
 import { TableMode } from './components/TableMode.js';
 import { fetchHuntDetail } from './net/api.js';
 import { SseClient, type SseClientOptions } from './net/sse-client.js';
@@ -48,22 +49,54 @@ export function huntIdFromPath(pathname: string): string | null {
   return m === null ? null : (m[1] as string);
 }
 
+/** `/replays` (the list) or `/replays/<id>` (the player), or null for any other path. */
+export type ReplayRoute = { kind: 'list' } | { kind: 'play'; id: string };
+export function replayRouteFromPath(pathname: string): ReplayRoute | null {
+  const m = /^\/replays(?:\/([a-z0-9-]{3,48}))?\/?$/.exec(pathname);
+  return m === null ? null : m[1] === undefined ? { kind: 'list' } : { kind: 'play', id: m[1] };
+}
+/**
+ * A replay as `App` reads it, in place of live or demo data: the state of the frame on show, the scene clock of that
+ * frame, the banner, the controls and the loader of the Hunt detail. With it `App` opens no stream and fetches nothing.
+ */
+export interface ReplaySource {
+  services: ServiceState[];
+  proposal: ProposalView | null;
+  /** The scene reads this as the current time (the recording date plus the position). */
+  now: number;
+  /** "Replay of <date>, not live": on the page and in the table caption. */
+  banner: string;
+  controls: ReactNode;
+  loadHuntDetail: LoadHuntDetail;
+}
 /** What the scene mount needs besides data; tests and Demo mode can replace the loader or the renderer. */
 export type SceneOptions = Pick<SceneMountProps, 'loadCanvas' | 'createRenderer'>;
 
-export function App({ client, demo = null, scene = {} }: { client: ClientOptions; demo?: DemoMode; scene?: SceneOptions }) {
-  const live = useLiveServices(client, demo === null);
+export interface AppProps {
+  client: ClientOptions;
+  demo?: DemoMode;
+  scene?: SceneOptions;
+  replay?: ReplaySource | null;
+}
+const LazyReplay = lazy(() => import('./replay/ReplayApp.js'));
+/** The page: a replay route loads the replay chunk, every other path is the live app. */
+export function Root(props: AppProps) {
+  const route = replayRouteFromPath(window.location.pathname);
+  return route === null ? <App {...props} /> : <Suspense fallback={<p role="status">Loading.</p>}><LazyReplay route={route} Shell={App} {...props} /></Suspense>;
+}
+export function App({ client, demo = null, scene = {}, replay = null }: AppProps) {
+  const live = useLiveServices(client, demo === null && replay === null);
   const demoServices = useDemoServices(demo);
-  const services = demo === null ? live.services : demoServices;
+  const services = replay !== null ? replay.services : demo === null ? live.services : demoServices;
   const status = live.status;
-  const ingest = demo === null ? live.ingest : null;
+  const ingest = demo === null && replay === null ? live.ingest : null;
 
   const reducedMotion = usePrefersReducedMotion();
   // The wall clock needs a minute; a Hunt that runs or ended lately needs seconds (the walk in and the 8 s the figure stays).
   const minute = useNow(60_000);
   const huntBusy = services.some((s) => s.hunt !== null && (s.hunt.finishedAt === null || minute - Date.parse(s.hunt.finishedAt) < 60_000));
   const second = useNow(huntBusy ? 1000 : 60_000);
-  const now = huntBusy ? second : minute;
+  const now = replay !== null ? replay.now : huntBusy ? second : minute;
   const [quality, setQuality] = useState<Quality>('full');
   const [selected, dispatch] = useReducer(selectionReducer, null);
   const mode = useAccessibleMode();
@@ -79,7 +112,7 @@ export function App({ client, demo = null, scene = {} }: { client: ClientOptions
   const lastNotified = useRef({ status, stale, connected: status === 'live' });
   useEffect(() => {
     const last = lastNotified.current;
-    if (demo !== null) return;
+    if (demo !== null || replay !== null) return;
     if (status !== last.status) {
       if (status !== 'live' || last.connected) say(`Connection: ${statusMark('connection', status).label}.`);
       last.connected ||= status === 'live';
@@ -89,7 +122,7 @@ export function App({ client, demo = null, scene = {} }: { client: ClientOptions
       if (last.stale !== null && stale !== null) say(stale ? 'Metrics are stale.' : 'Metrics are fresh again.');
       last.stale = stale;
     }
-  }, [status, stale, demo, say]);
+  }, [status, stale, demo, replay, say]);
   useEffect(() => {
     // The marker the stylesheet uses to stop all motion, also when the browser does not report Reduced motion.
     const root = document.documentElement;
@@ -102,9 +135,9 @@ export function App({ client, demo = null, scene = {} }: { client: ClientOptions
 
   // The detail of a finished Hunt (its cited evidence) comes from the API; Demo mode has none.
   const loadHuntDetail = useMemo(
-    () => (demo === null ? (id: string) => fetchHuntDetail(client.baseUrl, id, client.fetchImpl) : undefined),
+    () => (replay !== null ? replay.loadHuntDetail : demo === null ? (id: string) => fetchHuntDetail(client.baseUrl, id, client.fetchImpl) : undefined),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [demo],
+    [demo, replay?.loadHuntDetail],
   );
   const select = (name: ServiceName | null): void => dispatch(name === null ? { type: 'clear' } : { type: 'select', name });
   useEffect(() => {
@@ -153,8 +186,9 @@ export function App({ client, demo = null, scene = {} }: { client: ClientOptions
   return (
     <div className="app">
       <SkipLink />
-      <Header status={status} demo={demo !== null} accessible={{ on: accessible, onToggle: mode.toggle }} />
+      <Header status={status} demo={demo !== null} note={replay?.banner} accessible={{ on: accessible, onToggle: mode.toggle }} />
       <main className="app-main">
+        {replay?.controls}
         {model === null ? null : (
           <SceneMount
             services={services}
@@ -167,7 +201,7 @@ export function App({ client, demo = null, scene = {} }: { client: ClientOptions
             {...scene}
           />
         )}
-        <TableMode services={services} ingest={ingest} selected={selected} onSelect={select} loadHuntDetail={loadHuntDetail} />
+        <TableMode services={services} ingest={ingest} selected={selected} onSelect={select} loadHuntDetail={loadHuntDetail} captionNote={replay?.banner} />
         <LiveAnnouncer services={services} notice={notice} />
       </main>
     </div>

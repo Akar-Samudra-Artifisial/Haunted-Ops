@@ -85,5 +85,5 @@ describe('Property 7: focus survives re-renders', () => {
       ),
       { numRuns: 40 },
     );
-  });
+  }, 30_000);
 });

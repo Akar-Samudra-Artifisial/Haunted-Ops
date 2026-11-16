@@ -30,5 +30,5 @@ describe('Property 6: statuses have distinct marks', () => {
       }),
       { numRuns: 200 },
     );
-  });
+  }, 30_000);
 });

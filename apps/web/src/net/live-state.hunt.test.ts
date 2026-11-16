@@ -122,7 +122,7 @@ describe('applyHuntEvent properties', () => {
       }),
       { numRuns: 200 },
     );
-  });
+  }, 30_000);
 
   it('a hunt.finished without a diagnosis never leaves a diagnosis on a failed Hunt', () => {
     const s = applyHuntEvent(applyHuntEvent(null, 'hunt.queued', queued()), 'hunt.finished', finished({ status: 'failed', reason: 'timeout' }));

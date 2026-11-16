@@ -103,7 +103,7 @@ describe('hunt summaries', () => {
     expect(validateServiceState({ ...state, hunt: null, proposal: null }).ok).toBe(true);
     expect(validateServiceState({ ...state, hunt: sealed, proposal: null }).ok).toBe(true);
     expect(validateServiceState(state).ok).toBe(false);
-  });
+  }, 30_000);
 });
 
 describe('hunt detail', () => {

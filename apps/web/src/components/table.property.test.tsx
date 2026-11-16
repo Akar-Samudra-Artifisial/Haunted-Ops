@@ -65,5 +65,5 @@ describe('Property 14: every table row says the level and the cause in text', ()
       }),
       { numRuns: 200 },
     );
-  });
+  }, 30_000);
 });

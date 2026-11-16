@@ -30,6 +30,7 @@ import { PrismaIngestStore } from './ingest/store.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { JsonLogger } from './security/logger.js';
 import { RATE_LIMIT_WINDOW_MS, RateLimitGuard } from './security/rate-limit.guard.js';
+import { ReplaysModule } from './replays/replays.module.js';
 import { ServicesController } from './services/services.controller.js';
 import { ServicesService } from './services/services.service.js';
 import { APP_CONFIG, FIX_CONFIG, HUNT_CONFIG } from './tokens.js';
@@ -70,6 +71,7 @@ export class AppModule {
       global: true,
       imports: [
         ThrottlerModule.forRoot([{ name: 'default', ttl: RATE_LIMIT_WINDOW_MS, limit: config.rateLimitMax }]),
+        ReplaysModule,
         ...(options.imports ?? []),
       ],
       controllers: [HealthController, ServicesController, IngestController, SseController, HuntsController, FixController],

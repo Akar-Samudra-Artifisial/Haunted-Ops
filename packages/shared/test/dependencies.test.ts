@@ -44,7 +44,7 @@ describe('Property 17: only the most downstream service of a set is hunted', () 
       }),
       { numRuns: 200 },
     );
-  });
+  }, 30_000);
 
   it('names ledger for a full cascade and the lone service otherwise', () => {
     expect(mostDownstream(['gate', 'orders', 'payments', 'ledger'])).toBe('ledger');

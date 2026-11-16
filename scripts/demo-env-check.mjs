@@ -93,9 +93,12 @@ function isAbsolutePath(v) {
   return v !== undefined && v.startsWith('/') && !v.includes('\0') && v.length <= 500;
 }
 
-/** The Kiro API key: printable ASCII with no space, 20 to 512 characters (the rule of the API at start). @param {string | undefined} v */
+/**
+ * The Kiro API key: printable ASCII with no space, 20 to 512 characters (the rule of the API at start), and no `\`, `"` or `'`
+ * (systemd reads them in an environment file as escapes and quotes). @param {string | undefined} v
+ */
 export function isKiroApiKey(v) {
-  return v !== undefined && /^[\x21-\x7e]{20,512}$/.test(v);
+  return v !== undefined && /^[\x21\x23-\x26\x28-\x5b\x5d-\x7e]{20,512}$/.test(v);
 }
 /** @param {string | undefined} v */
 function isStrongToken(v) {
@@ -149,6 +152,8 @@ export function checkEnv(vars, profile = 'api') {
   rule('HUNT_DAILY_MAX', intIn(v('HUNT_DAILY_MAX'), 1, DECIDED_CAPS.HUNT_DAILY_MAX));
   rule('HUNT_CREDIT_CAP', decimalAtMost(v('HUNT_CREDIT_CAP'), DECIDED_CAPS.HUNT_CREDIT_CAP));
   rule('HUNT_DAILY_CREDIT_CAP', decimalAtMost(v('HUNT_DAILY_CREDIT_CAP'), DECIDED_CAPS.HUNT_DAILY_CREDIT_CAP));
+  // The key belongs in /etc/haunted/kiro.env (the `kiro` profile), never in api.env.
+  rule('KIRO_API_KEY', !has(vars, 'KIRO_API_KEY'));
   return bad;
 }
 

@@ -22,6 +22,27 @@ export const ZWSP = '\u200b';
 export const PR_NOTICE = 'AI generated, review before merging. Nothing is merged or deployed until a person merges this pull request.';
 
 /**
+ * Removes every `!` that stands directly before a `[` (an image mark), also in a run: `!![` must not leave `![`.
+ * A single `replaceAll('![', '[')` is not enough for a run, and a loop of it or a regular expression would take
+ * quadratic time on a long run of `!`; this scan is linear.
+ */
+export function dropImageBangs(text: string): string {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] !== '!') {
+      out += text[i];
+      i += 1;
+      continue;
+    }
+    let j = i;
+    while (text[j] === '!') j += 1;
+    if (text[j] !== '[') out += text.slice(i, j);
+    i = j;
+  }
+  return out;
+}
+/**
  * Model or lab text for a title or a body. `sanitizeModelText` has removed control, direction and zero-width
  * characters, URLs, markdown links, images and HTML tags, and has collapsed whitespace. This also breaks any
  * markdown link or image syntax that is left, drops backticks, puts a zero-width space after every `@` (no mention,
@@ -29,9 +50,7 @@ export const PR_NOTICE = 'AI generated, review before merging. Nothing is merged
  * `cap` characters without ever separating an `@` from its space.
  */
 export function sanitizePrText(value: unknown, cap: number): string {
-  const clean = sanitizeModelText(value, cap)
-    .replaceAll('`', '')
-    .replaceAll('![', '[')
+  const clean = dropImageBangs(sanitizeModelText(value, cap).replaceAll('`', ''))
     .replaceAll('](', '] (')
     .replace(/\s+/g, ' ')
     .trim();

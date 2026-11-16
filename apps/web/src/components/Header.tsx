@@ -16,15 +16,15 @@ function StatusIcon({ status }: { status: ConnectionStatus | 'demo' }) {
   );
 }
 
-export function Header({ status, demo = false, accessible }: { status: ConnectionStatus; demo?: boolean; accessible?: AccessibleControl }) {
+export function Header({ status, demo = false, note, accessible }: { status: ConnectionStatus; demo?: boolean; note?: string; accessible?: AccessibleControl }) {
   const control = accessible === undefined ? null : <AccessibleSwitch on={accessible.on} onToggle={accessible.onToggle} />;
-  if (demo) {
+  if (demo || note !== undefined) {
     return (
       <header className="app-header">
         <h1 className="app-title">Haunted Ops</h1>
         {control}
         <p className="connection connection-demo">
-          Demo data, not live
+          {note ?? 'Demo data, not live'}
         </p>
       </header>
     );

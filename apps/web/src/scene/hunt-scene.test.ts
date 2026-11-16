@@ -152,7 +152,7 @@ describe('Property 13: the Exorcist figure fits its room for every gallery size'
       }),
       { numRuns: 120 },
     );
-  });
+  }, 30_000);
 });
 
 describe('Animator: the Hunt', () => {

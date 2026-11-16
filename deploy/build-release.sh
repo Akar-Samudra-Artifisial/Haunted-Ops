@@ -72,12 +72,23 @@ for path in \
   packages/shared/package.json packages/shared/dist \
   packages/exorcist-mcp/package.json packages/exorcist-mcp/dist packages/exorcist-mcp/bin \
   .kiro/agents/exorcist.json \
-  scripts/demo-env-check.mjs scripts/demo-smoke.mjs \
+  scripts/demo-env-check.mjs scripts/read-env-value.mjs scripts/demo-smoke.mjs \
   deploy/server; do
   [ -e "$ROOT/$path" ] || fail "missing: $path"
   copy "$path"
 done
 
+# The replays: only the files of fixtures/replays/*.json go in (the folder ships even when there is none). The release check
+# below refuses a file that has no review, one that does not validate and one edited after its review. Nothing in the folder
+# may be a link, a folder or any other thing that is not a regular file: cp would follow a link out of the repository.
+[ ! -L "$ROOT/fixtures/replays" ] || fail "fixtures/replays is a symbolic link"
+replay_odd="$(find "$ROOT/fixtures/replays" -mindepth 1 ! -type f 2>/dev/null | head -n 1 || true)"
+[ -z "$replay_odd" ] || fail "fixtures/replays holds something that is not a regular file: ${replay_odd#"$ROOT"/}"
+mkdir -p "$STAGE/fixtures/replays"
+for replay in "$ROOT"/fixtures/replays/*.json; do
+  [ -e "$replay" ] || continue
+  cp "$replay" "$STAGE/fixtures/replays/"
+done
 # The manifest lists every chunk and source path and is not needed at run time.
 if [ -d "$STAGE/apps/web/dist/.vite" ]; then
   rm -r -- "$STAGE/apps/web/dist/.vite"

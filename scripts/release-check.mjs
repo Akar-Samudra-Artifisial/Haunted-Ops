@@ -4,9 +4,9 @@
 // It names the path and the kind of each finding and never prints the text that matched.
 import { lstatSync, openSync, closeSync, readSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep, basename } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-/** @typedef {'native_binary' | 'env_file' | 'forbidden_path' | 'source_map' | 'vite_dir' | 'home_path' | 'token'} FindingKind */
+/** @typedef {'native_binary' | 'env_file' | 'forbidden_path' | 'source_map' | 'vite_dir' | 'home_path' | 'token' | 'replay_unreviewed' | 'replay_invalid'} FindingKind */
 
 /** First bytes of ELF and Mach-O files (thin and fat, both byte orders). */
 const MAGIC = [
@@ -48,6 +48,41 @@ function startsWithMagic(file) {
   }
 }
 
+/**
+ * The full validator of the replay file (`validateReplayFile` of the built shared package), or `null` when the package is
+ * not built. It checks the whole file, the review and the hash that binds the review to the content.
+ * @type {null | ((input: unknown) => { ok: boolean })}
+ */
+let sharedValidator = null;
+try {
+  const shared = await import(pathToFileURL(fileURLToPath(new URL('../packages/shared/dist/index.js', import.meta.url))).href);
+  sharedValidator = shared.validateReplayFile;
+} catch {
+  sharedValidator = null;
+}
+const REPLAY_PATH = /^fixtures\/replays\/[^/]+\.json$/;
+/** The pretty-printed file on disk is longer than the 256 KiB of compact JSON the validator allows; nothing near a MiB is a replay. */
+const MAX_REPLAY_BYTES = 1024 * 1024;
+/**
+ * A replay file ships only when a person reviewed it (`review` has a `reviewedOn` and a `by`, both strings) and the whole file
+ * passes the validator, whose check of the review hash refuses a file edited after the review. The file is named `<id>.json`.
+ * @param {string} rel @param {string} text @param {typeof sharedValidator} validate
+ * @returns {FindingKind[]}
+ */
+function replayKinds(rel, text, validate) {
+  /** @type {any} */
+  let file;
+  try {
+    file = JSON.parse(text);
+  } catch {
+    return ['replay_unreviewed'];
+  }
+  const review = file?.review;
+  const named = typeof review === 'object' && review !== null && !Array.isArray(review) && typeof review.reviewedOn === 'string' && typeof review.by === 'string';
+  if (!named) return ['replay_unreviewed'];
+  if (validate === null) throw new Error('the shared package is not built');
+  return validate(file).ok && rel === `fixtures/replays/${file.id}.json` ? [] : ['replay_invalid'];
+}
 /** @param {string} rel posix-style relative path */
 function pathKinds(rel) {
   const parts = rel.split('/');
@@ -66,9 +101,11 @@ function pathKinds(rel) {
  * Walks `root` without following links and returns the findings, sorted by path then kind.
  * A finding holds a path (relative, with `/`) and a kind. It never holds matched text.
  * @param {string} root
+ * @param {{ validateReplayFile?: typeof sharedValidator }} [options] the validator of the replays (default: the built shared package)
  * @returns {{ path: string; kind: FindingKind }[]}
  */
-export function checkTree(root) {
+export function checkTree(root, options = {}) {
+  const validate = options.validateReplayFile ?? sharedValidator;
   /** @type {{ path: string; kind: FindingKind }[]} */
   const out = [];
   /** @param {string} rel @param {FindingKind} kind */
@@ -95,10 +132,12 @@ export function checkTree(root) {
         continue;
       }
       if (startsWithMagic(full)) add(rel, 'native_binary');
+      if (REPLAY_PATH.test(rel) && st.size > MAX_REPLAY_BYTES) add(rel, 'replay_invalid');
       if (st.size > MAX_TEXT_BYTES) continue;
       const data = readFileSync(full);
       if (data.includes(0)) continue;
       const text = data.toString('utf8');
+      if (REPLAY_PATH.test(rel) && st.size <= MAX_REPLAY_BYTES) for (const kind of replayKinds(rel, text, validate)) add(rel, kind);
       if (HOME_PATH.test(text)) add(rel, 'home_path');
       if (TOKEN_PATTERNS.some((re) => re.test(text))) add(rel, 'token');
     }
@@ -121,8 +160,8 @@ function main() {
   let findings;
   try {
     findings = checkTree(dir);
-  } catch {
-    process.stderr.write('release-check: cannot read the tree\n');
+  } catch (err) {
+    process.stderr.write(err instanceof Error && err.message === 'the shared package is not built' ? 'release-check: the shared package is not built (run pnpm build)\n' : 'release-check: cannot read the tree\n');
     process.exit(2);
   }
   if (findings.length === 0) {

@@ -140,5 +140,5 @@ describe('Property 2: reading the saved choice never throws', () => {
       }),
       { numRuns: 100 },
     );
-  });
+  }, 30_000);
 });

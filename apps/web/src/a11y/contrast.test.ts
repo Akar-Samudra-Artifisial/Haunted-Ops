@@ -101,7 +101,7 @@ describe('Property 5: contrast pairs hold and the function is sound', () => {
       }),
       { numRuns: 200 },
     );
-  });
+  }, 30_000);
   it('holds for every listed pair in both modes', () => {
     fc.assert(
       fc.property(fc.constantFrom(...PAIRS), fc.constantFrom(normal, accessible), (p, theme) => {

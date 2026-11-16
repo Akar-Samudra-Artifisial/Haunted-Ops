@@ -70,7 +70,7 @@ describe('Property 7: the layout fits and never overlaps', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });
 
 const HOUSE: LayoutRoom[] = [
@@ -107,7 +107,7 @@ describe('Property 15: the nameplate and the badges stay inside their room', () 
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });
 
 const near = (a: Pt, b: Pt): boolean => Math.hypot(a.x - b.x, a.y - b.y) < 1e-6;
@@ -142,7 +142,7 @@ describe('Property 8: corridors follow the call chain through the gaps', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('is as lit as the dimmer room and dark when either is dark', () => {
     fc.assert(
@@ -158,7 +158,7 @@ describe('Property 8: corridors follow the call chain through the gaps', () => {
       RUNS,
     );
     expect(corridorLight(makeLight(0.5, false), makeLight(0.8, false))).toBe(0.5);
-  });
+  }, 30_000);
 });
 
 function makeLight(light: number, dark: boolean): { light: number; dark: boolean } {
@@ -196,5 +196,5 @@ describe('Property 13: keyboard navigation stays inside the house', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });

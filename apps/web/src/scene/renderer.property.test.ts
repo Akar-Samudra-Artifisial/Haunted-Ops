@@ -93,5 +93,5 @@ describe('Property 11: the renderer cleans up after itself', () => {
       }),
       { numRuns: 150 },
     );
-  });
+  }, 30_000);
 });

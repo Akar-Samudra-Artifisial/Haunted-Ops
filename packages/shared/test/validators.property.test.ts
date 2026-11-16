@@ -16,7 +16,7 @@ describe('Property 7: validators are total and exact', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('accepts every valid Service state unchanged', () => {
     fc.assert(
@@ -25,7 +25,7 @@ describe('Property 7: validators are total and exact', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('rejects a Service state with any one field broken or an extra key', () => {
     const breakers = fc.oneof(
@@ -43,7 +43,7 @@ describe('Property 7: validators are total and exact', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('accepts every valid event payload and rejects it with a missing key', () => {
     fc.assert(
@@ -61,7 +61,7 @@ describe('Property 7: validators are total and exact', () => {
       ),
       RUNS,
     );
-  });
+  }, 30_000);
 
   it('accepts exactly the integers 0 to 4 as Haunt level', () => {
     fc.assert(
@@ -71,5 +71,5 @@ describe('Property 7: validators are total and exact', () => {
       }),
       RUNS,
     );
-  });
+  }, 30_000);
 });

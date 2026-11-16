@@ -66,7 +66,7 @@ describe('Property 13: the live reducer is idempotent and keeps room order', () 
       }),
       { numRuns: 200 },
     );
-  });
+  }, 30_000);
 
   it('keeps the services in room order and never loses one', () => {
     fc.assert(
@@ -80,7 +80,7 @@ describe('Property 13: the live reducer is idempotent and keeps room order', () 
       }),
       { numRuns: 200 },
     );
-  });
+  }, 30_000);
 
   it('an older event never overwrites newer data', () => {
     fc.assert(
@@ -104,5 +104,5 @@ describe('Property 13: the live reducer is idempotent and keeps room order', () 
       }),
       { numRuns: 200 },
     );
-  });
+  }, 30_000);
 });

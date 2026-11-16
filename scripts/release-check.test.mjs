@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
@@ -104,4 +104,67 @@ test('the CLI exits 0 on a clean tree and 2 on a usage error', () => {
   assert.equal(ok.stdout.trim(), 'release-check: ok');
   assert.equal(spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }).status, 2);
   assert.equal(spawnSync(process.execPath, [SCRIPT, join(tmpdir(), 'does-not-exist-release-check')], { encoding: 'utf8' }).status, 2);
+});
+const SYNTHETIC = readFileSync(fileURLToPath(new URL('../apps/api/test/fixtures/replays/synthetic-error-spike.json', import.meta.url)), 'utf8');
+test('refuses a replay file that has no review, or is not JSON, and accepts a reviewed one; the README is not a replay', () => {
+  const root = tree({
+    'fixtures/replays/synthetic-error-spike.json': SYNTHETIC,
+    'fixtures/replays/unreviewed.json': JSON.stringify({ id: 'x', review: null }),
+    'fixtures/replays/missing.json': JSON.stringify({ id: 'y' }),
+    'fixtures/replays/array.json': JSON.stringify({ review: [] }),
+    'fixtures/replays/empty-review.json': JSON.stringify({ review: {} }),
+    'fixtures/replays/numbers.json': JSON.stringify({ review: { reviewedOn: 20261115, by: 7 } }),
+    'fixtures/replays/broken.json': '{ nope',
+    'fixtures/replays/README.md': '# Replays\n',
+    'other/review-null.json': JSON.stringify({ review: null }),
+  });
+  assert.deepEqual(
+    checkTree(root).map((f) => `${f.kind}:${f.path}`),
+    [
+      'replay_unreviewed:fixtures/replays/array.json',
+      'replay_unreviewed:fixtures/replays/broken.json',
+      'replay_unreviewed:fixtures/replays/empty-review.json',
+      'replay_unreviewed:fixtures/replays/missing.json',
+      'replay_unreviewed:fixtures/replays/numbers.json',
+      'replay_unreviewed:fixtures/replays/unreviewed.json',
+    ],
+  );
+});
+test('runs the full validator on a reviewed replay: a reviewed block is not enough, an edit after the review fails, and the file is named <id>.json', () => {
+  const good = JSON.parse(SYNTHETIC);
+  const reviewedButInvalid = { id: 'a-replay', review: { reviewedOn: '2026-11-15', by: 'AB', note: '' } };
+  const edited = { ...good, title: 'Synthetic: edited after the review' };
+  const noHash = { ...good, review: { reviewedOn: good.review.reviewedOn, by: good.review.by, note: good.review.note } };
+  const extra = { ...good, extra: 1 };
+  const root = tree({
+    'fixtures/replays/synthetic-error-spike.json': SYNTHETIC,
+    'fixtures/replays/reviewed-invalid.json': JSON.stringify(reviewedButInvalid),
+    'fixtures/replays/edited.json': JSON.stringify({ ...edited, id: 'edited' }),
+    'fixtures/replays/no-hash.json': JSON.stringify({ ...noHash, id: 'no-hash' }),
+    'fixtures/replays/extra-key.json': JSON.stringify({ ...extra, id: 'extra-key' }),
+    'fixtures/replays/wrong-name.json': SYNTHETIC,
+  });
+  assert.deepEqual(
+    checkTree(root).map((f) => `${f.kind}:${f.path}`),
+    [
+      'replay_invalid:fixtures/replays/edited.json',
+      'replay_invalid:fixtures/replays/extra-key.json',
+      'replay_invalid:fixtures/replays/no-hash.json',
+      'replay_invalid:fixtures/replays/reviewed-invalid.json',
+      'replay_invalid:fixtures/replays/wrong-name.json',
+    ],
+  );
+  const printed = formatFindings(checkTree(root));
+  assert.ok(!printed.includes('edited after the review'), 'a finding never holds the text');
+});
+test('a replay file that is far too large is refused without being read as text', () => {
+  const root = tree({ 'fixtures/replays/big.json': Buffer.alloc(1024 * 1024 + 1, 0x20) });
+  assert.deepEqual(checkTree(root).map((f) => `${f.kind}:${f.path}`), ['replay_invalid:fixtures/replays/big.json']);
+});
+test('the CLI refuses an invalid replay with exit 1 and names the path and the kind only', () => {
+  const root = tree({ 'fixtures/replays/synthetic-error-spike.json': SYNTHETIC.replace('Synthetic', 'Synthetik') });
+  const r = spawnSync(process.execPath, [SCRIPT, root], { encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.equal(r.stderr.trim(), 'release-check: replay_invalid: fixtures/replays/synthetic-error-spike.json');
+  assert.equal(spawnSync(process.execPath, [SCRIPT, tree({ 'fixtures/replays/synthetic-error-spike.json': SYNTHETIC })], { encoding: 'utf8' }).status, 0);
 });
