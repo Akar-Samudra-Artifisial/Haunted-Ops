@@ -104,3 +104,14 @@ It starts no cloud resource, opens no connection to a server, to GitHub or to th
 1. WHEN a hex-colon run starts inside a word (the character before it is a letter, a digit or `_`) and has a single `:`, THE validator SHALL also check the part after its first `:`, without the left-boundary check and with the right-boundary check kept, so that `device:fe80::1`, `id:fe80::1`, `ipv6:2001:db8::7` and `abcde:fe80::1` are refused (the Builder already masks them: its pattern starts after the `:`); `std::vector`, `12:30:45`, `time:12:30:45`, `device:12:30:45`, `ab12fe80::1`, `zx::1` and `a:b:c:d:e:f:1:2:3` SHALL stay accepted.
 2. THE validator SHALL refuse `a::b` (and any compressed run of 1 to 7 hex groups that is not inside a word), because it is the valid address `a:0:0:0:0:0:0:b`; the design and the code agree on this, and a test names it. A 64 KiB text of any shape, the new ones included, SHALL still be read in under 200 ms.
 3. THE Web tests "has levels that follow stepHaunt over the metrics it shows" (`demo.property.test.ts`) and "loads and mounts only while off, and destroys one renderer per mounted Scene" (`accessible-mode.test.tsx`) SHALL have a timeout of 30 s of their own, and the second SHALL poll each wait for up to 5 s instead of the 1 s default; `numRuns` SHALL not change.
+
+### Requirement 10: The replay folder reaches the server
+
+**User Story:** As the orchestrator, I want the release to always carry `fixtures/replays/`, so that the install seed does not stop on a missing folder before the first replay exists.
+
+#### Acceptance Criteria
+
+1. `deploy/build-release.sh` SHALL copy `fixtures/replays/README.md` into the stage (and stop when it is missing), so the tarball, which holds files only, always holds the folder.
+2. THE seed SHALL keep its rule: a missing folder is an error, and a folder that holds only `README.md` seeds 0 replays and succeeds.
+3. `scripts/release-check.mjs` SHALL refuse a release without `fixtures/replays/` with the finding `replay_folder_missing`.
+4. A test SHALL show that the tarball of a tree with zero replay files lists `fixtures/replays/README.md`, and `docs/DEPLOY.md` SHALL say that the release always carries the folder.

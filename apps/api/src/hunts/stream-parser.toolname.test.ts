@@ -13,11 +13,12 @@ describe('the stable tool name of kiro-cli 3.3.0 (`_meta.kiro.toolName`)', () =>
     expect('toolName' in classify(event({ sessionUpdate: 'tool_call', toolCallId: 'a', title: 'x', rawInput: {}, _meta: { kiro: {} } }))).toBe(false);
   });
 
-  it('is an empty string when the key is not text, and is cut at 60 characters', () => {
-    const bad = classify(event({ sessionUpdate: 'tool_call', toolCallId: 'a', title: 'x', rawInput: {}, _meta: { kiro: { toolName: { x: 1 } } } }));
-    expect(bad).toMatchObject({ toolName: '' });
-    const long = classify(event({ sessionUpdate: 'tool_call', toolCallId: 'a', title: 'x', rawInput: {}, _meta: { kiro: { toolName: 'r'.repeat(500) } } }));
-    expect((long as { toolName: string }).toolName).toHaveLength(60);
+  it('is an empty string when the key is present but not text of 1 to 64 characters', () => {
+    for (const bad of [5, null, { x: 1 }, ['read'], true, '', 'r'.repeat(65), 'r'.repeat(500)]) {
+      const ev = classify(event({ sessionUpdate: 'tool_call', toolCallId: 'a', title: 'x', rawInput: {}, _meta: { kiro: { toolName: bad } } }));
+      expect(ev, JSON.stringify(bad).slice(0, 20)).toMatchObject({ toolName: '' });
+    }
+    expect(classify(event({ sessionUpdate: 'tool_call', toolCallId: 'a', title: 'x', rawInput: {}, _meta: { kiro: { toolName: 'r'.repeat(64) } } }))).toMatchObject({ toolName: 'r'.repeat(64) });
   });
 });
 describe('the MCP server name of kiro-cli 3.3.0 (`_meta.kiro.mcpServerName`)', () => {
@@ -28,9 +29,11 @@ describe('the MCP server name of kiro-cli 3.3.0 (`_meta.kiro.mcpServerName`)', (
     expect('mcpServerName' in classify(event(meta({ toolName: 'tail_logs' })))).toBe(false);
     expect('mcpServerName' in classify(event({ sessionUpdate: 'tool_call', toolCallId: 'a', title: 'x', rawInput: {} }))).toBe(false);
   });
-  it('is absent when it is not text, and is cut at 64 characters', () => {
-    for (const bad of [5, null, { x: 1 }, ['exorcist'], true]) expect('mcpServerName' in classify(event(meta({ mcpServerName: bad })))).toBe(false);
-    const long = classify(event(meta({ mcpServerName: 'e'.repeat(500) })));
-    expect((long as { mcpServerName: string }).mcpServerName).toHaveLength(64);
+  it('is an empty string when the key is present but not text of 1 to 64 characters', () => {
+    for (const bad of [5, null, { x: 1 }, ['exorcist'], true, '', 'e'.repeat(65), 'e'.repeat(500)]) {
+      expect(classify(event(meta({ mcpServerName: bad }))), JSON.stringify(bad).slice(0, 20)).toMatchObject({ mcpServerName: '' });
+      expect(classify(event({ sessionUpdate: 'tool_call_update', toolCallId: 'a', status: 'completed', _meta: { kiro: { mcpServerName: bad } } })), JSON.stringify(bad).slice(0, 20)).toMatchObject({ mcpServerName: '' });
+    }
+    expect(classify(event(meta({ mcpServerName: 'e'.repeat(64) })))).toMatchObject({ mcpServerName: 'e'.repeat(64) });
   });
 });

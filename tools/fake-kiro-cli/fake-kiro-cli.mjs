@@ -143,7 +143,7 @@ async function runScript(script, agent) {
         const meta = running ? { kiro: { toolName: step.runningTool ?? step.tool, mcpServerName: step.runningServer ?? 'exorcist' } } : undefined;
         const shown = running ? { ...input, __tool_use_purpose: step.purpose ?? 'Find out what changed' } : input;
         const id = wrapped
-          ? emitCall('Tool Call', { tool_id: `tool::exorcist::${step.tool}`, arguments: input }, WRAPPER_META)
+          ? emitCall('Tool Call', { tool_id: `tool::exorcist::${step.tool}`, arguments: input }, step.wrapMeta === undefined ? WRAPPER_META : { kiro: { ...WRAPPER_META.kiro, ...step.wrapMeta } })
           : emitCall(title, shown, meta);
         // A wrapped call is announced without a title and gets it when it completes, like the real one.
         emitUpdate(id, 'in_progress', wrapped ? { title: null } : {});
@@ -155,7 +155,12 @@ async function runScript(script, agent) {
         }
         if (step.reuse !== undefined) {
           // A bypass attempt: an update of an accepted id that names another tool. The runner must stop the Hunt.
-          emitUpdate(id, 'in_progress', { title: step.reuse.title, rawInput: fill(step.reuse.input ?? {}) });
+          // `meta` is `_meta.kiro` of that update (a title and an input are optional).
+          emitUpdate(id, 'in_progress', {
+            ...(step.reuse.title === undefined ? {} : { title: step.reuse.title }),
+            ...(step.reuse.input === undefined && step.reuse.meta !== undefined ? {} : { rawInput: fill(step.reuse.input ?? {}) }),
+            ...(step.reuse.meta === undefined ? {} : { _meta: { kiro: step.reuse.meta } }),
+          });
         }
         let result;
         try {

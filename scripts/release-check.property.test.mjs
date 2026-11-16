@@ -13,6 +13,9 @@ let n = 0;
 function make(files) {
   const dir = join(root, `t${n++}`);
   mkdirSync(dir);
+  // A release always carries the replay folder (the README keeps it in the tarball).
+  mkdirSync(join(dir, 'fixtures/replays'), { recursive: true });
+  writeFileSync(join(dir, 'fixtures/replays/README.md'), '# Replays\n');
   for (const [rel, content] of files) {
     const full = join(dir, rel);
     mkdirSync(dirname(full), { recursive: true });

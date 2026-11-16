@@ -293,6 +293,11 @@ function wrappedFixerCall(rawInput: unknown): { tool: FixerTool; arguments: Reco
   return m === null ? null : { tool: m[1] as FixerTool, arguments: rawInput.arguments };
 }
 
+/** The input without `__tool_use_purpose`, at the top and (one level, exactly that key) in the `arguments` of a wrapper. */
+function withoutPurposeDeep(rawInput: unknown): unknown {
+  const top = withoutPurpose(rawInput);
+  return isRecord(top) && isRecord(top.arguments) ? { ...top, arguments: withoutPurpose(top.arguments) } : top;
+}
 /** What the allow-list says about one `tool_call`. */
 export function checkFixerCall(title: string, rawInput: unknown, kind?: string, toolName?: string): FixerVerdict {
   // The stable name is the identity when present: `read` and `write` name the two file tools, anything else is refused.
@@ -498,7 +503,7 @@ export class FixerGuard {
   /** Judges one stream event. `step`: a new call to count; `pass`: nothing to do; `stop`: stop the process group. */
   judge(event: HuntStreamEvent): GuardOutcome {
     // The key `__tool_use_purpose` (model text kiro-cli adds to the input) is dropped before anything is judged; no other key is.
-    const ev = event.type === 'tool_call' || event.type === 'tool_call_update' ? { ...event, rawInput: withoutPurpose(event.rawInput) } : event;
+    const ev = event.type === 'tool_call' || event.type === 'tool_call_update' ? { ...event, rawInput: withoutPurposeDeep(event.rawInput) } : event;
     this.eventKind = ev.type === 'tool_call' ? ev.kind : undefined;
     // Our two file tools are built in: a call that names an MCP server is not one of them (fail closed, the name is cleaned).
     if ((ev.type === 'tool_call' || ev.type === 'tool_call_update') && ev.mcpServerName !== undefined) {

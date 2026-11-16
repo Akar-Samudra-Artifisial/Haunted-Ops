@@ -36,6 +36,7 @@ const CLEAN = {
   'apps/web/dist/index.html': '<!doctype html><title>x</title>\n',
   'apps/web/dist/assets/index-abc.js': 'console.log("hello")\n',
   'apps/api/dist/main.js': 'export const a = 1;\n',
+  'fixtures/replays/README.md': '# Replays\n',
   'deploy/server/env/api.env.example': 'NODE_ENV=production\nHUNT_ADMIN_TOKEN=CHANGE_ME_HUNT_ADMIN_TOKEN\n',
 };
 
@@ -167,4 +168,12 @@ test('the CLI refuses an invalid replay with exit 1 and names the path and the k
   assert.equal(r.status, 1);
   assert.equal(r.stderr.trim(), 'release-check: replay_invalid: fixtures/replays/synthetic-error-spike.json');
   assert.equal(spawnSync(process.execPath, [SCRIPT, tree({ 'fixtures/replays/synthetic-error-spike.json': SYNTHETIC })], { encoding: 'utf8' }).status, 0);
+});
+test('refuses a release without fixtures/replays/, and accepts the folder holding only its README', () => {
+  const missing = tree({ 'package.json': '{}\n' });
+  assert.deepEqual(checkTree(missing).map((f) => `${f.kind}:${f.path}`), ['replay_folder_missing:fixtures/replays']);
+  const res = spawnSync(process.execPath, [SCRIPT, missing], { encoding: 'utf8' });
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /release-check: replay_folder_missing: fixtures\/replays/);
+  assert.deepEqual(checkTree(tree({ 'fixtures/replays/README.md': '# Replays\n' })), []);
 });

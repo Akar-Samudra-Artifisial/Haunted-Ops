@@ -385,3 +385,10 @@ Out of scope: the lab side of the deploy (`fix-deploy`, a separate spec in the `
 #### Acceptance Criteria
 
 1. THE guard SHALL remove exactly the key `__tool_use_purpose` from the input of a call and of an update before it judges them (any other unknown key SHALL still stop the run as `unknown_args`), and SHALL never print its text in a stop detail, log or recording. WITH `_meta.kiro.toolName` present, a title that starts with `Running: ` SHALL pass like any other one-line title. A call or an update that carries `_meta.kiro.mcpServerName` SHALL stop the run as `foreign_tool`, because `fs_read` and `fs_write` are built in and name no MCP server; a `toolName` other than `read` or `write` SHALL stop it as before. THE fake fixer SHALL have a fixture in this form that ends `finished` with its edit applied, and a fixture with a server name that stops; THE fixer stream sanitizer SHALL drop the key and keep `mcpServerName` only when it is `exorcist`.
+
+### Requirement 30: The purpose key inside the wrapper
+**User Story:** As the operator of the demo server, I want the fixer guard to judge a `Tool Call` wrapper that carries `__tool_use_purpose` inside its `arguments` on its real arguments, because kiro-cli 3.3.0 adds the key to the arguments of the wrapped call and the guard dropped it only at the top of the input.
+#### Acceptance Criteria
+1. THE guard SHALL remove exactly the key `__tool_use_purpose` from the `arguments` object of a `Tool Call` wrapper (one level) as well as from the top of the input, before it judges a call or an update. Any other extra key, in the arguments or in the wrapper, SHALL still stop the run (`unknown_args`, or `foreign_tool` for a wrapper key), and a nested copy of the key SHALL NOT be dropped.
+2. THE dropped text SHALL never reach a stop detail, log, `aiFailDetail`, the stream recorder or a fixture. A `toolName` or `mcpServerName` that the parser gives as `''` (a value that is not text of 1 to 64 characters) SHALL stop the run as `foreign_tool`.
+3. THE fake fixer SHALL have a fixture whose wrapped read and write carry the key inside `arguments` and that ends `finished` with its edit applied.

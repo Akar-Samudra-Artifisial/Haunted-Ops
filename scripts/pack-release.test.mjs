@@ -121,6 +121,7 @@ test('build-release.sh: two builds of one commit give the same sha256, and RELEA
   for (const rel of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'apps/web/package.json', 'apps/api/package.json', 'apps/api/prisma.config.ts', 'apps/api/prisma/schema.prisma', 'apps/api/prisma/migrations/m.sql', 'packages/shared/package.json', 'packages/exorcist-mcp/package.json', 'packages/exorcist-mcp/bin/launcher', '.kiro/agents/exorcist.json', 'deploy/server/install.sh', 'deploy/server/versions.env']) {
     put(rel, `fixture ${rel}\n`);
   }
+  put('fixtures/replays/README.md', '# Replays\n');
   put('.gitignore', 'dist\ndeploy/out/\n');
   // The stand-in pnpm: "install" does nothing; "--filter <package> build" writes that package's build folder.
   writeFileSync(
@@ -156,4 +157,8 @@ test('build-release.sh: two builds of one commit give the same sha256, and RELEA
   assert.equal(sha(tarball), first, 'the same commit gives the same bytes');
   const info = run('tar', ['-xzOf', tarball, './RELEASE-INFO']);
   assert.match(info, /^built_at=2026-11-01T12:00:00Z$/m, 'built_at is the commit time');
+  // No replay file in this tree: the list still holds the README, so the folder reaches the server.
+  const listed = run('tar', ['-tzf', tarball]).split('\n').map((n) => n.replace(/^\.\//, ''));
+  assert.ok(listed.includes('fixtures/replays/README.md'), 'fixtures/replays/README.md is in the tarball');
+  assert.equal(listed.filter((n) => /^fixtures\/replays\/.*\.json$/.test(n)).length, 0);
 }, { timeout: 30_000 });

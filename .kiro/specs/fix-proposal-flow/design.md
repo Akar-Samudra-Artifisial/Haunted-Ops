@@ -557,6 +557,8 @@ For any tree of files, folders and symlinks (the links pointing outside the tree
 For any error thrown before the fixer process is spawned, the Proposal records `fixer_not_started: <class and message>` and does not count in the day's starts; for any error after the spawn it records `step_error: <class and message>`; the text is one line of at most 200 characters with no absolute path and no token-like text, and the view shows it only after `scrubAiFailDetail`, which always yields text that passes `checkAiFailDetail` (or nothing). For any environment, the live helper's `parentEnv` holds `HOME` and `LANG` only, whatever overrides a caller passes.
 **Validates: Requirements 28.1, 28.2, 28.3**
 
+### The purpose key inside the wrapper (task 24)
+`judge` dropped `__tool_use_purpose` only at the top of the input, but kiro-cli 3.3.0 puts it inside the `arguments` of a `Tool Call` wrapper, where `fileToolArgsProblem` would refuse it as an unknown key. `judge` now uses `withoutPurposeDeep`: the key is removed at the top and, when `arguments` is an object, from that object (one level, exactly that key; a nested copy stays and is refused). The cleaned input is the only one that reaches a stop detail, log or recording. The parser gives `''` for a `toolName` or `mcpServerName` that is present and not text of 1 to 64 characters (`exorcist-agent` task 16), and the guard already stops both (`''` is not `read` or `write`, and a built-in tool names no server). Fake fixer: `purpose: true` on a wrapped `read` or `write` step, fixture `fixer-wrapped-purpose`.
 ## Security
 
 What fences the fixer and the code it writes, plainly (task 18):

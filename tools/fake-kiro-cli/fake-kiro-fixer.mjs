@@ -18,6 +18,7 @@
 //   symlink  { path, target }                 makes a symlink in the folder with no tool call (a model that found a way)
 //   remove   { path }                         deletes a file with no tool call
 //   sleep    { ms }
+// `purpose: true` (with `wrap`) puts `__tool_use_purpose` (model text) inside the `arguments` of the wrapper, as kiro-cli 3.3.0 does.
 // `wrap: true` writes the call as the generic `Tool Call` wrapper (`tool_id` and `arguments`), announced with an
 // update that has `title: null`, as kiro-cli 3.3.0 does.
 // `FAKE_KIRO_STREAM` (optional, instead of a fixture): the path of a `*.stream.jsonl`; its lines are replayed and the edits
@@ -82,9 +83,9 @@ const WRAPPER_META = { kiro: { toolOrigin: 'default' } };
 const emitUpdate = (id, status, extra = {}) => update({ sessionUpdate: 'tool_call_update', toolCallId: id, status, ...extra });
 const emitCredits = (usage) => update({ sessionUpdate: 'session_info_update', _meta: { kiro: { kind: 'session_usage', credits: [{ usage, unit: 'credit', unitPlural: 'credits' }] } } });
 
-function emitCall(tool, input, wrap) {
+function emitCall(tool, input, wrap, purpose = false) {
   const id = `call-${++counter}`;
-  if (wrap) update({ sessionUpdate: 'tool_call', toolCallId: id, title: 'Tool Call', kind: 'other', rawInput: { tool_id: `tool::builtin::${tool}`, arguments: input }, _meta: WRAPPER_META });
+  if (wrap) update({ sessionUpdate: 'tool_call', toolCallId: id, title: 'Tool Call', kind: 'other', rawInput: { tool_id: `tool::builtin::${tool}`, arguments: purpose ? { ...input, __tool_use_purpose: 'Read or write the file' } : input }, _meta: WRAPPER_META });
   else update({ sessionUpdate: 'tool_call', toolCallId: id, title: tool, kind: 'other', rawInput: input });
   // The real one announces a running call without a title.
   emitUpdate(id, 'in_progress', { title: null });
@@ -103,7 +104,7 @@ async function run(script) {
     switch (step.kind) {
       case 'read': {
         // The kiro-cli 3.3.0 form: a list of operations, each with a mode.
-        const id = emitCall('fs_read', { operations: [{ mode: 'Line', path: step.path }] }, step.wrap === true);
+        const id = emitCall('fs_read', { operations: [{ mode: 'Line', path: step.path }] }, step.wrap === true, step.purpose === true);
         last = { id, tool: 'fs_read' };
         let ok = true;
         try {
@@ -115,7 +116,7 @@ async function run(script) {
         break;
       }
       case 'write': {
-        const id = emitCall('fs_write', { command: 'create', path: step.path, file_text: contentOf(step) }, step.wrap === true);
+        const id = emitCall('fs_write', { command: 'create', path: step.path, file_text: contentOf(step) }, step.wrap === true, step.purpose === true);
         last = { id, tool: 'fs_write' };
         let ok = true;
         try {

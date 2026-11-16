@@ -108,6 +108,9 @@ Add the replay feature end to end: the file format and its validator, the tools 
     - _Requirements: 9.3_
   - [x] 10.3 Documents and verification: requirements 9, design, `docs/KIRO_USAGE.md`; the checks of `exorcist-agent` task 15 pass
     - _Requirements: 9.1, 9.2, 9.3_
+- [x] 11. The replay folder reaches the server
+  - [x] 11.1 `build-release.sh` copies `fixtures/replays/README.md` into the stage so the folder is never empty in the tarball; `release-check.mjs` refuses a release without `fixtures/replays/` (`replay_folder_missing`); the seed keeps its rule (a missing folder is an error) and seeds 0 replays from a folder with only the README; tests for the pack list, the check and the seed; one sentence in `docs/DEPLOY.md`
+    - _Requirements: 10.1, 10.2, 10.3, 10.4_
 ## Notes
 - Name: the feature is always "replay". The fake `kiro-cli` has a mode with a similar name; this spec does not touch it and shares no code or name with it.
 - The Builder needs the built packages (`pnpm build`): it imports the validator of `packages/shared/dist` and `sanitizePrText` of `apps/api/dist`. Tests that run in vitest inject the source functions instead.
@@ -131,7 +134,8 @@ Add the replay feature end to end: the file format and its validator, the tools 
     { "id": 9, "tasks": ["9.1", "9.2"] },
     { "id": 10, "tasks": ["9.3"] },
     { "id": 11, "tasks": ["10.1", "10.2"] },
-    { "id": 12, "tasks": ["10.3"] }
+    { "id": 12, "tasks": ["10.3"] },
+    { "id": 13, "tasks": ["11.1"] }
   ]
 }
 ```

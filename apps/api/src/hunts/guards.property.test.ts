@@ -388,3 +388,71 @@ describe('Property 24: a tool title is `@exorcist/<tool>` or `Running: @exorcist
     expect(describeForeign('Running: @exorcist/shell\u0007x', null)).toBe('Running: @exorcist/shell x');
   });
 });
+// Feature: exorcist-agent, Property 25
+describe('Property 25: `_meta.kiro` agrees with the call on every path', () => {
+  const tool = fc.constantFrom(...HUNT_TOOLS);
+  const args = { service: 'payments', signal: 'up', window: '5m' };
+  const wrapperInput = (t: string): unknown => ({ tool_id: `tool::exorcist::${t}`, arguments: args });
+  const wrongName = fc.oneof(fc.string({ maxLength: 70 }), fc.constantFrom('read', 'write', 'shell', '', 'Exorcist', 'x'.repeat(65)));
+  const ev = (title: string, rawInput: unknown, meta: { toolName?: string; mcpServerName?: string }) => ({ id: 'c', title, rawInput, ...meta });
+  it('accepts agreement on all six tools: title, `Tool Call` wrapper, `Tool Load`, and a later update of the id', () => {
+    const server = fc.constantFrom<string | undefined>(undefined, 'exorcist');
+    fc.assert(
+      fc.property(tool, server, fc.boolean(), (t, mcpServerName, named) => {
+        const meta = { ...(named ? { toolName: t } : {}), ...(mcpServerName === undefined ? {} : { mcpServerName }) };
+        expect(checkToolCall(ev('Tool Call', wrapperInput(t), meta))).toMatchObject({ kind: 'step', tool: t });
+        expect(checkToolCall(ev('Tool Load', { id: `tool::exorcist::${t}` }, meta))).toEqual({ kind: 'load', id: 'c' });
+        expect(isSameCall({ kind: 'step', tool: t }, 'Tool Call', wrapperInput(t), meta)).toBe(true);
+        expect(isSameCall({ kind: 'step', tool: t }, null, undefined, meta)).toBe(true);
+        expect(isSameCall({ kind: 'load', names: [t] }, 'Tool Load', { id: `tool::exorcist::${t}` }, meta)).toBe(true);
+        expect(isSameCall({ kind: 'load', names: [t] }, null, undefined, meta)).toBe(true);
+      }),
+      RUNS,
+    );
+  });
+  it('refuses any disagreement of `toolName` or `mcpServerName` for an update with no title, the wrapper title or a load', () => {
+    fc.assert(
+      fc.property(tool, tool, wrongName, (t, other, junk) => {
+        if (other !== t) {
+          const step: AcceptedCall = { kind: 'step', tool: t };
+          expect(isSameCall(step, null, undefined, { toolName: other })).toBe(false);
+          expect(isSameCall(step, '', args, { toolName: other })).toBe(false);
+          expect(isSameCall(step, 'Tool Call', wrapperInput(t), { toolName: other })).toBe(false);
+          expect(isSameCall({ kind: 'load', names: [t] }, 'Tool Load', undefined, { toolName: other })).toBe(false);
+          expect(checkToolCall(ev('Tool Call', wrapperInput(t), { toolName: other })).kind).toBe('foreign');
+          expect(checkToolCall(ev('Tool Load', { id: `tool::exorcist::${t}` }, { toolName: other })).kind).toBe('foreign');
+        }
+        if (junk !== 'exorcist') {
+          const step: AcceptedCall = { kind: 'step', tool: t };
+          expect(isSameCall(step, null, undefined, { mcpServerName: junk })).toBe(false);
+          expect(isSameCall(step, 'Tool Call', wrapperInput(t), { mcpServerName: junk })).toBe(false);
+          expect(isSameCall({ kind: 'load', names: [t] }, null, undefined, { mcpServerName: junk })).toBe(false);
+          expect(checkToolCall(ev('Tool Call', wrapperInput(t), { mcpServerName: junk })).kind).toBe('foreign');
+          expect(checkToolCall(ev('Tool Load', { id: `tool::exorcist::${t}` }, { mcpServerName: junk })).kind).toBe('foreign');
+        }
+        if (junk !== t) {
+          expect(isSameCall({ kind: 'step', tool: t }, null, undefined, { toolName: junk })).toBe(false);
+          expect(checkToolCall(ev('Tool Call', wrapperInput(t), { toolName: junk })).kind).toBe('foreign');
+        }
+      }),
+      RUNS,
+    );
+  });
+  it('a `toolName` of a load must be one of the loaded tools', () => {
+    expect(checkToolCall(ev('Tool Load', { tool_ids: ['tool::exorcist::tail_logs', 'tool::exorcist::diff_commit'] }, { toolName: 'diff_commit' })).kind).toBe('load');
+    expect(checkToolCall(ev('Tool Load', { tool_ids: ['tool::exorcist::tail_logs', 'tool::exorcist::diff_commit'] }, { toolName: 'query_metrics' })).kind).toBe('foreign');
+  });
+  it('refuses the empty name the parser gives a value that is not text (number, object, empty, over 64 characters)', () => {
+    for (const t of HUNT_TOOLS) {
+      expect(checkToolCall(ev(`@exorcist/${t}`, args, { toolName: '' })).kind).toBe('foreign');
+      expect(checkToolCall(ev(`Running: @exorcist/${t}`, args, { mcpServerName: '' })).kind).toBe('foreign');
+      expect(checkToolCall(ev('Tool Call', wrapperInput(t), { mcpServerName: '' })).kind).toBe('foreign');
+      expect(isSameCall({ kind: 'step', tool: t }, null, undefined, { toolName: '' })).toBe(false);
+      expect(isSameCall({ kind: 'step', tool: t }, null, undefined, { mcpServerName: '' })).toBe(false);
+    }
+  });
+  it('the update of an accepted id with the `_meta` of another tool is the case `isSameCall` used to accept', () => {
+    expect(isSameCall({ kind: 'step', tool: 'query_metrics' }, null, undefined, { toolName: 'tail_logs', mcpServerName: 'exorcist' })).toBe(false);
+    expect(isSameCall({ kind: 'step', tool: 'query_metrics' }, 'Tool Call', wrapperInput('query_metrics'), { toolName: 'tail_logs' })).toBe(false);
+  });
+});

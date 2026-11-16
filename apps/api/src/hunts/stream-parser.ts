@@ -5,7 +5,7 @@
  */
 
 export type HuntStreamEvent =
-  /** `toolName` is `_meta.kiro.toolName` (the stable name, `read`, `write`) when the event has the key; a non-string value gives `''`. */
+  /** `toolName` is `_meta.kiro.toolName` (the stable name, `read`, `write`) when the event has the key; a value that is not text of 1 to 64 characters gives `''`. */
   | { type: 'tool_call'; id: string; title: string; rawInput: unknown; kind?: string; toolName?: string; mcpServerName?: string }
   /** `title` is null when the update has none (kiro-cli 3.3.0 sends `title: null` while a call runs); `rawInput` is only what the update itself carries. */
   | { type: 'tool_call_update'; id: string; status: string; title?: string | null; rawInput?: unknown; toolName?: string; mcpServerName?: string }
@@ -34,19 +34,21 @@ function creditsOf(kiro: Record<string, unknown>): number | null {
   return sum;
 }
 
+/** A `_meta.kiro` name that is present: text of 1 to 64 characters, else `''` (never equal to any tool or server name). */
+const metaName = (v: unknown): string => (typeof v === 'string' && v.length >= 1 && v.length <= 64 ? v : '');
 /**
- * `_meta.kiro.toolName` of a tool event, as `{ toolName }`; nothing when the key is absent, `''` when it is not a string.
- * `_meta.kiro.mcpServerName` too, as `{ mcpServerName }`: a string of at most 64 characters, nothing when it is not a string.
+ * `_meta.kiro.toolName` of a tool event as `{ toolName }`, and `_meta.kiro.mcpServerName` as `{ mcpServerName }`; each is
+ * nothing when the key is absent. A key that is present but not text of 1 to 64 characters (a number, an object, an empty
+ * or a longer string) gives `''`, so no guard can read it as absent: it names no tool and no server.
  */
 function toolNameOf(update: Record<string, unknown>): { toolName?: string; mcpServerName?: string } {
   const kiro = isRecord(update._meta) && isRecord(update._meta.kiro) ? update._meta.kiro : null;
   if (kiro === null) return {};
   return {
-    ...('toolName' in kiro ? { toolName: typeof kiro.toolName === 'string' ? str(kiro.toolName, 60) : '' } : {}),
-    ...(typeof kiro.mcpServerName === 'string' ? { mcpServerName: str(kiro.mcpServerName, 64) } : {}),
+    ...('toolName' in kiro ? { toolName: metaName(kiro.toolName) } : {}),
+    ...('mcpServerName' in kiro ? { mcpServerName: metaName(kiro.mcpServerName) } : {}),
   };
 }
-
 /** Turns one JSON value into an event. Total: any value gives an event. */
 export function classify(value: unknown): HuntStreamEvent {
   if (!isRecord(value)) return { type: 'malformed' };

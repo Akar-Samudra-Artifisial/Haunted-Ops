@@ -449,9 +449,16 @@ On the demo server (kiro-cli 3.3.0, login by API key, model on Bedrock) the firs
 `checkToolCall` read only the title and ignored `toolName`; `mcpServerName` was not read anywhere. The fix keeps the allow-list strict:
 - `mcpToolOf(title, { toolName, mcpServerName })` in `guards.ts` is the one function that says which of the six tools a title names. The title must match `^(?:Running: )?@exorcist/([a-z_]{1,40})$` with a tool of the six. A present `mcpServerName` other than `exorcist`, or a present `toolName` other than the tool of the title, makes the call foreign. `checkToolCall` and `isSameCall` both use it (`isSameCall` takes the `_meta` fields as a fourth argument), so a `tool_call_update` with the `Running: ` title is the same call and a swapped title or server is judged again. The hunt runner passes `toolName` and `mcpServerName` of the event. The `Tool Load` and `Tool Call` titles stay as they are: the evidence shows no `Running: ` form for them.
 - `withoutPurpose` (`packages/exorcist-mcp/src/schemas.ts`, exported to the API) removes exactly `__tool_use_purpose` at the top of an input. The guard applies it before the title is judged for arguments (so `wrappedCall` still sees exactly `tool_id` and `arguments`), the runner applies it before `takeDiagnosis`, `parseToolInput` applies it before the strict schema (the step summary and the MCP server both go through it), and the recorder and the sanitizers apply it before they write. The fixer guard applies it in `judge`. No other key is dropped: `{ ..., "__tool_use_purpose": "x", "extra": 1 }` still fails as unknown arguments, and a key with another spelling stays.
-- The parser extracts `_meta.kiro.mcpServerName` as a string cut at 64 characters; a value that is not a string leaves the field absent, as the requirement says. A call with such a value is judged by its title and `toolName` alone, which is the same as a call with no `mcpServerName`, and that is how the form with no server name has always been judged.
+- The parser extracts `_meta.kiro.mcpServerName` as a string cut at 64 characters; a value that is not a string leaves the field absent, as the requirement says. A call with such a value is judged by its title and `toolName` alone, which is the same as a call with no `mcpServerName`, and that is how the form with no server name has always been judged. (Superseded by task 16, below: a present key that is not text of 1 to 64 characters now refuses the call.)
 - The fake kiro-cli `call` step takes `running: true` (title, `_meta.kiro` and a purpose text in the input of the stream, but not in the input it sends to the MCP server), with `runningServer` and `runningTool` for the refused cases. Fixtures: `tool-call-running-title`, `tool-call-running-wrong-server`, `tool-call-running-wrong-tool`; the fixer fixtures `fixer-running-title` and `fixer-running-wrong-server`.
 
+### `_meta.kiro` on every path (after two reviews of the `Running: ` fix)
+The reviews found that `toolName` and `mcpServerName` were read only where the title is `@exorcist/<tool>` or `Running: @exorcist/<tool>`:
+- `isSameCall` accepted an update (no title, or `Tool Call`) of an accepted id whose `_meta.kiro.toolName` named another tool. It now uses one helper, `metaAgrees(meta, tools)`: a present `mcpServerName` must be `exorcist` and a present `toolName` must be one of `tools` (the accepted tool; for a load, its loaded tools). Otherwise the event is not the same call and the runner stops the Hunt as it does for any reused id.
+- `checkToolCall` applies the same helper to the `Tool Call` wrapper (the tools are the wrapped tool) and to `Tool Load` (the loaded tools). The real wrapper carries `_meta.kiro.toolOrigin` only, so it is judged as before.
+- The parser reads a present key as text of 1 to 64 characters, or as `''`. `''` is never a tool or a server name, so every comparison above refuses it, and the fixer guard refuses it too (a built-in file tool has no server, and `''` is not `read` or `write`). The old cut at 60 and 64 characters is gone: a longer value is refused, not shortened to a name that might match.
+- The `toolName` of a real `Tool Load` was not observed (the recorded fixtures keep no `_meta`). If a later recording shows a `Tool Load` with a `toolName` that is not a loaded tool, the stop detail of the next live run will name it and this rule has to follow the recording.
+- Fake kiro-cli: `wrapMeta` on a `call` step (keys added to `_meta.kiro` of a wrapped call) and `reuse.meta` (the `_meta.kiro` of the update); fixtures `tool-call-wrapper-meta`, `tool-call-running-reuse-meta` and `tool-call-running-meta-number` (`runningServer: 5`).
 ## Data Models
 
 Prisma changes (migration `add_hunt_runner`):
@@ -682,6 +689,9 @@ For every tool `t` of the six, `checkToolCall` answers a step of `t` for the tit
 
 **Validates: Requirements 26.1, 26.2, 26.3, 26.5**
 
+### Property 25: `_meta.kiro` agrees with the call on every path
+For every tool `t` of the six, `checkToolCall` answers a step for the `Tool Call` wrapper of `t` and a load for a `Tool Load` of `t` when `toolName` is absent or `t` and `mcpServerName` is absent or `exorcist`, and `isSameCall` agrees for an update of that call with no title or the same title. For any other `toolName`, any other `mcpServerName` and any value the parser gives as `''`, `checkToolCall` answers `foreign` and `isSameCall` answers false.
+**Validates: Requirements 27.1, 27.2, 27.3**
 ## Error Handling
 
 | Situation | Behaviour | Status and reason |

@@ -279,3 +279,38 @@ describe('Property 6: the fixer allow-list accepts only the two file tools insid
     );
   });
 });
+describe('the key `__tool_use_purpose` in the `arguments` of the `Tool Call` wrapper', () => {
+  const READ = { tool_id: 'tool::builtin::fs_read', arguments: { path: 'services/payments/src/charge.js' } };
+  const WRITE = { tool_id: 'tool::builtin::fs_write', arguments: { command: 'create', path: 'services/payments/src/charge.js', file_text: 'x' } };
+  const withPurpose = (wrapped: { tool_id: string; arguments: Record<string, unknown> }, text: string, extra: Record<string, unknown> = {}) => ({ ...wrapped, arguments: { ...wrapped.arguments, __tool_use_purpose: text, ...extra } });
+  it('is judged on the real arguments, for any purpose text, on the call and on its updates', () => {
+    fc.assert(
+      fc.property(fc.string({ maxLength: 60 }), fc.constantFrom(READ, WRITE), (text, wrapped) => {
+        const g = new FixerGuard(FOLDER);
+        const input = withPurpose(wrapped, text);
+        expect(g.judge(call('w', 'Tool Call', input))).toEqual({ kind: 'step' });
+        expect(g.judge(update('w', null, input))).toEqual({ kind: 'pass' });
+        expect(g.judge({ type: 'tool_call_update', id: 'w', status: 'completed', title: 'Tool Call', rawInput: input })).toEqual({ kind: 'pass' });
+      }),
+      { numRuns: 100 },
+    );
+  });
+  it('drops exactly that key: any other extra key of the arguments, or a key of the wrapper, still stops the run, and the text is never in the stop', () => {
+    const text = 'PURPOSE-TEXT never shown';
+    const extra = new FixerGuard(FOLDER).judge(call('w', 'Tool Call', withPurpose(WRITE, text, { extra: 1 })));
+    expect(extra).toMatchObject({ kind: 'stop', code: 'unknown_args' });
+    const wrapperKey = new FixerGuard(FOLDER).judge(call('w', 'Tool Call', { ...withPurpose(READ, text), other: 1 }));
+    expect(wrapperKey).toMatchObject({ kind: 'stop', code: 'foreign_tool' });
+    const nested = new FixerGuard(FOLDER).judge(call('w', 'Tool Call', { ...READ, arguments: { ...READ.arguments, nested: { __tool_use_purpose: text } } }));
+    expect(nested).toMatchObject({ kind: 'stop', code: 'unknown_args' });
+    const other = new FixerGuard(FOLDER).judge(call('w', 'Tool Call', withPurpose(READ, text, { __tool_use_Purpose: 'x' })));
+    expect(other).toMatchObject({ kind: 'stop', code: 'unknown_args' });
+    for (const out of [extra, wrapperKey, nested, other]) expect(JSON.stringify(out)).not.toContain('PURPOSE-TEXT');
+  });
+  it('does not widen the identity: a `toolName` or `mcpServerName` that is not read, write or absent still stops the run', () => {
+    const g = new FixerGuard(FOLDER);
+    expect(g.judge({ type: 'tool_call', id: 'w', title: 'Tool Call', rawInput: withPurpose(READ, 'x'), toolName: 'write' })).toMatchObject({ kind: 'stop', code: 'foreign_tool' });
+    expect(new FixerGuard(FOLDER).judge({ type: 'tool_call', id: 'w', title: 'Tool Call', rawInput: withPurpose(READ, 'x'), mcpServerName: '' })).toMatchObject({ kind: 'stop', code: 'foreign_tool' });
+    expect(new FixerGuard(FOLDER).judge({ type: 'tool_call', id: 'w', title: 'Tool Call', rawInput: withPurpose(READ, 'x'), toolName: '' })).toMatchObject({ kind: 'stop', code: 'foreign_tool' });
+  });
+});

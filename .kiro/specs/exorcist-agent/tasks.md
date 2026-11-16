@@ -247,6 +247,15 @@ Three sub-tasks spend Credits and are run by hand: 3.3 (probe, about 0.25), 3.4 
     - _Requirements: 26.1, 26.2, 26.3, 26.4, 26.5_
   - [x] 15.4 Documents and verification: requirements 26, the design note and Property 24, `.kiro/steering/security.md`, `docs/DEV.md`, `docs/KIRO_USAGE.md`; `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:scripts`, `pnpm check:build` and the bundle check pass
     - _Requirements: 26.1, 26.3_
+- [x] 16. `_meta.kiro` on every path (two reviews of task 15; fake kiro-cli only, no live run)
+  - [x] 16.1 Guards and parser: `metaAgrees` in `guards.ts` used by `isSameCall` (update with no title, `Tool Call`, `Tool Load`) and `checkToolCall` (`Tool Load`, `Tool Call` wrapper); the parser gives `''` for a present `toolName` or `mcpServerName` that is not text of 1 to 64 characters
+    - _Requirements: 27.1, 27.2, 27.3, 27.4_
+  - [x] 16.2 Fake kiro-cli and fixtures: `wrapMeta`, `reuse.meta`, `tool-call-wrapper-meta`, `tool-call-running-reuse-meta`, `tool-call-running-meta-number`; integration test (each ends `failed` / `foreign_tool`, no purpose text anywhere)
+    - _Requirements: 27.5_
+  - [x]* 16.3 Property test: agreement on the six tools is always accepted on the wrapper, load and update paths, and a random `_meta` disagreement is always refused (Property 25); parser and fake kiro-cli tests
+    - _Requirements: 27.1, 27.2, 27.3, 27.5_
+  - [x] 16.4 Documents and verification: requirements 27, the design note and Property 25, `docs/KIRO_USAGE.md`; `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:scripts` and the spec validator pass
+    - _Requirements: 27.4_
 ## Task Dependency Graph
 
 ```mermaid
@@ -268,6 +277,7 @@ graph TD
   T7 --> T10[10 Gate G2]
   T9 --> T10
   T10 --> T11[11 Docs and verification]
+  T11 --> T16[16 Meta on every path]
 ```
 
 ```json
@@ -282,7 +292,8 @@ graph TD
     { "id": 6, "tasks": ["8"] },
     { "id": 7, "tasks": ["9"] },
     { "id": 8, "tasks": ["10"] },
-    { "id": 9, "tasks": ["11"] }
+    { "id": 9, "tasks": ["11"] },
+    { "id": 10, "tasks": ["16"] }
   ]
 }
 ```

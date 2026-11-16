@@ -78,13 +78,16 @@ for path in \
   copy "$path"
 done
 
-# The replays: only the files of fixtures/replays/*.json go in (the folder ships even when there is none). The release check
+# The replays: only the files of fixtures/replays/*.json and the one README go in. The README keeps the folder in the tarball
+# (pack-release.sh packs files only, so an empty folder would be lost and the seed would refuse the missing folder). The release check
 # below refuses a file that has no review, one that does not validate and one edited after its review. Nothing in the folder
 # may be a link, a folder or any other thing that is not a regular file: cp would follow a link out of the repository.
 [ ! -L "$ROOT/fixtures/replays" ] || fail "fixtures/replays is a symbolic link"
 replay_odd="$(find "$ROOT/fixtures/replays" -mindepth 1 ! -type f 2>/dev/null | head -n 1 || true)"
 [ -z "$replay_odd" ] || fail "fixtures/replays holds something that is not a regular file: ${replay_odd#"$ROOT"/}"
+[ -f "$ROOT/fixtures/replays/README.md" ] || fail "missing: fixtures/replays/README.md"
 mkdir -p "$STAGE/fixtures/replays"
+cp "$ROOT/fixtures/replays/README.md" "$STAGE/fixtures/replays/"
 for replay in "$ROOT"/fixtures/replays/*.json; do
   [ -e "$replay" ] || continue
   cp "$replay" "$STAGE/fixtures/replays/"

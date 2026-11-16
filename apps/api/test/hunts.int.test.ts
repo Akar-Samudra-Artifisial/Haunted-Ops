@@ -381,6 +381,22 @@ describeDb('Hunts end to end (Test database, fake kiro-cli, fake lab)', () => {
     }
   });
 
+  it('stops a hunt whose update of an accepted call, or whose `Tool Call` wrapper, carries `_meta.kiro` of another tool, and one whose `mcpServerName` is not text', async () => {
+    const cases: [string, string][] = [
+      ['tool-call-running-reuse-meta', '(no title)'],
+      ['tool-call-wrapper-meta', 'Tool Call tool_id=tool::exorcist::query_metrics'],
+      ['tool-call-running-meta-number', 'Running: @exorcist/query_metrics'],
+    ];
+    for (const [fixture, stopDetail] of cases) {
+      const rig = await startRig();
+      await rig.open('payments');
+      rig.fixture(fixture);
+      const { id, detail } = await rig.hunt('payments');
+      expect(detail, fixture).toMatchObject({ status: 'failed', reason: 'foreign_tool', stopDetail, diagnosis: null });
+      const stream = readFileSync(join(rig.root, 'hunts', `${id}.stream.jsonl`), 'utf8');
+      for (const text of [JSON.stringify(detail), stream, ...rig.server.logs, JSON.stringify(rig.events.map((e) => e.payload))]) expect(text, fixture).not.toContain('PURPOSE-TEXT');
+    }
+  });
   it('stops for a Tool Call wrapper of a built-in tool and names the tool_id', async () => {
     const rig = await startRig();
     await rig.open('payments');

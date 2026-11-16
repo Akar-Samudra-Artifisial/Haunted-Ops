@@ -247,6 +247,19 @@ test('tool-call-reuse-id writes an update of an accepted id that names another t
   assert.equal(odd[0].data.update.toolCallId, accepted.toolCallId);
 });
 
+test('the `_meta` fixtures write a wrapper and an update with the `_meta.kiro` of another tool, and a server name that is a number', async () => {
+  const w = await run('tool-call-wrapper-meta', { timeoutMs: 4000 });
+  const wrapper = calls(w.events).find((c) => c.title === 'Tool Call');
+  assert.deepEqual(wrapper._meta.kiro, { toolOrigin: 'default', toolName: 'tail_logs' });
+  const r = await run('tool-call-running-reuse-meta', { timeoutMs: 4000 });
+  const accepted = calls(r.events).find((c) => c.title === 'Running: @exorcist/query_metrics');
+  const odd = r.events.filter((e) => e.data?.update?.sessionUpdate === 'tool_call_update' && e.data.update._meta?.kiro?.toolName === 'tail_logs');
+  assert.equal(odd.length, 1);
+  assert.equal(odd[0].data.update.toolCallId, accepted.toolCallId);
+  assert.equal('title' in odd[0].data.update, false);
+  const n = await run('tool-call-running-meta-number', { timeoutMs: 4000 });
+  assert.equal(calls(n.events).find((c) => c.title === 'Running: @exorcist/query_metrics')._meta.kiro.mcpServerName, 5);
+});
 test('load-shapes writes every Tool Load shape and repeats calls with updates that name the same tool', async () => {
   const r = await run('load-shapes');
   assert.equal(r.code, 0, r.stderr);

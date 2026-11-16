@@ -6,7 +6,7 @@ import { lstatSync, openSync, closeSync, readSync, readdirSync, readFileSync } f
 import { join, relative, sep, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-/** @typedef {'native_binary' | 'env_file' | 'forbidden_path' | 'source_map' | 'vite_dir' | 'home_path' | 'token' | 'replay_unreviewed' | 'replay_invalid'} FindingKind */
+/** @typedef {'native_binary' | 'env_file' | 'forbidden_path' | 'source_map' | 'vite_dir' | 'home_path' | 'token' | 'replay_unreviewed' | 'replay_invalid' | 'replay_folder_missing'} FindingKind */
 
 /** First bytes of ELF and Mach-O files (thin and fat, both byte orders). */
 const MAGIC = [
@@ -143,6 +143,12 @@ export function checkTree(root, options = {}) {
     }
   };
   walk(root);
+  // The seed refuses a missing replay folder, and the tarball keeps a folder only through a file in it (the README).
+  try {
+    if (!lstatSync(join(root, 'fixtures', 'replays')).isDirectory() && !out.some((f) => f.path === 'fixtures/replays')) add('fixtures/replays', 'replay_folder_missing');
+  } catch {
+    add('fixtures/replays', 'replay_folder_missing');
+  }
   return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0));
 }
 

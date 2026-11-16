@@ -198,6 +198,15 @@ describe('the fixer process, with the fake kiro-cli fixer', () => {
     expect(readFileSync(path, 'utf8')).not.toContain('__tool_use_purpose');
     await wd.remove(ID);
   });
+  it('finishes a fix whose `Tool Call` wrapper carries `__tool_use_purpose` inside `arguments` (kiro-cli 3.3.0), and keeps that text out of the stream file', async () => {
+    const path = join(tmp, 'wrapped-purpose.fixer.stream.jsonl');
+    const { result, f } = await run('fixer-wrapped-purpose', {}, { stream: path });
+    expect(result).toMatchObject({ started: true, finished: true, aiFailReason: null, halt: null, toolCalls: 2, writes: 1 });
+    expect(written(f)).toBe(HEALTHY_CHARGE);
+    expect(readFileSync(path, 'utf8')).not.toContain('__tool_use_purpose');
+    expect(readFileSync(path, 'utf8')).not.toContain('Read or write the file');
+    await wd.remove(ID);
+  });
   it('stops a `Running: ` call that names an MCP server, as foreign_tool', async () => {
     const { result } = await run('fixer-running-wrong-server');
     expect(result).toMatchObject({ finished: false, aiFailReason: 'agent_failed', halt: { code: 'foreign_tool' } });

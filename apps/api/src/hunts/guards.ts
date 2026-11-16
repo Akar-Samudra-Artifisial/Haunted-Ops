@@ -50,6 +50,11 @@ export function mcpToolOf(title: string, meta: CallMeta = {}): HuntTool | null {
   if (meta.toolName !== undefined && meta.toolName !== m[1]) return null;
   return m[1] as HuntTool;
 }
+/** Whether the `_meta.kiro` names that are present agree with the tools a call names: the server is `exorcist`, the tool is one of them. */
+function metaAgrees(meta: CallMeta, tools: readonly string[]): boolean {
+  if (meta.mcpServerName !== undefined && meta.mcpServerName !== MCP_SERVER) return false;
+  return meta.toolName === undefined || tools.includes(meta.toolName);
+}
 /** The tool names a `Tool Load` asks for, or null when they cannot be read. */
 export function loadedTools(rawInput: unknown): string[] | null {
   if (!isRecord(rawInput)) return null;
@@ -80,11 +85,11 @@ export function checkToolCall(ev: Pick<Extract<HuntStreamEvent, { type: 'tool_ca
   if (tool !== null) return { kind: 'step', tool, id: ev.id, input: rawInput };
   if (ev.title === 'Tool Load') {
     const names = loadedTools(rawInput);
-    if (names !== null && names.every((n) => TOOL_SET.has(n))) return { kind: 'load', id: ev.id };
+    if (names !== null && names.every((n) => TOOL_SET.has(n)) && metaAgrees(ev, names)) return { kind: 'load', id: ev.id };
   }
   if (ev.title === WRAPPER_TITLE) {
     const wrapped = wrappedCall(rawInput);
-    if (wrapped !== null) return { kind: 'step', tool: wrapped.tool, id: ev.id, input: wrapped.arguments };
+    if (wrapped !== null && metaAgrees(ev, [wrapped.tool])) return { kind: 'step', tool: wrapped.tool, id: ev.id, input: wrapped.arguments };
   }
   return { kind: 'foreign', title: ev.title };
 }
@@ -135,7 +140,7 @@ export function isSameCall(accepted: AcceptedCall, title: string | null | undefi
   const rawInput = withoutPurpose(input);
   const present = rawInput !== undefined && rawInput !== null;
   if (accepted.kind === 'step') {
-    if (meta.mcpServerName !== undefined && meta.mcpServerName !== MCP_SERVER) return false;
+    if (!metaAgrees(meta, [accepted.tool])) return false;
     if (title === 'Tool Call') {
       if (present && wrappedCall(rawInput)?.tool !== accepted.tool) return false;
     } else if (title !== null && title !== undefined && title !== '' && mcpToolOf(title, meta) !== accepted.tool) {
@@ -145,6 +150,7 @@ export function isSameCall(accepted: AcceptedCall, title: string | null | undefi
     if (present && isRecord(rawInput) && 'tool_id' in rawInput && rawInput.tool_id !== `tool::exorcist::${accepted.tool}`) return false;
     return true;
   }
+  if (!metaAgrees(meta, accepted.names)) return false;
   if (title !== null && title !== undefined && title !== '' && title !== 'Tool Load') return false;
   if (present && isRecord(rawInput) && [...ONE_ID_KEYS, ...MANY_ID_KEYS].some((k) => k in rawInput)) {
     const names = loadedTools(rawInput);

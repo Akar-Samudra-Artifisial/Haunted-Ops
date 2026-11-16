@@ -119,6 +119,12 @@ describeDb('replays (Test database)', () => {
       await expect(seedReplays(prisma, dir)).rejects.toMatchObject({ file: 'synthetic-error-spike.json', paths: ['$.review.sha256'] });
       expect(await prisma.replay.count()).toBe(0);
     });
+    it('seeds 0 replays from a folder that holds only README.md (how a release without replays ships)', async () => {
+      rmSync(join(dir, 'synthetic-error-spike.json'));
+      writeFileSync(join(dir, 'README.md'), '# Replays\n');
+      expect(await seedReplays(prisma, dir)).toEqual({ seeded: [], kept: [], skipped: [], removed: [] });
+      expect(await prisma.replay.count()).toBe(0);
+    });
     it('skips a file with review null, naming it, and leaves no row for it', async () => {
       writeFileSync(join(dir, 'synthetic-unreviewed.json'), `${JSON.stringify({ ...readFixture(), id: 'synthetic-unreviewed', review: null })}\n`);
       const r = await seedReplays(prisma, dir);
