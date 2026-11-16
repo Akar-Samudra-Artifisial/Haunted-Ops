@@ -7,7 +7,7 @@
 // It reads Vite's manifest (apps/web/dist/.vite/manifest.json), so the build needs `build.manifest: true`.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isMain } from './is-main.mjs';
 import { gzipSync } from 'node:zlib';
 
 const KIB = 1024;
@@ -127,6 +127,6 @@ function main() {
   return found.length === 0 ? 0 : 1;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   process.exitCode = main();
 }

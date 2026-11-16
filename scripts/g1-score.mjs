@@ -7,7 +7,7 @@
 //   API_URL      default http://127.0.0.1:3000
 //   CHAOS_URL    default http://127.0.0.1:4100
 //   CHAOS_TOKEN  required, bearer token of the lab chaos API. It is sent only to CHAOS_URL and never printed.
-import { pathToFileURL } from 'node:url';
+import { isMain } from './is-main.mjs';
 
 export const SCENARIOS = Object.freeze([
   { name: 'error-spike', service: 'payments', reason: 'error_rate', minLevel: 2 },
@@ -184,6 +184,6 @@ async function main() {
   return pass && !abort.signal.aborted ? 0 : 1;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   process.exitCode = await main();
 }

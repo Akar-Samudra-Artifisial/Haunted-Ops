@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'nod
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { scrub } from '../sanitize-replay/sanitize-hunt-stream.mjs';
+import { isMain } from '../../scripts/is-main.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const SCENARIOS = ['error-spike', 'fog', 'dark-room'];
 export const LAB_REPO_URL = 'https://github.com/Akar-Samudra-Artifisial/Haunted-Lab';
@@ -441,4 +442,4 @@ export async function main(
     if (prisma !== null) await Promise.resolve(prisma.$disconnect()).catch(() => undefined);
   }
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exit(await main(process.argv.slice(2)));
+if (isMain(import.meta.url)) process.exit(await main(process.argv.slice(2)));

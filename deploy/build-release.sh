@@ -72,7 +72,7 @@ for path in \
   packages/shared/package.json packages/shared/dist \
   packages/exorcist-mcp/package.json packages/exorcist-mcp/dist packages/exorcist-mcp/bin \
   .kiro/agents/exorcist.json \
-  scripts/demo-env-check.mjs scripts/read-env-value.mjs scripts/demo-smoke.mjs \
+  scripts/is-main.mjs scripts/demo-env-check.mjs scripts/read-env-value.mjs scripts/demo-smoke.mjs \
   deploy/server; do
   [ -e "$ROOT/$path" ] || fail "missing: $path"
   copy "$path"

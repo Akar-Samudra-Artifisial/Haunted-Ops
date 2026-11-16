@@ -15,8 +15,9 @@
 //   HUNT_COOLDOWN_S  optional wait after Incidents closed before the next scenario, default 0
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { RECOVER_S, SCENARIOS, EnvError, isBaseline, readEnv, waitFor } from './g1-score.mjs';
+import { isMain } from './is-main.mjs';
 
 export { EnvError, SCENARIOS, readEnv };
 
@@ -236,6 +237,6 @@ async function main() {
   return ok ? 0 : 1;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   process.exitCode = await main();
 }

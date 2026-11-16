@@ -10,6 +10,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isMain } from '../../scripts/is-main.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const isRecord = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 /** Every string leaf of `value` as `[path, text]`. */
@@ -99,4 +100,4 @@ export async function main(argv, io = { out: (s) => process.stdout.write(s), err
   io.out(`\nApproved by ${args.by} on ${next.review.reviewedOn}.\n`);
   return 0;
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exit(await main(process.argv.slice(2)));
+if (isMain(import.meta.url)) process.exit(await main(process.argv.slice(2)));

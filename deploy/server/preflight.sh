@@ -21,6 +21,10 @@ check() { # check <name> <command...>
 }
 
 CURRENT=/opt/haunted-ops/current
+env_guard() ( # env_guard <file> <profile>: exit status 0 and the line `env ok: <profile>` (a guard that did not run prints nothing)
+  out="$(/usr/local/bin/node "$CURRENT/scripts/demo-env-check.mjs" "$1" "$2" 2>&1)" || exit 1
+  printf '%s\n' "$out" | grep -qx "env ok: $2"
+)
 for unit in haunted-api haunted-lab caddy postgresql prometheus nftables haunted-scenario.timer; do
   check "unit $unit is active" systemctl is-active --quiet "$unit"
 done
@@ -48,8 +52,8 @@ caddy_recent() { # `caddy version` prints "v2.6.2 h1:..."; the installed version
 }
 check "Caddy is at least the version of the Caddyfile" caddy_recent
 check "systemd units are valid" systemd-analyze verify /etc/systemd/system/haunted-api.service /etc/systemd/system/haunted-lab.service /etc/systemd/system/haunted-scenario.service /etc/systemd/system/haunted-scenario.timer
-check "env guard accepts api.env" node "$CURRENT/scripts/demo-env-check.mjs" /etc/haunted/api.env api
-check "env guard accepts lab.env" node "$CURRENT/scripts/demo-env-check.mjs" /etc/haunted/lab.env lab
+check "env guard accepts api.env" env_guard /etc/haunted/api.env api
+check "env guard accepts lab.env" env_guard /etc/haunted/lab.env lab
 same_read_token() ( # read the way the env guard reads: `LAB_READ_TOKEN = "x"` and `LAB_READ_TOKEN=x` are the same value
   a="$(/usr/local/bin/node "$CURRENT/scripts/read-env-value.mjs" /etc/haunted/api.env LAB_READ_TOKEN)" || exit 1
   b="$(/usr/local/bin/node "$CURRENT/scripts/read-env-value.mjs" /etc/haunted/lab.env LAB_READ_TOKEN)" || exit 1
@@ -69,7 +73,7 @@ kiro_whoami_login() { runuser -u hops -- env -u KIRO_API_KEY HOME=/var/lib/hops 
 # without it, the login of hops must. The line names the method, never a value.
 if [ -e "$KIRO_ENV" ]; then
   check "kiro.env is root:root 0600" kiro_env_mode
-  check "env guard accepts kiro.env" node "$CURRENT/scripts/demo-env-check.mjs" "$KIRO_ENV" kiro
+  check "env guard accepts kiro.env" env_guard "$KIRO_ENV" kiro
   check "kiro-cli can authenticate for hops (api key)" kiro_whoami_key
 else
   check "kiro-cli can authenticate for hops (login)" kiro_whoami_login

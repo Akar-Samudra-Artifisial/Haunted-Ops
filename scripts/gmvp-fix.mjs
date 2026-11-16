@@ -14,7 +14,7 @@
 //   HUNT_WORKDIR   optional, only to print where the Hunt stream file is (default: the OS temp folder)
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isMain } from './is-main.mjs';
 import { RECOVER_S, SCENARIOS, EnvError, isBaseline, waitFor } from './g1-score.mjs';
 import { SKEW_MS, durationS, noOpenIncident } from './g2-hunt.mjs';
 export { EnvError, SCENARIOS };
@@ -236,6 +236,6 @@ async function main() {
   process.stdout.write(ok ? 'G-MVP fix: PASS\n' : 'G-MVP fix: FAIL\n');
   return ok ? 0 : 1;
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   process.exitCode = await main();
 }

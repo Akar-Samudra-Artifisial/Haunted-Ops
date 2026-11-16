@@ -5,8 +5,9 @@
 import { lstatSync, openSync, closeSync, readSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isMain } from './is-main.mjs';
 
-/** @typedef {'native_binary' | 'env_file' | 'forbidden_path' | 'source_map' | 'vite_dir' | 'home_path' | 'token' | 'replay_unreviewed' | 'replay_invalid' | 'replay_folder_missing'} FindingKind */
+/** @typedef {'native_binary' | 'env_file' | 'forbidden_path' | 'source_map' | 'vite_dir' | 'home_path' | 'token' | 'replay_unreviewed' | 'replay_invalid' | 'replay_folder_missing' | 'script_import_missing'} FindingKind */
 
 /** First bytes of ELF and Mach-O files (thin and fat, both byte orders). */
 const MAGIC = [
@@ -138,11 +139,22 @@ export function checkTree(root, options = {}) {
       if (data.includes(0)) continue;
       const text = data.toString('utf8');
       if (REPLAY_PATH.test(rel) && st.size <= MAX_REPLAY_BYTES) for (const kind of replayKinds(rel, text, validate)) add(rel, kind);
+      if (/^scripts\/[^/]+\.mjs$/.test(rel) && /from '\.\/is-main\.mjs'/.test(text)) importsIsMain.push(rel);
       if (HOME_PATH.test(text)) add(rel, 'home_path');
       if (TOKEN_PATTERNS.some((re) => re.test(text))) add(rel, 'token');
     }
   };
+  /** @type {string[]} shipped scripts that import ./is-main.mjs */
+  const importsIsMain = [];
   walk(root);
+  // A shipped script that imports the main-module helper cannot start without it.
+  if (importsIsMain.length > 0) {
+    try {
+      if (!lstatSync(join(root, 'scripts', 'is-main.mjs')).isFile()) throw new Error('not a file');
+    } catch {
+      for (const rel of importsIsMain) add(rel, 'script_import_missing');
+    }
+  }
   // The seed refuses a missing replay folder, and the tarball keeps a folder only through a file in it (the README).
   try {
     if (!lstatSync(join(root, 'fixtures', 'replays')).isDirectory() && !out.some((f) => f.path === 'fixtures/replays')) add('fixtures/replays', 'replay_folder_missing');
@@ -178,4 +190,4 @@ function main() {
   process.exit(1);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (isMain(import.meta.url)) main();

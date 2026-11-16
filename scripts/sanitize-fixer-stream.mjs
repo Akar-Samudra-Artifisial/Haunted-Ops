@@ -11,7 +11,7 @@
 // The input is read as untrusted text and is never executed. Nothing is written to the network.
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isMain } from './is-main.mjs';
 import { MAX_INPUT_CHARS, dropPurpose, idMapper, keepIdentity, scrub } from '../tools/sanitize-replay/sanitize-hunt-stream.mjs';
 
 const isRecord = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -224,4 +224,4 @@ function main(argv) {
   return 0;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = main(process.argv.slice(2));
+if (isMain(import.meta.url)) process.exitCode = main(process.argv.slice(2));

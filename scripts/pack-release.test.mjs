@@ -114,7 +114,7 @@ test('build-release.sh: two builds of one commit give the same sha256, and RELEA
     mkdirSync(dirname(join(repo, rel)), { recursive: true });
     writeFileSync(join(repo, rel), text);
   };
-  for (const rel of ['deploy/build-release.sh', 'deploy/pack-release.sh', 'scripts/check-demo-build.mjs', 'scripts/release-check.mjs', 'scripts/demo-env-check.mjs', 'scripts/read-env-value.mjs', 'scripts/demo-smoke.mjs']) {
+  for (const rel of ['deploy/build-release.sh', 'deploy/pack-release.sh', 'scripts/check-demo-build.mjs', 'scripts/release-check.mjs', 'scripts/is-main.mjs', 'scripts/demo-env-check.mjs', 'scripts/read-env-value.mjs', 'scripts/demo-smoke.mjs']) {
     mkdirSync(dirname(join(repo, rel)), { recursive: true });
     copyFileSync(join(repoRoot, rel), join(repo, rel));
   }

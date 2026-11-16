@@ -7,7 +7,7 @@
 // It reads a raw or a sanitized stream and prints names and counts only: no path, no file text, no value.
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isMain } from './is-main.mjs';
 
 const isRecord = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const TOOL_ID = /^(?:tool::builtin::)?(fs_read|fs_write)$/;
@@ -131,4 +131,4 @@ function main(argv) {
   return 0;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = main(process.argv.slice(2));
+if (isMain(import.meta.url)) process.exitCode = main(process.argv.slice(2));

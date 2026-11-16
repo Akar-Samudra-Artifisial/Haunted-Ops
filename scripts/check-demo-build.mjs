@@ -6,7 +6,7 @@
 // It does not match a code line that only reads the variable (`env.VITE_DEMO_MODE !== 'true'`). Exit 0 when both are found.
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isMain } from './is-main.mjs';
 const QUOTE = '["\'`]';
 const escapeRegExp = (/** @type {string} */ text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** A property `NAME: "value"` of an object literal, after `{` or `,`. */
@@ -59,4 +59,4 @@ function main() {
   }
   process.stdout.write('check-demo-build: ok\n');
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (isMain(import.meta.url)) main();

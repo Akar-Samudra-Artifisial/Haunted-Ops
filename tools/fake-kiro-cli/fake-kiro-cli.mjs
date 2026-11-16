@@ -12,9 +12,10 @@
 // environment variables, the working directory, a hash of the agent file) so a test can check them.
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { isMain } from '../../scripts/is-main.mjs';
 import { startMcpServer } from './mcp-stdio-client.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -242,6 +243,6 @@ async function main() {
   await runScript(JSON.parse(readFileSync(fixture.path, 'utf8')), agent);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   main().catch(() => fail(1, 'fake-kiro-cli: internal error'));
 }

@@ -5,7 +5,7 @@
 // For the pre-flight on the demo server only, where root hands the Kiro API key to `kiro-cli whoami` through the environment.
 // It prints nothing and exits 1 when the variable is not there. Nothing else is ever printed.
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { isMain } from './is-main.mjs';
 import { parseEnvText } from './demo-env-check.mjs';
 /** @param {string} text @param {string} name @returns {string | undefined} */
 export function readEnvValue(text, name) {
@@ -26,4 +26,4 @@ function main() {
   process.stdout.write(value);
   return 0;
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = main();
+if (isMain(import.meta.url)) process.exitCode = main();

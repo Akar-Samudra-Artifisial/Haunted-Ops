@@ -89,6 +89,9 @@ Write the files that turn a bare Debian instance into the Demo server, and the l
     - _Requirements: 8.6, 9.6, 10.9_
   - [x]* 12.4 Property test: the Kiro API key reaches the hunt process only (Property 4)
     - _Requirements: 10.1, 10.3_
+- [x] 13. Scripts started through a symbolic link
+  - [x] 13.1 `scripts/is-main.mjs` (realpath on both sides) used by every script that had the old main-module check; shipped by `build-release.sh`, checked by the Release check; the Env guard prints `env ok: <profile>`, the Pre-flight requires it; `read-env-value.mjs` exits non-zero for an absent or empty key; tests through a symbolic link (a bad file is refused) and a static test against the old pattern; one troubleshooting sentence in `docs/DEPLOY.md`; the `docs/KIRO_USAGE.md` line
+    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
 ## Task Dependency Graph
 ```mermaid
 graph TD
@@ -119,7 +122,8 @@ graph TD
     { "id": 6, "tasks": ["9"] },
     { "id": 7, "tasks": ["10"] },
     { "id": 8, "tasks": ["11"] },
-    { "id": 9, "tasks": ["12"] }
+    { "id": 9, "tasks": ["12"] },
+    { "id": 10, "tasks": ["13"] }
   ]
 }
 ```

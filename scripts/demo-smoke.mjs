@@ -2,7 +2,7 @@
 // Smoke test of the public demo, from outside:  node scripts/demo-smoke.mjs <origin>
 // It sends GET requests, two POSTs that must be refused (405), and opens the event stream once. No token, no redirect followed.
 // Exit 0 only when every check passes. It prints a table of name, status and OK or FAIL.
-import { pathToFileURL } from 'node:url';
+import { isMain } from './is-main.mjs';
 
 export const REQUEST_TIMEOUT_MS = 10_000;
 export const SSE_TIMEOUT_MS = 5_000;
@@ -153,4 +153,4 @@ async function main() {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
+if (isMain(import.meta.url)) await main();

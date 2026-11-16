@@ -31,6 +31,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, 
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { isMain } from '../../scripts/is-main.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(here, 'fixtures', 'fixer');
@@ -339,6 +340,6 @@ async function main() {
   await run(JSON.parse(readFileSync(fixture, 'utf8')));
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   main().catch(() => fail(1, 'fake-kiro-fixer: internal error'));
 }

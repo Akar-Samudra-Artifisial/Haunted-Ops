@@ -17,7 +17,8 @@ import { execFile } from 'node:child_process';
 import { existsSync, lstatSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { isMain } from './is-main.mjs';
 
 export const EXPECTED_KIRO_CLI = '3.3.0';
 /** The environment names of the live test (`apps/api/test-live/fix.live.ts`). `HUNTS_ENABLED` and `FIX_ENABLED` are set by the test. */
@@ -154,4 +155,4 @@ async function main() {
   return results.every((r) => r.ok) ? 0 : 1;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = await main();
+if (isMain(import.meta.url)) process.exitCode = await main();

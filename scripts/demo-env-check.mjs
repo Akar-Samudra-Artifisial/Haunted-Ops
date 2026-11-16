@@ -2,9 +2,10 @@
 // Env guard of the demo server: refuses an environment file that breaks a rule of the deployment.
 //   node scripts/demo-env-check.mjs <file> [api|lab|kiro]   (default profile: api)
 // Exit 0: accepted. Exit 1: refused. Exit 2: usage error or unreadable file. The `kiro` file is optional: a missing one is accepted.
+// On success it also prints `env ok: <profile>` on stderr: the pre-flight requires that line, so a guard that did not run is not a pass.
 // It prints variable names (and the number of a line it cannot read), never a value.
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { isMain } from './is-main.mjs';
 
 /** The caps decided for the demo server. */
 export const DECIDED_CAPS = Object.freeze({ HUNT_DAILY_MAX: 3, HUNT_CREDIT_CAP: 1.5, HUNT_DAILY_CREDIT_CAP: 4.5 });
@@ -185,6 +186,7 @@ function main() {
     // The Kiro API key file is optional: without it the login of hops is used.
     if (profile === 'kiro' && /** @type {{ code?: string }} */ (err).code === 'ENOENT') {
       process.stdout.write('demo-env-check: ok (kiro, no file)\n');
+      process.stderr.write('env ok: kiro\n');
       return;
     }
     process.stderr.write('demo-env-check: cannot read the file\n');
@@ -193,10 +195,12 @@ function main() {
   const refused = checkEnvText(text, /** @type {'api' | 'lab' | 'kiro'} */ (profile));
   if (refused.length === 0) {
     process.stdout.write(`${formatResult(refused, profile)}\n`);
+    // The line the pre-flight requires: a guard that never ran prints nothing, so exit status alone is not proof.
+    process.stderr.write(`env ok: ${profile}\n`);
     return;
   }
   process.stderr.write(`${formatResult(refused, profile)}\n`);
   process.exit(1);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (isMain(import.meta.url)) main();

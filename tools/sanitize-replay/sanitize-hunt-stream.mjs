@@ -10,7 +10,7 @@
 //
 // The input is read as untrusted text and is never executed. Nothing is written to the network.
 import { readFileSync, writeFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { isMain } from '../../scripts/is-main.mjs';
 
 /** What the Hunt runner reads from `_meta.kiro`; every other key is dropped. */
 export const KEPT_META = ['credits', 'elapsedTime', 'stopReason'];
@@ -243,4 +243,4 @@ function main(argv) {
   return 0;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = main(process.argv.slice(2));
+if (isMain(import.meta.url)) process.exitCode = main(process.argv.slice(2));

@@ -114,6 +114,8 @@ The firewall keeps IPv6 working on the default Debian network setup instead of t
 - On the server: `bash /opt/haunted-ops/current/deploy/server/preflight.sh`, `systemctl list-timers haunted-scenario.timer` (the next run), `journalctl -u haunted-scenario --since today` (the scenarios applied and reset) and `journalctl -u haunted-api --since today` (the hunts and their results; the log holds no secret).
 - Credits: the hunt detail (`GET /api/hunts/<id>`) has the Credits of each hunt; the day stops at 4.5.
 
+## Troubleshooting
+- Before task 13 of the spec, a script started through `/opt/haunted-ops/current` (a symbolic link) did nothing and exited 0, so the `ExecStartPre` env guards and two pre-flight checks passed without checking; after upgrading, run `bash /opt/haunted-ops/current/deploy/server/preflight.sh` once and expect `env ok: <profile>` behind each guard check.
 ## Kill switch
 
 Three layers, from the quickest to the most lasting. All are run on the server, as root, in an SSM session.
