@@ -1,6 +1,6 @@
 # Requirements Document
 ## Introduction
-`visual-refresh` is the tenth product spec of Haunted Ops, after `foundation`, `haunted-lab`, `ingest-haunt-score`, `scene-engine`, `exorcist-agent`, `fix-proposal-flow`, `accessible-mode`, `deploy-demo` and `replay`. It is split in two prompts. This spec covers part 1, the page around the Scene: design tokens, layout, header, summary bar, side panel with the hunt timeline, legend, restyled table, restyled replay pages and the document head. Part 2 (the PixiJS scene: rooms, ghosts, fog, sky, and four fixes of the page found on screenshots) is requirements 12 to 17 below, written in a second prompt; requirements 1 to 11 change `apps/web/src/scene/` only in the palette values named in requirement 1.
+`visual-refresh` is the tenth product spec of Haunted Ops, after `foundation`, `haunted-lab`, `ingest-haunt-score`, `scene-engine`, `exorcist-agent`, `fix-proposal-flow`, `accessible-mode`, `deploy-demo` and `replay`. It is split in three prompts. This spec covers part 1, the page around the Scene: design tokens, layout, header, summary bar, side panel with the hunt timeline, legend, restyled table, restyled replay pages and the document head. Part 2 (the PixiJS scene: rooms, ghosts, fog, sky, and four fixes of the page found on screenshots) is requirements 12 to 17 below, written in a second prompt. Part 3 (polish found on new screenshots: one chip per room, ghosts as separate silhouettes, a hunt mist that can be seen, and the Incident column of the table) is requirements 18 to 22, written in a third prompt. Requirements 1 to 11 change `apps/web/src/scene/` only in the palette values named in requirement 1.
 Today the page is a plain column: the Scene, then a 9-column table, then the hunt detail. A first-time visitor cannot tell what is wrong, the hunt is below the fold, the table scrolls sideways on a phone (about 670 px wide at 390 px) and nothing explains ghosts, fog or dark rooms. The look is "a lantern in a dark house": dark calm surfaces, and only trouble glows.
 The spec adds no dependency, no server code, no API change and no network call. It spends no credits and starts no cloud resource.
 ## Glossary
@@ -21,6 +21,10 @@ The spec adds no dependency, no server code, no API change and no network call. 
 - **Mist**: the green cloud (`--ecto`, `#9BF2C4`) over a room while a Hunt is entering or working there.
 - **Fog layer**: one of three soft noise clouds that drift inside a room's floor at different speeds. Fog is the latency layer and does not depend on the level.
 - **Low quality** and **Reduced motion**: as in `scene-engine`.
+- **Chip**: the one label of a room in the Scene, a pill under the room with the level mark, the service name and, only while an incident is open, a `!` marker in the danger colour. It replaces the three stacked labels (reason badge, incident mark, name) of earlier parts.
+- **Chip band**: the part of the screen under a room that its chip may use: the column of the room (3.2 iso units to each side of its centre) and the bottom 20 % of the room's screen rect, plus the part of the chip that hangs below the front corner.
+- **Ghost site**: one of the 14 resting places of a room's ghosts, a hex lattice inside the band 0.25 to 0.8 of the floor on both axes, shifted by the seed of the room.
+- **Mist breath**: the slow change of the mist's alpha, one cycle of 4 s, at most 0.12 of alpha.
 ## Requirements
 ### Requirement 1: Design tokens and contrast
 **User Story:** As a visitor, I want a dark, calm page where only trouble glows and every text can be read, so that the state of the house is clear at a glance.
@@ -155,4 +159,44 @@ The spec adds no dependency, no server code, no API change and no network call. 
 2. THE tests that lock old values SHALL be updated to the new rule and none SHALL be deleted; NEW tests SHALL cover the look table, a property that the glow is non-decreasing with trouble (Property 5), a property that every animated offset is zero under Reduced motion (Property 6), and the pulse.
 3. WHILE this part is built, ONLY the checks named in the design SHALL be run; the full suite SHALL be run afterwards by the orchestrator.
 4. `.kiro/steering/scene-rendering.md` SHALL list the level to look table and the new layers; `docs/KIRO_USAGE.md` SHALL get one line per finished task, in the form `2026-11-17 | visual-refresh/N | …`, ending with a newline.
+5. THE work SHALL add no dependency, no image, font or sprite file, and no forbidden retro-client word; it SHALL be original.
+### Requirement 18: One chip per room
+**User Story:** As a visitor on a phone or a laptop, I want one small label per room instead of three stacked ones, so that a room in trouble is not hidden behind its own text.
+#### Acceptance Criteria
+1. THE Scene SHALL draw ONE chip for each room, under the room in front of the floor edge, with the level mark and the service name; WHILE an incident is open in that room, THE chip SHALL end with a `!` marker in the danger colour (`--danger`), and WHILE none is open it SHALL have no marker.
+2. THE reason badge and the "incident" word SHALL not be drawn in the Scene; the reason and the incident stay in the table and the cards, so the Scene shows no fact that the table does not show and the incident fact keeps its table cell.
+3. THE chip text SHALL be 14 px or more on a viewport narrower than 40rem (640 px) (`MIN_FONT_NARROW_PX`), and SHALL keep the size rule of earlier parts (0.34 of the iso unit, 11 px at least) from 640 px up.
+4. THE top of a chip SHALL be inside the bottom 20 % of the room's screen rect (the chip covers no more than that part of the room) and the rest of the chip SHALL hang below the front corner; THE layout SHALL leave room under the lowest room for that part, so no chip leaves the canvas.
+5. FOR any room set of the 3 by 3 grid and any viewport width from 320 to 1920 px, no two chips SHALL overlap and every chip SHALL lie inside the chip band of its room (Property 7).
+6. THE ghosts, the Hunt slot and the Exorcist figure SHALL stay clear of the chip: ghost feet stay above its top, and the Hunt slot and the figure box are separate from it.
+### Requirement 19: Ghosts as separate silhouettes
+**User Story:** As a visitor, I want the ghosts of a haunted room to read as several figures, so that the number and the spread of ghosts say how bad the room is.
+#### Acceptance Criteria
+1. THE ghosts of a room SHALL rest on ghost sites inside the band 0.25 to 0.8 of the floor on both axes, taken in a seeded order, so that the same seed always gives the same places and the first n slots never share a site.
+2. FOR any seed and any count up to 12, any two ghosts of one room SHALL rest at least 0.6 of the wider ghost's width apart (in iso units of the floor), and every ghost, with its drift, SHALL lie inside the floor (Property 8).
+3. THE ghost height SHALL be 0.5 to 0.8 iso units; THE alpha of one ghost SHALL be at most 0.7 (`0.25 + 0.45 · error ratio`), so that overlaps stay readable; the drift of a ghost SHALL be at most 0.027 of the floor.
+4. THE ghost texture SHALL have a body that turns from cold white toward the fog colour, a dark outline and two deep eye holes, drawn once in `textures.ts`.
+5. A possessed room SHALL still read stronger than a haunted one (the counts of the model and the glow of Property 5 are unchanged), THE caps (ghost 12, fog 20, mote 6, total 200) SHALL not change, and Low quality and Reduced motion SHALL keep the rules of requirement 15.
+### Requirement 20: The hunt mist can be seen
+**User Story:** As a visitor, I want the green mist over the room the Exorcist is hunting in, so that the panel's "hunt running" matches what the house shows.
+#### Acceptance Criteria
+1. WHILE a Hunt is entering or working on a service, THE mist sprites of that room SHALL be visible, tinted `#9BF2C4`, in the room's layer above its floor and its lamp glow (and so below the chip layer and the ghosts), at least one of them with an alpha of 0.6 or more, and wide enough to cover at least 60 % of the room's width.
+2. THE test of 1 SHALL be written first and SHALL fail on the old drawing; THE cause found SHALL be written in the design and the drawing SHALL be fixed for it.
+3. THE mist SHALL breathe slowly: one cycle of 4 s (at least 2 s) and a swing of at most 0.15 of alpha, never below 0.6.
+4. UNDER Reduced motion THE mist SHALL be still (no drift, no breath) and still visible; IN Low quality THE mist SHALL stay as one layer.
+5. THE mist SHALL not appear over a room that has no Hunt, and SHALL not hide the ghosts or the chip.
+### Requirement 21: The Incident column of the table
+**User Story:** As an on-call engineer on a laptop, I want the Incident column to show its text in one or two lines with whole words, so that I can read it without guessing.
+#### Acceptance Criteria
+1. THE desktop table SHALL have the column widths (rem) Service 6.5, Haunt level 9.5, Reason 7, Error ratio 5.5, p95 4.5, Up 3.5, Incident 10, Hunt 9.5 and Fix 6, which add up to 62, and `min-width` SHALL be the same 62rem (the total is written in a comment of the CSS).
+2. THE cells SHALL wrap whole words (`overflow-wrap: break-word`) and SHALL never break a word in the middle.
+3. AT 1440 px, at demo second 20, every Incident cell SHALL be at most two lines high (its content height is at most twice its line height); `layout.spec.ts` SHALL assert it, and its stable-width and no-clip tests SHALL keep passing at 1440 and 1024 px.
+4. AT 1024 px the scroll area `.table-scroll` MAY scroll sideways; THE page itself SHALL not scroll sideways at 390 px (requirement 2.4).
+### Requirement 22: Budget, tests, steering and records of part 3
+**User Story:** As the maintainer, I want part 3 to cost nothing that earlier specs promised and to leave the rules and the history true.
+#### Acceptance Criteria
+1. THE entry chunk SHALL not grow beyond its 94 KiB budget (part 3 adds only the CSS of requirement 21 to it), the scene chunk SHALL stay within 180 KiB, the scene file within 119 KiB and the replay chunk within 6800 bytes; `apps/web/src/scene/hooks.ts` SHALL get no new import. THE measured numbers SHALL be written in the design.
+2. THE tests that lock old numbers or positions (`layout.test.ts`, `layout.property.test.ts`, `art.test.ts`, `hunt-scene.test.ts`, `animator.test.ts`, `model.test.ts`, `model.property.test.ts`, `pixi-surface.test.ts`) SHALL be updated to the new rule and no assertion SHALL be deleted; NEW tests SHALL cover Property 7, Property 8 and the mist.
+3. WHILE this part is built, ONLY the checks named in the design SHALL be run; the full suite and the whole end-to-end run SHALL be run afterwards by the orchestrator.
+4. `.kiro/steering/scene-rendering.md` SHALL state the chip rule and the ghost spacing rule (two lines); `docs/KIRO_USAGE.md` SHALL get one line per finished task, in the form `2026-11-17 | visual-refresh/N | …`, ending with a newline.
 5. THE work SHALL add no dependency, no image, font or sprite file, and no forbidden retro-client word; it SHALL be original.

@@ -12,8 +12,6 @@ export function splitFog(count: number): { bank: number; wisps: number } {
   const bank = Math.min(FOG_BANK_MAX, Math.ceil(n / 2));
   return { bank, wisps: Math.min(FOG_WISP_MAX, n - bank) };
 }
-/** Ghosts stay in the back part of the floor: u + v (with the drift) never exceeds this, far from the nameplate at the front. */
-export const GHOST_BACK_LIMIT = 0.8;
 export const MOTE_MAX = 6;
 /** Pulses on the corridors, counted in the total. */
 export const PULSE_MAX = 12;
@@ -78,28 +76,70 @@ function wisp(seed: number, i: number, salt: number, sizeLo: number, sizeHi: num
   };
 }
 
+/** Width over height of the ghost texture (96 by 144). */
+export const GHOST_ASPECT = 96 / 144;
+/** Ghosts rest inside this band of the floor on both axes (u and v in 0..1). */
+export const GHOST_BAND = { lo: 0.25, hi: 0.8 } as const;
+/** Smallest distance between two ghosts of a room, as a share of the wider ghost's width. */
+export const GHOST_GAP = 0.6;
+/** Height of a ghost in iso units. */
+export const GHOST_SIZE = { lo: 0.5, hi: 0.8 } as const;
+/** The floor edge in iso units: the unit of the distance above. */
+const FLOOR_UNITS = 2;
+/** Spacing of the resting sites in u and v: a little more than 0.6 of the widest ghost (0.8 · 96/144) over the floor edge. */
+const SITE_SPACING = 0.165;
+const SITE_ROW = SITE_SPACING * 0.866;
+const SITE_ROWS = 4;
+
+/**
+ * The resting sites of the ghosts of one room: a hex lattice (rows of 4 and 3 sites, 14 in all) whose spacing is
+ * above the minimum distance, shifted inside the band by the seed. Every pair of sites is at least `SITE_SPACING` apart.
+ */
+function ghostSites(seed: number): Array<{ u: number; v: number }> {
+  const r = (k: number): number => unit(seed, 0, 100 + k);
+  const u0 = GHOST_BAND.lo + (GHOST_BAND.hi - GHOST_BAND.lo - (SITE_ROWS - 1) * SITE_ROW) * r(1);
+  const v0 = GHOST_BAND.lo + (GHOST_BAND.hi - GHOST_BAND.lo - 3 * SITE_SPACING) * r(2);
+  const sites: Array<{ u: number; v: number }> = [];
+  for (let row = 0; row < SITE_ROWS; row++) {
+    const odd = row % 2 === 1;
+    for (let k = 0; k < (odd ? 3 : 4); k++) sites.push({ u: u0 + row * SITE_ROW, v: v0 + (k + (odd ? 0.5 : 0)) * SITE_SPACING });
+  }
+  return sites;
+}
+
 /**
  * Pure: the same seed and index always give the same ghost. Speeds are iso units per second.
- * Ghosts haunt the back of the room: with s = u + v and d = u - v, s is in [0.35, 0.6] and the
- * drift adds at most 0.16, so s stays under `GHOST_BACK_LIMIT`; |d| <= s - 0.3 keeps u and v
- * above 0.05 after the drift, so a ghost never leaves the floor.
+ * Ghosts are spread over the room: slot i takes site `order[i]` of a lattice inside `GHOST_BAND`, with the order
+ * shuffled by the seed, so any first n slots are at least `GHOST_GAP` of a ghost width apart and the slots appear
+ * in index order without ever sharing a spot. The drift is small (at most 0.027), so a ghost never leaves the floor.
  */
 export function ghostSpec(seed: number, i: number): WispSpec {
   const r = (k: number): number => unit(seed, i, 100 + k);
-  // Ghosts are spread, not random: index i walks a golden-ratio sequence in depth and width, so no two
-  // slots of a room share a spot; the seed only rotates the sequence.
-  const frac = (n: number): number => n - Math.floor(n);
-  const s = 0.35 + 0.25 * frac(i * 0.381966 + 0.37 * r(1));
-  const d = (frac(i * 0.618034 + 0.37 * r(2)) * 2 - 1) * (s - 0.3);
+  const sites = ghostSites(seed);
+  const order = sites.map((_, k) => k);
+  for (let k = order.length - 1; k > 0; k--) {
+    const j = Math.floor(unit(seed, k, 150) * (k + 1));
+    [order[k], order[j]] = [order[j] as number, order[k] as number];
+  }
+  const site = sites[order[i % sites.length] as number] as { u: number; v: number };
   return {
-    u: (s + d) / 2,
-    v: (s - d) / 2,
-    size: 0.7 + 0.4 * r(3),
+    u: site.u,
+    v: site.v,
+    size: GHOST_SIZE.lo + (GHOST_SIZE.hi - GHOST_SIZE.lo) * r(3),
     phase: r(4) * Math.PI * 2,
     speed: 0.05 + 0.1 * r(7),
-    ampU: 0.03 + 0.05 * r(5),
-    ampV: 0.03 + 0.05 * r(6),
+    ampU: 0.012 + 0.015 * r(5),
+    ampV: 0.012 + 0.015 * r(6),
   };
+}
+
+/** The distance two ghosts of a room need at rest, in iso units: `GHOST_GAP` of the wider one. */
+export function ghostMinDistance(a: WispSpec, b: WispSpec): number {
+  return GHOST_GAP * GHOST_ASPECT * Math.max(a.size, b.size);
+}
+/** The distance of two ghosts at rest, in iso units. */
+export function ghostDistance(a: WispSpec, b: WispSpec): number {
+  return FLOOR_UNITS * Math.hypot(a.u - b.u, a.v - b.v);
 }
 
 /** Pure: a drifting fog wisp above the floor bank. */

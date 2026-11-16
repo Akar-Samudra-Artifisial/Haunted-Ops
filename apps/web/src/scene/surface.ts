@@ -83,6 +83,8 @@ export interface RoomFrame {
   pulse: number;
   /** The green mist of a Hunt in progress: alpha 0 to 1, and its drift in floor halves. */
   mist: number;
+  /** Slow breath of the mist, 0 to 1 (a cycle of 4 s); 0 under Reduced motion. */
+  mistBreath: number;
   mistX: number;
   mistY: number;
   /** The fog noise layers, back to front. */

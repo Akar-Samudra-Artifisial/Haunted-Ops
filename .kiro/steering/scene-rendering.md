@@ -41,5 +41,6 @@ sky (horizon bands, far stars, near stars, moon; parallax of a few pixels with t
 - Low quality: no parallax, one fog layer, no dust, no pulse; every level look stays.
 - Reduced motion: no sway, drift, parallax, dust or pulse; static ghosts and fog; every level look stays (Property 6: every animated offset is zero for any time).
 - Palette colours for the scene live only in `palette.ts`; `danger`, `ecto` and `fog` equal the CSS tokens.
-- Room name at 14 px or more under 40rem (640 px); the row boxes keep the 11 px rule so the Hunt slot stays clear.
+- One chip per room (level mark, name, and a danger `!` while an incident is open) under the room: its top is in the bottom 20 % of the room's screen rect, the rest hangs below the front corner, text 14 px or more under 640 px; no reason badge or incident word in the Scene (the table has them). Property 7 of `visual-refresh`.
+- Ghosts rest on seeded lattice sites inside 0.25 to 0.8 of the floor, at least 0.6 of the wider ghost's width apart, size 0.5 to 0.8, alpha at most 0.7, with a dark outline; the hunt mist is dense (alpha 0.6 or more, breath of 4 s, swing 0.12). Property 8.
 - `scene/hooks.ts` is imported by the replay chunk: add no import to it.

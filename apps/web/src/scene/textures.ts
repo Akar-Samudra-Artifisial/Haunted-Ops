@@ -64,16 +64,23 @@ export const TEXTURE_RECIPES = {
       ctx.bezierCurveTo(cx - r * 1.4, h * 0.65, cx - r * 1.3, h * 0.45, cx - r * 1.2, shoulderY);
       ctx.bezierCurveTo(cx - r * 1.1, top + r * 1.05, cx - r, top + r, cx - r, top + r);
       ctx.closePath();
+      // A cold white body that turns toward the fog colour as it goes down, so a crowd of ghosts is not one white blob.
       const g = ctx.createLinearGradient(0, top, 0, h);
-      g.addColorStop(0, 'rgba(255,255,255,1)');
-      g.addColorStop(0.65, 'rgba(255,255,255,0.8)');
-      g.addColorStop(1, 'rgba(255,255,255,0.12)');
+      g.addColorStop(0, 'rgba(247,252,255,1)');
+      g.addColorStop(0.65, 'rgba(190,226,238,0.85)');
+      g.addColorStop(1, 'rgba(150,205,225,0.15)');
       ctx.fillStyle = g;
       ctx.fill();
+      // A dark outline: each silhouette stays apart from the glow and from its neighbours.
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.max(2, w * 0.035);
+      ctx.strokeStyle = 'rgba(11,10,18,0.6)';
+      ctx.stroke();
+      // Two deep eye holes, cut through, with a dark rim around them for contrast.
       ctx.globalCompositeOperation = 'destination-out';
       ctx.beginPath();
-      ctx.ellipse(cx - r * 0.42, top + r * 1.0, r * 0.16, r * 0.26, 0, 0, Math.PI * 2);
-      ctx.ellipse(cx + r * 0.42, top + r * 1.0, r * 0.16, r * 0.26, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx - r * 0.42, top + r * 1.0, r * 0.19, r * 0.3, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + r * 0.42, top + r * 1.0, r * 0.19, r * 0.3, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalCompositeOperation = 'source-over';
     },

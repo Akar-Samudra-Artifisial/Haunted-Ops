@@ -118,7 +118,7 @@ describe('Property 13: the Exorcist figure fits its room for every gallery size'
   ];
   const rooms = house().map((s) => ({ name: s.name, grid: s.room }));
 
-  it('is inside the room, right of every text box, clear of the clock and the Hunt slot', () => {
+  it('is inside the room, above the chip, clear of the clock and the Hunt slot', () => {
     for (const size of SIZES) {
       const layout = computeLayout(rooms, { ...size, dpr: 1 });
       for (const r of layout.rooms) {
@@ -128,7 +128,7 @@ describe('Property 13: the Exorcist figure fits its room for every gallery size'
         expect(insideDiamond(r.floor, r.exorcistAt)).toBeGreaterThanOrEqual(-eps);
         expect(box.w).toBeCloseTo(FIGURE_W * layout.scale);
         expect(box.h).toBeCloseTo(FIGURE_H * layout.scale);
-        for (const text of [r.labelBox, r.badgeBox, r.incidentBox, r.huntRect]) expect(rectGap(box, text), `${size.width} ${r.name}`).toBeGreaterThan(0);
+        for (const text of [r.chipBox, r.huntRect]) expect(rectGap(box, text), `${size.width} ${r.name}`).toBeGreaterThan(0);
         const clock = buildRoomArt(r, layout.scale).clock;
         const nearestX = Math.min(Math.max(clock.center.x, box.x), box.x + box.w);
         const nearestY = Math.min(Math.max(clock.center.y, box.y), box.y + box.h);
@@ -147,7 +147,7 @@ describe('Property 13: the Exorcist figure fits its room for every gallery size'
         expect(computeLayout(rooms, { width, height, dpr: 1 })).toEqual(layout);
         for (const r of layout.rooms) {
           for (const c of rectCorners(r.exorcistBox)) expect(insideConvex(r.silhouette, c)).toBeGreaterThanOrEqual(-1e-6);
-          for (const text of [r.labelBox, r.badgeBox, r.incidentBox]) expect(rectGap(r.exorcistBox, text)).toBeGreaterThan(0);
+          for (const text of [r.chipBox]) expect(rectGap(r.exorcistBox, text)).toBeGreaterThan(0);
         }
       }),
       { numRuns: 120 },

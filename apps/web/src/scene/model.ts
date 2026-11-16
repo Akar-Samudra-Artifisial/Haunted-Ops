@@ -6,7 +6,7 @@ import {
   type ServiceName,
   type ServiceState,
 } from '@haunted-ops/shared';
-import { LEVEL_TEXT, formatErrorRatio, formatP95, formatReason } from '../format.js';
+import { LEVEL_MARKER, LEVEL_TEXT, formatErrorRatio, formatP95, formatReason } from '../format.js';
 import { huntCellText, huntView } from '../components/hunt-text.js';
 import { proposalView, type ProposalPhase } from '../components/proposal-text.js';
 import { clamp } from './math.js';
@@ -139,6 +139,8 @@ export interface RoomVisual {
   grid: RoomPosition;
   level: HauntLevel;
   levelLabel: string;
+  /** The shape of the level (or of a dark room) from the table, drawn before the name on the chip. */
+  levelMark: string;
   dark: boolean;
   light: number;
   /** The row of `LEVEL_LOOK` this room shows (the dark row when dark). */
@@ -290,13 +292,15 @@ export function toSceneModel(services: readonly ServiceState[], now: number, opt
       grid: { x: s.room.x, y: s.room.y },
       level,
       levelLabel: levelLabel(level),
+      levelMark: LEVEL_MARKER[dark ? 4 : level],
       dark,
       light: lookOf(level, dark).glow,
       look: lookOf(level, dark),
       mist: hunt !== null && (hunt.phase === 'entering' || hunt.phase === 'working'),
       coolness: dark ? 0 : Math.min(1, 0.2 * level + 0.1 * Math.max(e, f)),
       ghostCount: counts.ghosts,
-      ghostOpacity: counts.ghosts > 0 ? 0.25 + 0.6 * e : 0,
+      // At most 0.7 per ghost, so overlapping ghosts stay readable.
+      ghostOpacity: counts.ghosts > 0 ? 0.25 + 0.45 * e : 0,
       fogDensity: d.fogDensity,
       fogCount: counts.fog,
       moteCount: counts.motes,

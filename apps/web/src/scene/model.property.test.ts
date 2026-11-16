@@ -7,7 +7,7 @@ import {
   FOG_BANK_MAX,
   FOG_MAX,
   FOG_WISP_MAX,
-  GHOST_BACK_LIMIT,
+  GHOST_BAND,
   GHOST_MAX,
   MOTE_MAX,
   PARTICLE_CAP,
@@ -163,9 +163,12 @@ describe('Property 3: the model is deterministic', () => {
           expect(w.v - w.ampV).toBeGreaterThanOrEqual(0.05 - 1e-12);
           expect(w.v + w.ampV).toBeLessThanOrEqual(0.95 + 1e-12);
         }
-        // Ghosts stay in the back part of the floor, away from the nameplate at the front corner.
+        // Ghosts rest in the band of the floor (0.25 to 0.8 on both axes), spread over the room.
         const g = ghostSpec(seed, i);
-        expect(g.u + g.v + g.ampU + g.ampV).toBeLessThanOrEqual(GHOST_BACK_LIMIT + 1e-12);
+        for (const at of [g.u, g.v]) {
+          expect(at).toBeGreaterThanOrEqual(GHOST_BAND.lo - 1e-12);
+          expect(at).toBeLessThanOrEqual(GHOST_BAND.hi + 1e-12);
+        }
       }),
       RUNS,
     );

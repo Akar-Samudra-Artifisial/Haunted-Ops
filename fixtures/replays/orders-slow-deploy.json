@@ -1,0 +1,4461 @@
+{
+  "version": 1,
+  "id": "orders-slow-deploy",
+  "title": "Orders slows down after a deploy",
+  "scenario": "fog",
+  "recordedOn": "2026-11-16",
+  "durationMs": 139000,
+  "review": {
+    "reviewedOn": "2026-11-16",
+    "by": "BT",
+    "note": "Read every string; trimmed the cut last sentence of the diagnosis.",
+    "sha256": "e1c6c96499d5e94df2e19f3a94efb9dc76f66407fed0df2b85b443589f71fbd3"
+  },
+  "frames": [
+    {
+      "t": 0,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": null,
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": null,
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": null,
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": null,
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ],
+      "hunt": null,
+      "proposal": null
+    },
+    {
+      "t": 4000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 28.392857142857096,
+            "up": 1,
+            "at": "2026-11-16T12:00:04.175Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.555084745762716,
+            "up": 1,
+            "at": "2026-11-16T12:00:04.175Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:04.175Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:04.175Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 9000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 28.571428571428505,
+            "up": 1,
+            "at": "2026-11-16T12:00:09.174Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.561965811965816,
+            "up": 1,
+            "at": "2026-11-16T12:00:09.174Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:09.174Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.750000000000004,
+            "up": 1,
+            "at": "2026-11-16T12:00:09.174Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 14000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 28.035714285714267,
+            "up": 1,
+            "at": "2026-11-16T12:00:14.180Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.54831932773109,
+            "up": 1,
+            "at": "2026-11-16T12:00:14.180Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:14.180Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:14.180Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 19000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 27.857142857142858,
+            "up": 1,
+            "at": "2026-11-16T12:00:19.179Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.54166666666667,
+            "up": 1,
+            "at": "2026-11-16T12:00:19.179Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:19.179Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.749999999999996,
+            "up": 1,
+            "at": "2026-11-16T12:00:19.179Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 24000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.53512396694215,
+            "up": 1,
+            "at": "2026-11-16T12:00:24.182Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.939999999999998,
+            "up": 1,
+            "at": "2026-11-16T12:00:24.182Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.749999999999996,
+            "up": 1,
+            "at": "2026-11-16T12:00:24.182Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:24.182Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 29000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.329268292682926,
+            "up": 1,
+            "at": "2026-11-16T12:00:29.186Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.939999999999998,
+            "up": 1,
+            "at": "2026-11-16T12:00:29.186Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.749999999999996,
+            "up": 1,
+            "at": "2026-11-16T12:00:29.186Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.749999999999996,
+            "up": 1,
+            "at": "2026-11-16T12:00:29.186Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 34000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.731404958677686,
+            "up": 1,
+            "at": "2026-11-16T12:00:34.180Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.133064516129032,
+            "up": 1,
+            "at": "2026-11-16T12:00:34.180Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.749999999999996,
+            "up": 1,
+            "at": "2026-11-16T12:00:34.180Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:34.180Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 39000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.74789915966387,
+            "up": 1,
+            "at": "2026-11-16T12:00:39.182Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.136178861788622,
+            "up": 1,
+            "at": "2026-11-16T12:00:39.182Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:39.182Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:39.182Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 44000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.74789915966387,
+            "up": 1,
+            "at": "2026-11-16T12:00:44.195Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.329268292682926,
+            "up": 1,
+            "at": "2026-11-16T12:00:44.195Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.749999999999996,
+            "up": 1,
+            "at": "2026-11-16T12:00:44.195Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:44.195Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 50000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0.00847457627118644,
+            "p95Ms": 24.80088495575221,
+            "up": 1,
+            "at": "2026-11-16T12:00:50.176Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 24.133064516129032,
+            "up": 1,
+            "at": "2026-11-16T12:00:50.176Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.749999999999996,
+            "up": 1,
+            "at": "2026-11-16T12:00:50.176Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:50.176Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 55000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0.00847457627118644,
+            "p95Ms": 24.80088495575221,
+            "up": 1,
+            "at": "2026-11-16T12:00:55.031Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 1487.5,
+            "up": 1,
+            "at": "2026-11-16T12:00:55.031Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:55.031Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:00:55.031Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 60000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0.008620689655172414,
+            "p95Ms": 2121.739130434782,
+            "up": 1,
+            "at": "2026-11-16T12:01:00.000Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2249.21875
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2249.21875,
+            "up": 1,
+            "at": "2026-11-16T12:01:00.000Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.96017699115044,
+            "up": 1,
+            "at": "2026-11-16T12:01:00.000Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:00.000Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 64000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2318.7499999999995
+          },
+          "metrics": {
+            "errorRate": 0.008620689655172414,
+            "p95Ms": 2318.7499999999995,
+            "up": 1,
+            "at": "2026-11-16T12:01:04.991Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2357.894736842105
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2357.894736842105,
+            "up": 1,
+            "at": "2026-11-16T12:01:04.991Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.95652173913043,
+            "up": 1,
+            "at": "2026-11-16T12:01:04.991Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:04.991Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 69000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2380.4054054054054
+          },
+          "metrics": {
+            "errorRate": 0.00847457627118644,
+            "p95Ms": 2380.4054054054054,
+            "up": 1,
+            "at": "2026-11-16T12:01:09.994Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2402.6785714285716
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2402.6785714285716,
+            "up": 1,
+            "at": "2026-11-16T12:01:09.994Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.95652173913043,
+            "up": 1,
+            "at": "2026-11-16T12:01:09.994Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:09.994Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 70000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2380.4054054054054
+          },
+          "metrics": {
+            "errorRate": 0.00847457627118644,
+            "p95Ms": 2380.4054054054054,
+            "up": 1,
+            "at": "2026-11-16T12:01:09.994Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2402.6785714285716
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2402.6785714285716,
+            "up": 1,
+            "at": "2026-11-16T12:01:09.994Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [],
+            "stepCount": 0,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.95652173913043,
+            "up": 1,
+            "at": "2026-11-16T12:01:09.994Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:09.994Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ],
+      "hunt": {
+        "id": "r9d6ec8e6d5895db73bccee2b",
+        "incidentId": "r0fb584140954a2d5b8e54158",
+        "service": "orders",
+        "trigger": "auto",
+        "status": "running",
+        "reason": null,
+        "steps": [],
+        "stepCount": 0,
+        "evidenceCount": 0,
+        "diagnosis": null,
+        "credits": 0,
+        "queuedAt": "2026-11-16T12:01:10.049Z",
+        "startedAt": "2026-11-16T12:01:10.062Z",
+        "finishedAt": null,
+        "diagnosedBy": null,
+        "model": "claude-sonnet-5.5",
+        "toolCalls": 0,
+        "durationMs": null,
+        "invalidCheck": null,
+        "stopDetail": null,
+        "creditsEstimated": false,
+        "linkedHuntId": null,
+        "allSteps": [],
+        "evidence": [],
+        "fixHint": null,
+        "proposal": null
+      }
+    },
+    {
+      "t": 74000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2411.5
+          },
+          "metrics": {
+            "errorRate": 0.00847457627118644,
+            "p95Ms": 2411.5,
+            "up": 1,
+            "at": "2026-11-16T12:01:14.996Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:14.996Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [],
+            "stepCount": 0,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.95652173913043,
+            "up": 1,
+            "at": "2026-11-16T12:01:14.996Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:14.996Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 79000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:19.990Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:19.990Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [],
+            "stepCount": 0,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.939999999999998,
+            "up": 1,
+            "at": "2026-11-16T12:01:19.990Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:19.990Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 84000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:24.991Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:24.991Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [],
+            "stepCount": 0,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.749999999999996,
+            "up": 1,
+            "at": "2026-11-16T12:01:24.991Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:24.991Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 89000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:29.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:29.997Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [],
+            "stepCount": 0,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:29.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:29.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 94000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [],
+            "stepCount": 0,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.750000000000004,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 96000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              }
+            ],
+            "stepCount": 1,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.750000000000004,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ],
+      "hunt": {
+        "id": "r9d6ec8e6d5895db73bccee2b",
+        "incidentId": "r0fb584140954a2d5b8e54158",
+        "service": "orders",
+        "trigger": "auto",
+        "status": "running",
+        "reason": null,
+        "steps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          }
+        ],
+        "stepCount": 1,
+        "evidenceCount": 0,
+        "diagnosis": null,
+        "credits": 0,
+        "queuedAt": "2026-11-16T12:01:10.049Z",
+        "startedAt": "2026-11-16T12:01:10.062Z",
+        "finishedAt": null,
+        "diagnosedBy": null,
+        "model": "claude-sonnet-5.5",
+        "toolCalls": 1,
+        "durationMs": null,
+        "invalidCheck": null,
+        "stopDetail": null,
+        "creditsEstimated": false,
+        "linkedHuntId": null,
+        "allSteps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          }
+        ],
+        "evidence": [],
+        "fixHint": null,
+        "proposal": null
+      }
+    },
+    {
+      "t": 97000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              }
+            ],
+            "stepCount": 2,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.750000000000004,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ],
+      "hunt": {
+        "id": "r9d6ec8e6d5895db73bccee2b",
+        "incidentId": "r0fb584140954a2d5b8e54158",
+        "service": "orders",
+        "trigger": "auto",
+        "status": "running",
+        "reason": null,
+        "steps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          },
+          {
+            "index": 2,
+            "tool": "search_errors",
+            "summary": "errors orders since 11:55",
+            "at": "2026-11-16T12:01:37.619Z"
+          }
+        ],
+        "stepCount": 2,
+        "evidenceCount": 0,
+        "diagnosis": null,
+        "credits": 0,
+        "queuedAt": "2026-11-16T12:01:10.049Z",
+        "startedAt": "2026-11-16T12:01:10.062Z",
+        "finishedAt": null,
+        "diagnosedBy": null,
+        "model": "claude-sonnet-5.5",
+        "toolCalls": 2,
+        "durationMs": null,
+        "invalidCheck": null,
+        "stopDetail": null,
+        "creditsEstimated": false,
+        "linkedHuntId": null,
+        "allSteps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          },
+          {
+            "index": 2,
+            "tool": "search_errors",
+            "summary": "errors orders since 11:55",
+            "at": "2026-11-16T12:01:37.619Z"
+          }
+        ],
+        "evidence": [],
+        "fixHint": null,
+        "proposal": null
+      }
+    },
+    {
+      "t": 98000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              },
+              {
+                "index": 3,
+                "tool": "tail_logs",
+                "summary": "logs orders since 11:55",
+                "at": "2026-11-16T12:01:38.653Z"
+              }
+            ],
+            "stepCount": 3,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.750000000000004,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:34.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ],
+      "hunt": {
+        "id": "r9d6ec8e6d5895db73bccee2b",
+        "incidentId": "r0fb584140954a2d5b8e54158",
+        "service": "orders",
+        "trigger": "auto",
+        "status": "running",
+        "reason": null,
+        "steps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          },
+          {
+            "index": 2,
+            "tool": "search_errors",
+            "summary": "errors orders since 11:55",
+            "at": "2026-11-16T12:01:37.619Z"
+          },
+          {
+            "index": 3,
+            "tool": "tail_logs",
+            "summary": "logs orders since 11:55",
+            "at": "2026-11-16T12:01:38.653Z"
+          }
+        ],
+        "stepCount": 3,
+        "evidenceCount": 0,
+        "diagnosis": null,
+        "credits": 0,
+        "queuedAt": "2026-11-16T12:01:10.049Z",
+        "startedAt": "2026-11-16T12:01:10.062Z",
+        "finishedAt": null,
+        "diagnosedBy": null,
+        "model": "claude-sonnet-5.5",
+        "toolCalls": 3,
+        "durationMs": null,
+        "invalidCheck": null,
+        "stopDetail": null,
+        "creditsEstimated": false,
+        "linkedHuntId": null,
+        "allSteps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          },
+          {
+            "index": 2,
+            "tool": "search_errors",
+            "summary": "errors orders since 11:55",
+            "at": "2026-11-16T12:01:37.619Z"
+          },
+          {
+            "index": 3,
+            "tool": "tail_logs",
+            "summary": "logs orders since 11:55",
+            "at": "2026-11-16T12:01:38.653Z"
+          }
+        ],
+        "evidence": [],
+        "fixHint": null,
+        "proposal": null
+      }
+    },
+    {
+      "t": 99000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:39.993Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:39.993Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              },
+              {
+                "index": 3,
+                "tool": "tail_logs",
+                "summary": "logs orders since 11:55",
+                "at": "2026-11-16T12:01:38.653Z"
+              },
+              {
+                "index": 4,
+                "tool": "recent_deploys",
+                "summary": "deploys since 11:04",
+                "at": "2026-11-16T12:01:39.570Z"
+              }
+            ],
+            "stepCount": 4,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.750000000000004,
+            "up": 1,
+            "at": "2026-11-16T12:01:39.993Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.750000000000004,
+            "up": 1,
+            "at": "2026-11-16T12:01:39.993Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ],
+      "hunt": {
+        "id": "r9d6ec8e6d5895db73bccee2b",
+        "incidentId": "r0fb584140954a2d5b8e54158",
+        "service": "orders",
+        "trigger": "auto",
+        "status": "running",
+        "reason": null,
+        "steps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          },
+          {
+            "index": 2,
+            "tool": "search_errors",
+            "summary": "errors orders since 11:55",
+            "at": "2026-11-16T12:01:37.619Z"
+          },
+          {
+            "index": 3,
+            "tool": "tail_logs",
+            "summary": "logs orders since 11:55",
+            "at": "2026-11-16T12:01:38.653Z"
+          },
+          {
+            "index": 4,
+            "tool": "recent_deploys",
+            "summary": "deploys since 11:04",
+            "at": "2026-11-16T12:01:39.570Z"
+          }
+        ],
+        "stepCount": 4,
+        "evidenceCount": 0,
+        "diagnosis": null,
+        "credits": 0,
+        "queuedAt": "2026-11-16T12:01:10.049Z",
+        "startedAt": "2026-11-16T12:01:10.062Z",
+        "finishedAt": null,
+        "diagnosedBy": null,
+        "model": "claude-sonnet-5.5",
+        "toolCalls": 4,
+        "durationMs": null,
+        "invalidCheck": null,
+        "stopDetail": null,
+        "creditsEstimated": false,
+        "linkedHuntId": null,
+        "allSteps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          },
+          {
+            "index": 2,
+            "tool": "search_errors",
+            "summary": "errors orders since 11:55",
+            "at": "2026-11-16T12:01:37.619Z"
+          },
+          {
+            "index": 3,
+            "tool": "tail_logs",
+            "summary": "logs orders since 11:55",
+            "at": "2026-11-16T12:01:38.653Z"
+          },
+          {
+            "index": 4,
+            "tool": "recent_deploys",
+            "summary": "deploys since 11:04",
+            "at": "2026-11-16T12:01:39.570Z"
+          }
+        ],
+        "evidence": [],
+        "fixHint": null,
+        "proposal": null
+      }
+    },
+    {
+      "t": 100000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:39.993Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:39.993Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              },
+              {
+                "index": 3,
+                "tool": "tail_logs",
+                "summary": "logs orders since 11:55",
+                "at": "2026-11-16T12:01:38.653Z"
+              },
+              {
+                "index": 4,
+                "tool": "recent_deploys",
+                "summary": "deploys since 11:04",
+                "at": "2026-11-16T12:01:39.570Z"
+              },
+              {
+                "index": 5,
+                "tool": "diff_commit",
+                "summary": "diff 739d121",
+                "at": "2026-11-16T12:01:40.438Z"
+              }
+            ],
+            "stepCount": 5,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.750000000000004,
+            "up": 1,
+            "at": "2026-11-16T12:01:39.993Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.750000000000004,
+            "up": 1,
+            "at": "2026-11-16T12:01:39.993Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ],
+      "hunt": {
+        "id": "r9d6ec8e6d5895db73bccee2b",
+        "incidentId": "r0fb584140954a2d5b8e54158",
+        "service": "orders",
+        "trigger": "auto",
+        "status": "running",
+        "reason": null,
+        "steps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          },
+          {
+            "index": 2,
+            "tool": "search_errors",
+            "summary": "errors orders since 11:55",
+            "at": "2026-11-16T12:01:37.619Z"
+          },
+          {
+            "index": 3,
+            "tool": "tail_logs",
+            "summary": "logs orders since 11:55",
+            "at": "2026-11-16T12:01:38.653Z"
+          },
+          {
+            "index": 4,
+            "tool": "recent_deploys",
+            "summary": "deploys since 11:04",
+            "at": "2026-11-16T12:01:39.570Z"
+          },
+          {
+            "index": 5,
+            "tool": "diff_commit",
+            "summary": "diff 739d121",
+            "at": "2026-11-16T12:01:40.438Z"
+          }
+        ],
+        "stepCount": 5,
+        "evidenceCount": 0,
+        "diagnosis": null,
+        "credits": 0,
+        "queuedAt": "2026-11-16T12:01:10.049Z",
+        "startedAt": "2026-11-16T12:01:10.062Z",
+        "finishedAt": null,
+        "diagnosedBy": null,
+        "model": "claude-sonnet-5.5",
+        "toolCalls": 5,
+        "durationMs": null,
+        "invalidCheck": null,
+        "stopDetail": null,
+        "creditsEstimated": false,
+        "linkedHuntId": null,
+        "allSteps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          },
+          {
+            "index": 2,
+            "tool": "search_errors",
+            "summary": "errors orders since 11:55",
+            "at": "2026-11-16T12:01:37.619Z"
+          },
+          {
+            "index": 3,
+            "tool": "tail_logs",
+            "summary": "logs orders since 11:55",
+            "at": "2026-11-16T12:01:38.653Z"
+          },
+          {
+            "index": 4,
+            "tool": "recent_deploys",
+            "summary": "deploys since 11:04",
+            "at": "2026-11-16T12:01:39.570Z"
+          },
+          {
+            "index": 5,
+            "tool": "diff_commit",
+            "summary": "diff 739d121",
+            "at": "2026-11-16T12:01:40.438Z"
+          }
+        ],
+        "evidence": [],
+        "fixHint": null,
+        "proposal": null
+      }
+    },
+    {
+      "t": 104000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:44.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:44.997Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              },
+              {
+                "index": 3,
+                "tool": "tail_logs",
+                "summary": "logs orders since 11:55",
+                "at": "2026-11-16T12:01:38.653Z"
+              },
+              {
+                "index": 4,
+                "tool": "recent_deploys",
+                "summary": "deploys since 11:04",
+                "at": "2026-11-16T12:01:39.570Z"
+              },
+              {
+                "index": 5,
+                "tool": "diff_commit",
+                "summary": "diff 739d121",
+                "at": "2026-11-16T12:01:40.438Z"
+              }
+            ],
+            "stepCount": 5,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:44.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.750000000000004,
+            "up": 1,
+            "at": "2026-11-16T12:01:44.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 105000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:44.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:44.997Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "running",
+            "reason": null,
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              },
+              {
+                "index": 3,
+                "tool": "tail_logs",
+                "summary": "logs orders since 11:55",
+                "at": "2026-11-16T12:01:38.653Z"
+              },
+              {
+                "index": 4,
+                "tool": "recent_deploys",
+                "summary": "deploys since 11:04",
+                "at": "2026-11-16T12:01:39.570Z"
+              },
+              {
+                "index": 5,
+                "tool": "diff_commit",
+                "summary": "diff 739d121",
+                "at": "2026-11-16T12:01:40.438Z"
+              },
+              {
+                "index": 6,
+                "tool": "submit_diagnosis",
+                "summary": "diagnosis submitted",
+                "at": "2026-11-16T12:01:45.501Z"
+              }
+            ],
+            "stepCount": 6,
+            "evidenceCount": 0,
+            "diagnosis": null,
+            "credits": 0,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": null,
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:44.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.750000000000004,
+            "up": 1,
+            "at": "2026-11-16T12:01:44.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ],
+      "hunt": {
+        "id": "r9d6ec8e6d5895db73bccee2b",
+        "incidentId": "r0fb584140954a2d5b8e54158",
+        "service": "orders",
+        "trigger": "auto",
+        "status": "running",
+        "reason": null,
+        "steps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          },
+          {
+            "index": 2,
+            "tool": "search_errors",
+            "summary": "errors orders since 11:55",
+            "at": "2026-11-16T12:01:37.619Z"
+          },
+          {
+            "index": 3,
+            "tool": "tail_logs",
+            "summary": "logs orders since 11:55",
+            "at": "2026-11-16T12:01:38.653Z"
+          },
+          {
+            "index": 4,
+            "tool": "recent_deploys",
+            "summary": "deploys since 11:04",
+            "at": "2026-11-16T12:01:39.570Z"
+          },
+          {
+            "index": 5,
+            "tool": "diff_commit",
+            "summary": "diff 739d121",
+            "at": "2026-11-16T12:01:40.438Z"
+          },
+          {
+            "index": 6,
+            "tool": "submit_diagnosis",
+            "summary": "diagnosis submitted",
+            "at": "2026-11-16T12:01:45.501Z"
+          }
+        ],
+        "stepCount": 6,
+        "evidenceCount": 0,
+        "diagnosis": null,
+        "credits": 0,
+        "queuedAt": "2026-11-16T12:01:10.049Z",
+        "startedAt": "2026-11-16T12:01:10.062Z",
+        "finishedAt": null,
+        "diagnosedBy": null,
+        "model": "claude-sonnet-5.5",
+        "toolCalls": 6,
+        "durationMs": null,
+        "invalidCheck": null,
+        "stopDetail": null,
+        "creditsEstimated": false,
+        "linkedHuntId": null,
+        "allSteps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          },
+          {
+            "index": 2,
+            "tool": "search_errors",
+            "summary": "errors orders since 11:55",
+            "at": "2026-11-16T12:01:37.619Z"
+          },
+          {
+            "index": 3,
+            "tool": "tail_logs",
+            "summary": "logs orders since 11:55",
+            "at": "2026-11-16T12:01:38.653Z"
+          },
+          {
+            "index": 4,
+            "tool": "recent_deploys",
+            "summary": "deploys since 11:04",
+            "at": "2026-11-16T12:01:39.570Z"
+          },
+          {
+            "index": 5,
+            "tool": "diff_commit",
+            "summary": "diff 739d121",
+            "at": "2026-11-16T12:01:40.438Z"
+          },
+          {
+            "index": 6,
+            "tool": "submit_diagnosis",
+            "summary": "diagnosis submitted",
+            "at": "2026-11-16T12:01:45.501Z"
+          }
+        ],
+        "evidence": [],
+        "fixHint": null,
+        "proposal": null
+      }
+    },
+    {
+      "t": 108000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:44.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:44.997Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "succeeded",
+            "reason": "diagnosed",
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              },
+              {
+                "index": 3,
+                "tool": "tail_logs",
+                "summary": "logs orders since 11:55",
+                "at": "2026-11-16T12:01:38.653Z"
+              },
+              {
+                "index": 4,
+                "tool": "recent_deploys",
+                "summary": "deploys since 11:04",
+                "at": "2026-11-16T12:01:39.570Z"
+              },
+              {
+                "index": 5,
+                "tool": "diff_commit",
+                "summary": "diff 739d121",
+                "at": "2026-11-16T12:01:40.438Z"
+              },
+              {
+                "index": 6,
+                "tool": "submit_diagnosis",
+                "summary": "diagnosis submitted",
+                "at": "2026-11-16T12:01:45.501Z"
+              }
+            ],
+            "stepCount": 6,
+            "evidenceCount": 8,
+            "diagnosis": {
+              "culpritDeploy": "d-107",
+              "culpritSha": "739d1217dc01c07adc69d38d53231d0dfab23b1f",
+              "culpritService": "orders",
+              "summary": "Orders p95 rose from about 24 ms to about 2400 ms right after deploy d-107 (12:00:47Z). The commit \"add inventory freshness check\" makes reserveStock await 8 warehouse checks one after another, each sleeping 200 ms. That adds about 1600 ms per request, which matches the logged POST /orders latencies of about 1622 ms. No errors were recorded, only latency."
+            },
+            "credits": 1.5,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": "2026-11-16T12:01:48.419Z",
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:44.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.750000000000004,
+            "up": 1,
+            "at": "2026-11-16T12:01:44.997Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ],
+      "hunt": {
+        "id": "r9d6ec8e6d5895db73bccee2b",
+        "incidentId": "r0fb584140954a2d5b8e54158",
+        "service": "orders",
+        "trigger": "auto",
+        "status": "succeeded",
+        "reason": "diagnosed",
+        "steps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          },
+          {
+            "index": 2,
+            "tool": "search_errors",
+            "summary": "errors orders since 11:55",
+            "at": "2026-11-16T12:01:37.619Z"
+          },
+          {
+            "index": 3,
+            "tool": "tail_logs",
+            "summary": "logs orders since 11:55",
+            "at": "2026-11-16T12:01:38.653Z"
+          },
+          {
+            "index": 4,
+            "tool": "recent_deploys",
+            "summary": "deploys since 11:04",
+            "at": "2026-11-16T12:01:39.570Z"
+          },
+          {
+            "index": 5,
+            "tool": "diff_commit",
+            "summary": "diff 739d121",
+            "at": "2026-11-16T12:01:40.438Z"
+          },
+          {
+            "index": 6,
+            "tool": "submit_diagnosis",
+            "summary": "diagnosis submitted",
+            "at": "2026-11-16T12:01:45.501Z"
+          }
+        ],
+        "stepCount": 6,
+        "evidenceCount": 8,
+        "diagnosis": {
+          "culpritDeploy": "d-107",
+          "culpritSha": "739d1217dc01c07adc69d38d53231d0dfab23b1f",
+          "culpritService": "orders",
+          "summary": "Orders p95 rose from about 24 ms to about 2400 ms right after deploy d-107 (12:00:47Z). The commit \"add inventory freshness check\" makes reserveStock await 8 warehouse checks one after another, each sleeping 200 ms. That adds about 1600 ms per request, which matches the logged POST /orders latencies of about 1622 ms. No errors were recorded, only latency."
+        },
+        "credits": 1.5,
+        "queuedAt": "2026-11-16T12:01:10.049Z",
+        "startedAt": "2026-11-16T12:01:10.062Z",
+        "finishedAt": "2026-11-16T12:01:48.419Z",
+        "diagnosedBy": null,
+        "model": "claude-sonnet-5.5",
+        "toolCalls": 6,
+        "durationMs": 38357,
+        "invalidCheck": null,
+        "stopDetail": null,
+        "creditsEstimated": true,
+        "linkedHuntId": null,
+        "allSteps": [
+          {
+            "index": 1,
+            "tool": "query_metrics",
+            "summary": "metrics orders p95_ms 15m",
+            "at": "2026-11-16T12:01:36.466Z"
+          },
+          {
+            "index": 2,
+            "tool": "search_errors",
+            "summary": "errors orders since 11:55",
+            "at": "2026-11-16T12:01:37.619Z"
+          },
+          {
+            "index": 3,
+            "tool": "tail_logs",
+            "summary": "logs orders since 11:55",
+            "at": "2026-11-16T12:01:38.653Z"
+          },
+          {
+            "index": 4,
+            "tool": "recent_deploys",
+            "summary": "deploys since 11:04",
+            "at": "2026-11-16T12:01:39.570Z"
+          },
+          {
+            "index": 5,
+            "tool": "diff_commit",
+            "summary": "diff 739d121",
+            "at": "2026-11-16T12:01:40.438Z"
+          },
+          {
+            "index": 6,
+            "tool": "submit_diagnosis",
+            "summary": "diagnosis submitted",
+            "at": "2026-11-16T12:01:45.501Z"
+          }
+        ],
+        "evidence": [
+          {
+            "index": 1,
+            "kind": "metric",
+            "ref": "metric:orders/p95_ms/15m",
+            "detail": "orders p95_ms 15m: 23.75 -> 2425 (min 23.75, max 2425)",
+            "cited": true
+          },
+          {
+            "index": 2,
+            "kind": "log",
+            "ref": "log:1",
+            "detail": "12:01:36 2026-11-16T12:01:37.668Z orders req POST /orders 200 1622ms rid=r-57a77f9c09504281",
+            "cited": true
+          },
+          {
+            "index": 3,
+            "kind": "log",
+            "ref": "log:2",
+            "detail": "12:01:37 2026-11-16T12:01:37.881Z orders req POST /orders 200 1624ms rid=r-da1b877321f840ea",
+            "cited": false
+          },
+          {
+            "index": 4,
+            "kind": "log",
+            "ref": "log:3",
+            "detail": "12:01:37 2026-11-16T12:01:38.076Z orders req POST /orders 200 1624ms rid=r-ceae1361193f41b8",
+            "cited": false
+          },
+          {
+            "index": 5,
+            "kind": "log",
+            "ref": "log:4",
+            "detail": "12:01:37 2026-11-16T12:01:38.331Z orders req POST /orders 200 1624ms rid=r-a4cb7eb3816948de",
+            "cited": false
+          },
+          {
+            "index": 6,
+            "kind": "log",
+            "ref": "log:5",
+            "detail": "12:01:37 2026-11-16T12:01:38.562Z orders req POST /orders 200 1624ms rid=r-152ee1f361014203",
+            "cited": true
+          },
+          {
+            "index": 7,
+            "kind": "deploy",
+            "ref": "deploy:d-107",
+            "detail": "d-107 orders scenario/fog 739d121 12:00:47",
+            "cited": true
+          },
+          {
+            "index": 8,
+            "kind": "commit",
+            "ref": "commit:739d1217dc01c07adc69d38d53231d0dfab23b1f",
+            "detail": "commit 739d121 deployed as d-107",
+            "cited": true
+          }
+        ],
+        "fixHint": "Revert d-107, or run the warehouse freshness checks in parallel (Promise.all). Better still, drop the 200 ms per-warehouse wait or take it off the request path, and cache the results.",
+        "proposal": null
+      }
+    },
+    {
+      "t": 109000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:49.992Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:49.992Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "succeeded",
+            "reason": "diagnosed",
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              },
+              {
+                "index": 3,
+                "tool": "tail_logs",
+                "summary": "logs orders since 11:55",
+                "at": "2026-11-16T12:01:38.653Z"
+              },
+              {
+                "index": 4,
+                "tool": "recent_deploys",
+                "summary": "deploys since 11:04",
+                "at": "2026-11-16T12:01:39.570Z"
+              },
+              {
+                "index": 5,
+                "tool": "diff_commit",
+                "summary": "diff 739d121",
+                "at": "2026-11-16T12:01:40.438Z"
+              },
+              {
+                "index": 6,
+                "tool": "submit_diagnosis",
+                "summary": "diagnosis submitted",
+                "at": "2026-11-16T12:01:45.501Z"
+              }
+            ],
+            "stepCount": 6,
+            "evidenceCount": 8,
+            "diagnosis": {
+              "culpritDeploy": "d-107",
+              "culpritSha": "739d1217dc01c07adc69d38d53231d0dfab23b1f",
+              "culpritService": "orders",
+              "summary": "Orders p95 rose from about 24 ms to about 2400 ms right after deploy d-107 (12:00:47Z). The commit \"add inventory freshness check\" makes reserveStock await 8 warehouse checks one after another, each sleeping 200 ms. That adds about 1600 ms per request, which matches the logged POST /orders latencies of about 1622 ms. No errors were recorded, only latency."
+            },
+            "credits": 1.5,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": "2026-11-16T12:01:48.419Z",
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:49.992Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:49.992Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 115000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:55.006Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:55.006Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "succeeded",
+            "reason": "diagnosed",
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              },
+              {
+                "index": 3,
+                "tool": "tail_logs",
+                "summary": "logs orders since 11:55",
+                "at": "2026-11-16T12:01:38.653Z"
+              },
+              {
+                "index": 4,
+                "tool": "recent_deploys",
+                "summary": "deploys since 11:04",
+                "at": "2026-11-16T12:01:39.570Z"
+              },
+              {
+                "index": 5,
+                "tool": "diff_commit",
+                "summary": "diff 739d121",
+                "at": "2026-11-16T12:01:40.438Z"
+              },
+              {
+                "index": 6,
+                "tool": "submit_diagnosis",
+                "summary": "diagnosis submitted",
+                "at": "2026-11-16T12:01:45.501Z"
+              }
+            ],
+            "stepCount": 6,
+            "evidenceCount": 8,
+            "diagnosis": {
+              "culpritDeploy": "d-107",
+              "culpritSha": "739d1217dc01c07adc69d38d53231d0dfab23b1f",
+              "culpritService": "orders",
+              "summary": "Orders p95 rose from about 24 ms to about 2400 ms right after deploy d-107 (12:00:47Z). The commit \"add inventory freshness check\" makes reserveStock await 8 warehouse checks one after another, each sleeping 200 ms. That adds about 1600 ms per request, which matches the logged POST /orders latencies of about 1622 ms. No errors were recorded, only latency."
+            },
+            "credits": 1.5,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": "2026-11-16T12:01:48.419Z",
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:55.006Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:55.006Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 119000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:59.999Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:01:59.999Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "succeeded",
+            "reason": "diagnosed",
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              },
+              {
+                "index": 3,
+                "tool": "tail_logs",
+                "summary": "logs orders since 11:55",
+                "at": "2026-11-16T12:01:38.653Z"
+              },
+              {
+                "index": 4,
+                "tool": "recent_deploys",
+                "summary": "deploys since 11:04",
+                "at": "2026-11-16T12:01:39.570Z"
+              },
+              {
+                "index": 5,
+                "tool": "diff_commit",
+                "summary": "diff 739d121",
+                "at": "2026-11-16T12:01:40.438Z"
+              },
+              {
+                "index": 6,
+                "tool": "submit_diagnosis",
+                "summary": "diagnosis submitted",
+                "at": "2026-11-16T12:01:45.501Z"
+              }
+            ],
+            "stepCount": 6,
+            "evidenceCount": 8,
+            "diagnosis": {
+              "culpritDeploy": "d-107",
+              "culpritSha": "739d1217dc01c07adc69d38d53231d0dfab23b1f",
+              "culpritService": "orders",
+              "summary": "Orders p95 rose from about 24 ms to about 2400 ms right after deploy d-107 (12:00:47Z). The commit \"add inventory freshness check\" makes reserveStock await 8 warehouse checks one after another, each sleeping 200 ms. That adds about 1600 ms per request, which matches the logged POST /orders latencies of about 1622 ms. No errors were recorded, only latency."
+            },
+            "credits": 1.5,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": "2026-11-16T12:01:48.419Z",
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:01:59.999Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.749999999999996,
+            "up": 1,
+            "at": "2026-11-16T12:01:59.999Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 124000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:02:04.995Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:02:04.995Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "succeeded",
+            "reason": "diagnosed",
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              },
+              {
+                "index": 3,
+                "tool": "tail_logs",
+                "summary": "logs orders since 11:55",
+                "at": "2026-11-16T12:01:38.653Z"
+              },
+              {
+                "index": 4,
+                "tool": "recent_deploys",
+                "summary": "deploys since 11:04",
+                "at": "2026-11-16T12:01:39.570Z"
+              },
+              {
+                "index": 5,
+                "tool": "diff_commit",
+                "summary": "diff 739d121",
+                "at": "2026-11-16T12:01:40.438Z"
+              },
+              {
+                "index": 6,
+                "tool": "submit_diagnosis",
+                "summary": "diagnosis submitted",
+                "at": "2026-11-16T12:01:45.501Z"
+              }
+            ],
+            "stepCount": 6,
+            "evidenceCount": 8,
+            "diagnosis": {
+              "culpritDeploy": "d-107",
+              "culpritSha": "739d1217dc01c07adc69d38d53231d0dfab23b1f",
+              "culpritService": "orders",
+              "summary": "Orders p95 rose from about 24 ms to about 2400 ms right after deploy d-107 (12:00:47Z). The commit \"add inventory freshness check\" makes reserveStock await 8 warehouse checks one after another, each sleeping 200 ms. That adds about 1600 ms per request, which matches the logged POST /orders latencies of about 1622 ms. No errors were recorded, only latency."
+            },
+            "credits": 1.5,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": "2026-11-16T12:01:48.419Z",
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:02:04.995Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:02:04.995Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 129000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:02:09.996Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:02:09.996Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "succeeded",
+            "reason": "diagnosed",
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              },
+              {
+                "index": 3,
+                "tool": "tail_logs",
+                "summary": "logs orders since 11:55",
+                "at": "2026-11-16T12:01:38.653Z"
+              },
+              {
+                "index": 4,
+                "tool": "recent_deploys",
+                "summary": "deploys since 11:04",
+                "at": "2026-11-16T12:01:39.570Z"
+              },
+              {
+                "index": 5,
+                "tool": "diff_commit",
+                "summary": "diff 739d121",
+                "at": "2026-11-16T12:01:40.438Z"
+              },
+              {
+                "index": 6,
+                "tool": "submit_diagnosis",
+                "summary": "diagnosis submitted",
+                "at": "2026-11-16T12:01:45.501Z"
+              }
+            ],
+            "stepCount": 6,
+            "evidenceCount": 8,
+            "diagnosis": {
+              "culpritDeploy": "d-107",
+              "culpritSha": "739d1217dc01c07adc69d38d53231d0dfab23b1f",
+              "culpritService": "orders",
+              "summary": "Orders p95 rose from about 24 ms to about 2400 ms right after deploy d-107 (12:00:47Z). The commit \"add inventory freshness check\" makes reserveStock await 8 warehouse checks one after another, each sleeping 200 ms. That adds about 1600 ms per request, which matches the logged POST /orders latencies of about 1622 ms. No errors were recorded, only latency."
+            },
+            "credits": 1.5,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": "2026-11-16T12:01:48.419Z",
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:02:09.996Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:02:09.996Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    },
+    {
+      "t": 135000,
+      "services": [
+        {
+          "name": "gate",
+          "room": {
+            "x": 0,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:02:15.004Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:01:04.991Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "orders",
+          "room": {
+            "x": 1,
+            "y": 0
+          },
+          "hauntLevel": 2,
+          "reason": {
+            "kind": "p95",
+            "value": 2425
+          },
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 2425,
+            "up": 1,
+            "at": "2026-11-16T12:02:15.004Z"
+          },
+          "openIncident": {
+            "id": "r0fb584140954a2d5b8e54158",
+            "openedAt": "2026-11-16T12:01:00.000Z",
+            "peakLevel": 2
+          },
+          "updatedAt": "2026-11-16T12:01:00.000Z",
+          "hunt": {
+            "id": "r9d6ec8e6d5895db73bccee2b",
+            "incidentId": "r0fb584140954a2d5b8e54158",
+            "service": "orders",
+            "trigger": "auto",
+            "status": "succeeded",
+            "reason": "diagnosed",
+            "steps": [
+              {
+                "index": 1,
+                "tool": "query_metrics",
+                "summary": "metrics orders p95_ms 15m",
+                "at": "2026-11-16T12:01:36.466Z"
+              },
+              {
+                "index": 2,
+                "tool": "search_errors",
+                "summary": "errors orders since 11:55",
+                "at": "2026-11-16T12:01:37.619Z"
+              },
+              {
+                "index": 3,
+                "tool": "tail_logs",
+                "summary": "logs orders since 11:55",
+                "at": "2026-11-16T12:01:38.653Z"
+              },
+              {
+                "index": 4,
+                "tool": "recent_deploys",
+                "summary": "deploys since 11:04",
+                "at": "2026-11-16T12:01:39.570Z"
+              },
+              {
+                "index": 5,
+                "tool": "diff_commit",
+                "summary": "diff 739d121",
+                "at": "2026-11-16T12:01:40.438Z"
+              },
+              {
+                "index": 6,
+                "tool": "submit_diagnosis",
+                "summary": "diagnosis submitted",
+                "at": "2026-11-16T12:01:45.501Z"
+              }
+            ],
+            "stepCount": 6,
+            "evidenceCount": 8,
+            "diagnosis": {
+              "culpritDeploy": "d-107",
+              "culpritSha": "739d1217dc01c07adc69d38d53231d0dfab23b1f",
+              "culpritService": "orders",
+              "summary": "Orders p95 rose from about 24 ms to about 2400 ms right after deploy d-107 (12:00:47Z). The commit \"add inventory freshness check\" makes reserveStock await 8 warehouse checks one after another, each sleeping 200 ms. That adds about 1600 ms per request, which matches the logged POST /orders latencies of about 1622 ms. No errors were recorded, only latency."
+            },
+            "credits": 1.5,
+            "queuedAt": "2026-11-16T12:01:10.049Z",
+            "startedAt": "2026-11-16T12:01:10.062Z",
+            "finishedAt": "2026-11-16T12:01:48.419Z",
+            "diagnosedBy": null
+          },
+          "proposal": null
+        },
+        {
+          "name": "payments",
+          "room": {
+            "x": 0,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.749999999999996,
+            "up": 1,
+            "at": "2026-11-16T12:02:15.004Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        },
+        {
+          "name": "ledger",
+          "room": {
+            "x": 1,
+            "y": 1
+          },
+          "hauntLevel": 0,
+          "reason": null,
+          "metrics": {
+            "errorRate": 0,
+            "p95Ms": 23.75,
+            "up": 1,
+            "at": "2026-11-16T12:02:15.004Z"
+          },
+          "openIncident": null,
+          "updatedAt": "2026-11-16T12:00:00.000Z",
+          "hunt": null,
+          "proposal": null
+        }
+      ]
+    }
+  ]
+}

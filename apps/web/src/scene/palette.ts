@@ -54,6 +54,7 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   { name: 'badge (alarm) on pill', fg: 'alarmText', bg: 'pill', kind: 'text' },
   { name: 'badge (fog) on pill', fg: 'fogText', bg: 'pill', kind: 'text' },
   { name: 'badge (ghost) on pill', fg: 'ghost', bg: 'pill', kind: 'text' },
+  { name: 'incident marker (danger) on the chip', fg: 'danger', bg: 'pill', kind: 'text' },
   { name: 'label on dark room', fg: 'text', bg: 'nightDeep', kind: 'text' },
   { name: 'outline on dark room', fg: 'trim', bg: 'nightDeep', kind: 'shape' },
   { name: 'outline on night', fg: 'trim', bg: 'night', kind: 'shape' },

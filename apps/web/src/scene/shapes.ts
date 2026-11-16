@@ -229,58 +229,32 @@ export function starField(width: number, height: number, count = 48, seed = 7): 
   return out;
 }
 
-export interface PlaqueInput {
-  room: Pick<RoomLayout, 'labelAt' | 'incidentAt' | 'incidentBox'>;
-  compact: boolean;
+export interface ChipInput {
+  room: Pick<RoomLayout, 'chipAt'>;
+  /** An incident is open: the "!" marker follows the name. */
   open: boolean;
-  /** Size of the incident mark (the badge font size). */
-  markPx: number;
-  /** Measured text sizes. */
+  /** Measured text sizes: the level mark with the name, and the "!" marker. */
   labelW: number;
   labelH: number;
-  wordW: number;
+  bangW: number;
 }
 
-export interface PlaqueLayout {
-  /** The nameplate behind the name and, when open, the incident mark. */
-  plate: { x: number; y: number; w: number; h: number; r: number };
-  /** "⚠ incident" (long) or the triangle with "!" only (short); null when no incident is open. */
-  mark: null | { form: 'long' | 'short'; tri: Pt; word: Pt | null };
+export interface ChipLayout {
+  /** The pill behind the text, centred on `chipAt`. */
+  pill: { x: number; y: number; w: number; h: number; r: number };
+  /** Left end (y is the middle) of the mark and name, and of the "!" marker (null when no incident is open). */
+  label: Pt;
+  bang: Pt | null;
 }
 
-/**
- * Where the nameplate and the incident mark go. The long form "⚠ incident" is used only when its
- * measured width fits the incident row of the room; otherwise, and always in compact mode, it falls
- * back to the short "!" mark. Pure.
- */
-export function plaqueLayout(p: PlaqueInput): PlaqueLayout {
-  const { room, markPx: s } = p;
-  const labelPill = pillRect(room.labelAt, p.labelW, p.labelH);
-  if (!p.open) return { plate: labelPill, mark: null };
-  const triW = 1.1 * s;
-  const gap = 0.3 * s;
-  if (p.compact) {
-    // Left of the name, against the measured text.
-    const tri = { x: room.labelAt.x - p.labelW / 2 - gap - triW / 2, y: room.labelAt.y };
-    const markPill = pillRect(tri, triW, s);
-    return { plate: union(labelPill, markPill), mark: { form: 'short', tri, word: null } };
-  }
-  const longW = triW + gap + p.wordW;
-  const long = longW <= room.incidentBox.w;
-  const width = long ? longW : triW;
-  const left = room.incidentAt.x - width / 2;
-  const tri = { x: left + triW / 2, y: room.incidentAt.y };
-  const word = long ? { x: left + triW + gap, y: room.incidentAt.y } : null;
-  const markPill = pillRect(room.incidentAt, width, s);
-  return { plate: union(labelPill, markPill), mark: { form: long ? 'long' : 'short', tri, word } };
-}
-
-function union(a: { x: number; y: number; w: number; h: number; r: number }, b: { x: number; y: number; w: number; h: number; r: number }) {
-  const x = Math.min(a.x, b.x);
-  const y = Math.min(a.y, b.y);
-  const w = Math.max(a.x + a.w, b.x + b.w) - x;
-  const h = Math.max(a.y + a.h, b.y + b.h) - y;
-  return { x, y, w, h, r: Math.min(a.r, b.r) };
+/** Where the text of the room's chip goes: the mark and name, then "!" in the danger colour when an incident is open. Pure. */
+export function chipLayout(p: ChipInput): ChipLayout {
+  const { room } = p;
+  const gap = p.open ? 0.35 * p.labelH : 0;
+  const textW = p.labelW + (p.open ? gap + p.bangW : 0);
+  const pill = pillRect(room.chipAt, textW, p.labelH);
+  const left = pill.x + (pill.w - textW) / 2;
+  return { pill, label: { x: left, y: room.chipAt.y }, bang: p.open ? { x: left + p.labelW + gap, y: room.chipAt.y } : null };
 }
 
 /** Rounded pill around a text box, as a polygon (for hit tests and for tests). */

@@ -96,29 +96,36 @@ describe('computeLayout', () => {
     expect(ordersPayments!.points.some((p) => Math.abs(p.x - centreX) < 1e-6)).toBe(true);
   });
 
-  it('puts the nameplate at the front, the incident row above it, the reason behind, and the hunt slot on the back wall', () => {
-    const layout = computeLayout(HOUSE, view(1280, 720));
-    for (const r of layout.rooms) {
-      for (const c of rectCorners(r.huntRect)) expect(insideConvex(r.silhouette, c)).toBeGreaterThanOrEqual(0);
-      // On the wall, not on the floor: the hunt slot sits above the back corner of the floor.
-      expect(r.huntRect.y + r.huntRect.h).toBeLessThanOrEqual(r.center.y);
-      expect(rectGap(r.huntRect, r.labelBox)).toBeGreaterThan(0);
-      expect(rectGap(r.huntRect, r.badgeBox)).toBeGreaterThan(0);
-      expect(rectGap(r.huntRect, r.incidentBox)).toBeGreaterThan(0);
-      expect(rectGap(r.labelBox, r.badgeBox)).toBeGreaterThan(0);
-      expect(rectGap(r.labelBox, r.incidentBox)).toBeGreaterThan(0);
-      expect(rectGap(r.incidentBox, r.badgeBox)).toBeGreaterThan(0);
-      // Front to back: name, incident, reason. The name sits in the front half, near the front corner.
-      const front = r.floor[2].y;
-      expect(r.labelBox.y).toBeGreaterThan(r.center.y);
-      expect(r.labelBox.y + r.labelBox.h).toBeLessThan(front);
-      expect(front - (r.labelBox.y + r.labelBox.h)).toBeLessThan(0.15 * layout.scale);
-      expect(r.incidentBox.y).toBeLessThan(r.labelBox.y);
-      expect(r.badgeBox.y).toBeLessThan(r.incidentBox.y);
-      expect(r.textTop).toBeLessThanOrEqual(r.badgeBox.y);
-      expect(insideDiamond(r.floor, r.labelAt)).toBeGreaterThan(0);
-      expect(r.hitPolygon).toHaveLength(6);
-      expect(r.hit.w).toBeGreaterThan(0);
+  it('puts one chip under each room, in its bottom 20 % and below the front corner, and the hunt slot on the back wall', () => {
+    for (const [w, h] of [[1440, 900], [390, 844]] as const) {
+      const layout = computeLayout(HOUSE, view(w, h));
+      for (const r of layout.rooms) {
+        for (const c of rectCorners(r.huntRect)) expect(insideConvex(r.silhouette, c)).toBeGreaterThanOrEqual(0);
+        // On the wall, not on the floor: the hunt slot sits above the back corner of the floor.
+        expect(r.huntRect.y + r.huntRect.h).toBeLessThanOrEqual(r.center.y);
+        expect(rectGap(r.huntRect, r.chipBox)).toBeGreaterThan(0);
+        // The chip starts in the bottom fifth of the room's screen rect and never above it.
+        const front = r.floor[2].y;
+        const fifth = r.hit.y + 0.8 * r.hit.h;
+        expect(r.chipBox.y).toBeGreaterThanOrEqual(fifth - 1e-6);
+        expect(r.chipBox.y).toBeLessThan(front);
+        // It is as large as the text rule says, in front of the floor edge: its middle is lower than the floor centre.
+        expect(r.chipBox.h).toBeGreaterThanOrEqual(layout.labelPx);
+        expect(r.chipAt.y).toBeGreaterThan(r.center.y);
+        expect(r.chipAt.x).toBeCloseTo(r.center.x);
+        // The part inside the room is at most 20 % of its height; the rest hangs below the front corner.
+        const inside = Math.min(r.chipBox.y + r.chipBox.h, r.hit.y + r.hit.h) - r.chipBox.y;
+        expect(inside).toBeLessThanOrEqual(0.2 * r.hit.h + 1e-6);
+        expect(r.textTop).toBeCloseTo(r.chipBox.y);
+        expect(insideDiamond(r.floor, r.chipAt)).toBeGreaterThan(0);
+        expect(r.hitPolygon).toHaveLength(6);
+        expect(r.hit.w).toBeGreaterThan(0);
+      }
+      for (let i = 0; i < layout.rooms.length; i++) {
+        for (let j = i + 1; j < layout.rooms.length; j++) expect(rectGap(layout.rooms[i]!.chipBox, layout.rooms[j]!.chipBox)).toBeGreaterThan(0);
+      }
+      // The chips hang below the lowest room: the fit left that room inside the canvas.
+      for (const r of layout.rooms) expect(r.chipBox.y + r.chipBox.h).toBeLessThanOrEqual(h + 1e-6);
     }
   });
 

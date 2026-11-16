@@ -53,6 +53,20 @@ test.describe('layout', () => {
         // No cell clips its text: the content of every cell fits its box (the scroll area, not the cell, takes any overflow).
         const clipped = await page.locator('.table-mode td, .table-mode th').evaluateAll((els) => els.filter((el) => el.scrollWidth > el.clientWidth + 1).length);
         expect(clipped).toBe(0);
+        // At 1440 px every Incident cell shows at most two lines (whole words wrap, none is broken).
+        if (width === 1440) {
+          const tall = await page.locator('.table-mode td[data-label="Incident"]').evaluateAll((els) =>
+            els
+              .map((el) => {
+                const style = getComputedStyle(el);
+                const lineHeight = Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.2;
+                const content = el.clientHeight - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom);
+                return { content, lineHeight };
+              })
+              .filter((c) => c.content > 2 * c.lineHeight + 1),
+          );
+          expect(tall).toEqual([]);
+        }
       });
     });
   }

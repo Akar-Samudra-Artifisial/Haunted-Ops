@@ -495,11 +495,13 @@ a {
 @media (min-width: 40.01rem) {
   .table-mode table {
     table-layout: fixed;
-    min-width: 60rem;
+    /* The column widths below add up to 62rem (6.5 + 9.5 + 7 + 5.5 + 4.5 + 3.5 + 10 + 9.5 + 6). */
+    min-width: 62rem;
   }
+  /* Whole words wrap; a word is never broken in the middle. */
   .table-mode th,
   .table-mode td {
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .table-mode thead th:nth-child(1) {
     width: 6.5rem;
@@ -509,7 +511,7 @@ a {
     width: 9.5rem;
   }
   .table-mode thead th:nth-child(3) {
-    width: 8.5rem;
+    width: 7rem;
   }
   .table-mode thead th:nth-child(4) {
     width: 5.5rem;
@@ -521,13 +523,13 @@ a {
     width: 3.5rem;
   }
   .table-mode thead th:nth-child(7) {
-    width: 5.5rem;
+    width: 10rem;
   }
   .table-mode thead th:nth-child(8) {
     width: 9.5rem;
   }
   .table-mode thead th:nth-child(9) {
-    width: 9.5rem;
+    width: 6rem;
   }
 }
 .table-mode th,

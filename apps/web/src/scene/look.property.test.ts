@@ -4,6 +4,7 @@ import { SERVICE_NAMES, type HauntLevel, type ServiceState } from '@haunted-ops/
 import { ROOMS, serviceStateArb } from '../test/arbs.js';
 import { FULL, REDUCED, scene } from '../test/scene-fakes.js';
 import { createAnimator } from './animator.js';
+import { GHOST_BAND, GHOST_MAX, GHOST_SIZE, ghostDistance, ghostMinDistance, ghostSpec } from './particles.js';
 import { toSceneModel } from './model.js';
 
 const RUNS = { numRuns: 100 };
@@ -79,6 +80,7 @@ describe('Property 6: reduced motion freezes every animated offset', () => {
           expect(f.motes.count).toBe(0);
           for (const r of f.rooms) {
             expect(r.pulse).toBe(0);
+            expect(r.mistBreath).toBe(0);
             expect(r.mistX).toBe(0);
             expect(r.mistY).toBe(0);
             expect(r.flicker).toBe(1);
@@ -93,4 +95,48 @@ describe('Property 6: reduced motion freezes every animated offset', () => {
       RUNS,
     );
   }, 30_000);
+});
+
+// Feature: visual-refresh, Property 8
+describe('Property 8: ghosts are separate silhouettes', () => {
+  const check = (seed: number, n: number): void => {
+    const specs = Array.from({ length: n }, (_, i) => ghostSpec(seed, i));
+    for (const g of specs) {
+      // Inside the band of the room, drift included, and so inside the floor.
+      expect(g.u - g.ampU).toBeGreaterThanOrEqual(GHOST_BAND.lo - 0.03);
+      expect(g.u).toBeGreaterThanOrEqual(GHOST_BAND.lo - 1e-9);
+      expect(g.u).toBeLessThanOrEqual(GHOST_BAND.hi + 1e-9);
+      expect(g.v).toBeGreaterThanOrEqual(GHOST_BAND.lo - 1e-9);
+      expect(g.v).toBeLessThanOrEqual(GHOST_BAND.hi + 1e-9);
+      expect(g.u - g.ampU).toBeGreaterThanOrEqual(0);
+      expect(g.u + g.ampU).toBeLessThanOrEqual(1);
+      expect(g.v - g.ampV).toBeGreaterThanOrEqual(0);
+      expect(g.v + g.ampV).toBeLessThanOrEqual(1);
+      expect(g.size).toBeGreaterThanOrEqual(GHOST_SIZE.lo - 1e-9);
+      expect(g.size).toBeLessThanOrEqual(GHOST_SIZE.hi + 1e-9);
+    }
+    // Any two keep 0.6 of the wider ghost's width between their rest positions (in iso units of the floor).
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) expect(ghostDistance(specs[i]!, specs[j]!)).toBeGreaterThanOrEqual(ghostMinDistance(specs[i]!, specs[j]!) - 1e-9);
+    }
+  };
+  it('keeps every pair of ghosts apart and every ghost in the room for any seed and any count up to the cap', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 2 ** 32 - 1 }), fc.integer({ min: 1, max: GHOST_MAX }), check),
+      { numRuns: 200 },
+    );
+  });
+  it('holds for the ghosts the model gives a room at any level', () => {
+    fc.assert(
+      fc.property(serviceStateArb, (s) => {
+        for (const x of sameAtEveryLevel(s)) {
+          const room = toSceneModel([x], NOW, FULL).rooms[0]!;
+          check(room.seed, room.ghostCount);
+          // Per-ghost opacity stays readable where ghosts overlap.
+          expect(room.ghostOpacity).toBeLessThanOrEqual(0.7 + 1e-9);
+        }
+      }),
+      RUNS,
+    );
+  });
 });

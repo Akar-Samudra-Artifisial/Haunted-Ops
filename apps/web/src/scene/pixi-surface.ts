@@ -8,7 +8,7 @@ import type { Pt, RoomLayout, SceneLayout } from './layout.js';
 import type { RoomVisual, SceneModel } from './model.js';
 import { FONT_STACK, PALETTE, PILL_ALPHA, hexToNumber } from './palette.js';
 import { FOG_BANK_MAX, FOG_WISP_MAX, GHOST_MAX, MOTE_MAX } from './particles.js';
-import { CORRIDOR_STYLE, buildHouseArt, buildRoomArt, clockHands, pillRect, plaqueLayout, starField, type RoomArt, type RoomIcon } from './shapes.js';
+import { CORRIDOR_STYLE, buildHouseArt, buildRoomArt, chipLayout, clockHands, starField, type RoomArt, type RoomIcon } from './shapes.js';
 import { FOG_LAYERS, SceneInitError, type Frame, type HuntFrame, type ParticleBuffer, type RoomFrame, type Surface, type SurfaceInit } from './surface.js';
 import { TEXTURE_NAMES, drawTexture, type TextureName } from './textures.js';
 
@@ -20,6 +20,10 @@ function mixColor(a: number, b: number, t: number): number {
   const ch = (shift: number): number => Math.round(((a >> shift) & 255) * (1 - k) + ((b >> shift) & 255) * k);
   return (ch(16) << 16) | (ch(8) << 8) | ch(0);
 }
+
+/** Alpha of the two mist sprites at rest, and the most the slow breath takes away (0.15 at most). */
+const MIST_ALPHA = [0.92, 0.78] as const;
+const MIST_SWING = 0.12;
 
 /** A fixed pool of particles of one texture; unused ones are invisible. */
 class Pool {
@@ -63,7 +67,7 @@ interface RoomView {
   room: RoomLayout;
   art: RoomArt;
   root: Container;
-  /** Nameplate, incident mark, reason badge and hunt slot: above the fog, below the ghosts. */
+  /** The chip and the hunt slot: above the fog, below the ghosts. */
   texts: Container;
   body: Container;
   glow: Sprite;
@@ -79,15 +83,10 @@ interface RoomView {
   outlineAlarm: Graphics;
   outlineEdge: Graphics;
   clock: Graphics;
+  /** The chip: one pill, the level mark with the name, and the "!" marker of an open incident. Made once, updated in place. */
   plate: Graphics;
   label: Text;
-  badge: Text;
-  badgePill: Graphics;
-  /** The incident mark: created once, updated in place. */
-  incident: Container;
-  incidentTri: Graphics;
-  incidentBang: Text;
-  incidentWord: Text;
+  bang: Text;
   hunt: Container;
   huntArt: HuntArt;
 }
@@ -227,7 +226,7 @@ export class PixiSurface implements Surface {
       pools.fog.container,
       pools.motes.container,
       pools.pulses.container,
-      // The ring runs along the silhouette, through the front corner: the nameplate stays on top of it.
+      // The ring runs along the silhouette, through the front corner: the chip stays on top of it.
       layers.ui,
       layers.texts,
       pools.ghosts.container,
@@ -377,7 +376,8 @@ export class PixiSurface implements Surface {
     };
     const mid = { x: (floorLeft.x + floorRight.x) / 2, y: (floorTop.y + floorBottom.y) / 2 };
     const fogLayers = (['noiseA', 'noiseB', 'noiseC'] as const).map((n) => spriteOf(n, half.w * 3, half.h * 3, PALETTE.fog, mid.x, mid.y));
-    const mist = (['noiseC', 'noiseA'] as const).map((n) => spriteOf(n, half.w * 3.4, half.h * 3.6, PALETTE.ecto, mid.x, mid.y - half.h * 0.4));
+    // The mist is a dense cloud: a round puff (centre fully opaque) and a noise cloud over it, not the thin noise layers of the fog.
+    const mist = (['fog', 'noiseA'] as const).map((n) => spriteOf(n, half.w * 3.4, half.h * 3.6, PALETTE.ecto, mid.x, mid.y - half.h * 0.4));
     const outlineAlarm = new Graphics();
     outlineAlarm.poly(sil, true).stroke({ color: num(PALETTE.alarm), width: Math.max(2, layout.scale * 0.07), join: 'round' });
     outlineAlarm.alpha = 0;
@@ -385,29 +385,18 @@ export class PixiSurface implements Surface {
     const style = (size: number, fill: string, weight: '600' | '700' = '600') => ({ fontFamily: FONT_STACK, fontSize: size, fill, fontWeight: weight });
     const plate = new Graphics();
     const label = new Text({ text: room.name, style: style(layout.labelPx, PALETTE.text) });
-    label.anchor.set(0.5);
-    label.position.set(room.labelAt.x, room.labelAt.y);
-    const badgePill = new Graphics();
-    const badge = new Text({ text: '', style: style(layout.badgePx, PALETTE.text) });
-    badge.anchor.set(0.5);
-    badge.position.set(room.badgeAt.x, room.badgeAt.y);
-
-    const incident = new Container();
-    incident.visible = false;
-    const incidentTri = new Graphics();
-    const incidentBang = new Text({ text: '!', style: style(layout.badgePx * 0.8, PALETTE.nightDeep, '700') });
-    incidentBang.anchor.set(0.5);
-    const incidentWord = new Text({ text: 'incident', style: style(layout.badgePx, PALETTE.alarmText) });
-    incidentWord.anchor.set(0, 0.5);
-    incident.addChild(incidentTri, incidentBang, incidentWord);
+    label.anchor.set(0, 0.5);
+    const bang = new Text({ text: '!', style: style(layout.labelPx, PALETTE.danger, '700') });
+    bang.anchor.set(0, 0.5);
+    bang.visible = false;
     // The hunt: the slot with its marks, the Exorcist figure with its lantern, and the seal ring on the floor.
     const huntArt = this.buildHunt(room, layout);
     const hunt = huntArt.container;
 
     root.addChild(body, tint, ...fogLayers, glow, dim, ...mist, outlineTrim, outlineEdge, outlineAlarm, huntArt.seal, huntArt.sweep);
     const texts = new Container();
-    texts.addChild(badgePill, badge, plate, label, incident, hunt);
-    return { room, art, root, texts, body, glow, dim, tint, fogLayers, mist, half, outlineTrim, outlineEdge, outlineAlarm, clock, plate, label, badge, badgePill, incident, incidentTri, incidentBang, incidentWord, hunt, huntArt };
+    texts.addChild(plate, label, bang, hunt);
+    return { room, art, root, texts, body, glow, dim, tint, fogLayers, mist, half, outlineTrim, outlineEdge, outlineAlarm, clock, plate, label, bang, hunt, huntArt };
   }
 
   /** Draws the small icon of a service on the back wall. */
@@ -534,53 +523,24 @@ export class PixiSurface implements Surface {
   }
 
   private paintTexts(view: RoomView, v: RoomVisual, layout: SceneLayout): void {
-    const { room } = view;
-    view.label.text = v.label;
-    const text = layout.compact ? v.badgeShort : v.badge;
-    view.badge.text = text;
-    view.badge.style.fill = v.badgeKind === 'error_rate' ? PALETTE.alarmText : v.badgeKind === 'p95' ? PALETTE.fogText : PALETTE.text;
-    view.badge.visible = text !== '';
-    view.badgePill.visible = text !== '';
-    if (text !== '') this.pill(view.badgePill, pillRect(room.badgeAt, view.badge.width, view.badge.height));
+    view.label.text = `${v.levelMark} ${v.label}`;
+    view.bang.visible = v.incident.open;
 
     view.clock.clear();
     for (const hand of clockHands(v.clock, view.art.clock.center, view.art.clock.radius)) {
       view.clock.poly(flat(hand.points), false).stroke({ color: num(hand.color), width: hand.width, cap: 'round' });
     }
 
-    // The nameplate, and the incident mark on it: "⚠ incident" when it fits the room, else "!".
-    const s = layout.badgePx;
-    const plaque = plaqueLayout({
-      room,
-      compact: layout.compact,
-      open: v.incident.open,
-      markPx: s,
-      labelW: view.label.width,
-      labelH: view.label.height,
-      wordW: view.incidentWord.width,
-    });
+    // One chip under the room: the level mark and the name, and "!" in the danger colour while an incident is open.
+    const chip = chipLayout({ room: view.room, open: v.incident.open, labelW: view.label.width, labelH: view.label.height, bangW: view.bang.width });
     view.plate.clear();
-    const p = plaque.plate;
+    const p = chip.pill;
     view.plate
       .roundRect(p.x, p.y, p.w, p.h, p.r)
       .fill({ color: num(PALETTE.pill), alpha: PILL_ALPHA })
-      .stroke({ color: num(PALETTE.lampWarm), alpha: 0.75, width: Math.max(1, 0.03 * layout.scale) });
-
-    const mark = plaque.mark;
-    view.incident.visible = mark !== null;
-    view.incidentTri.clear();
-    if (mark) {
-      const { x, y } = mark.tri;
-      view.incidentTri.poly([x, y - s * 0.55, x + s * 0.55, y + s * 0.45, x - s * 0.55, y + s * 0.45], true).fill({ color: num(PALETTE.alarm) });
-      view.incidentBang.position.set(x, y + s * 0.12);
-      view.incidentWord.visible = mark.word !== null;
-      if (mark.word) view.incidentWord.position.set(mark.word.x, mark.word.y);
-    }
-  }
-
-  private pill(g: Graphics, r: { x: number; y: number; w: number; h: number; r: number }): void {
-    g.clear();
-    g.roundRect(r.x, r.y, r.w, r.h, r.r).fill({ color: num(PALETTE.pill), alpha: PILL_ALPHA });
+      .stroke({ color: num(v.incident.open ? PALETTE.danger : PALETTE.lampWarm), alpha: 0.75, width: Math.max(1, 0.03 * layout.scale) });
+    view.label.position.set(chip.label.x, chip.label.y);
+    if (chip.bang) view.bang.position.set(chip.bang.x, chip.bang.y);
   }
 
   draw(frame: Frame): void {
@@ -631,12 +591,11 @@ export class PixiSurface implements Surface {
       sp.alpha = layer.alpha;
       sp.position.set(view.room.center.x + layer.x * view.half.w * 2, view.room.center.y + layer.y * view.half.h * 2);
     }
-    view.mist[0]!.alpha = 0.5 * rf.mist;
-    view.mist[1]!.alpha = 0.35 * rf.mist;
+    // Dense and slow: the swing of the breath is at most MIST_SWING. Low quality keeps one layer.
+    view.mist[0]!.alpha = (MIST_ALPHA[0] - MIST_SWING * rf.mistBreath) * rf.mist;
+    view.mist[1]!.alpha = this.quality === 'low' ? 0 : (MIST_ALPHA[1] - MIST_SWING * rf.mistBreath) * rf.mist;
     view.mist[0]!.position.set(view.room.center.x + rf.mistX * view.half.w * 2, view.room.center.y - view.half.h * 0.4 + rf.mistY * view.half.h * 2);
     view.mist[1]!.position.set(view.room.center.x - rf.mistX * view.half.w * 2, view.room.center.y - view.half.h * 0.4 - rf.mistY * view.half.h * 2);
-    view.badge.alpha = rf.badgeAlpha;
-    view.badgePill.alpha = rf.badgeAlpha;
     this.drawHunt(view, rf.hunt, this.layout?.scale ?? 1);
   }
 
@@ -667,7 +626,7 @@ export class PixiSurface implements Surface {
     a.seal.alpha = h.figure;
 
     // The fix: glowing at the end of the Hunt slot while drafting (the figure has usually left by then), else
-    // pinned on the wall above its start. Both spots stay clear of the badge and the nameplate.
+    // pinned on the wall above its start. Both spots stay clear of the chip.
     const p = h.proposal;
     a.scroll.visible = p.scroll > 0.003;
     if (a.scroll.visible) {

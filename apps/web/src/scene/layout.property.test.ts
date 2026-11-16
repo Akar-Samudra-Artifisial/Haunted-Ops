@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { SERVICE_NAMES, type ServiceName } from '@haunted-ops/shared';
-import { bounds, insideConvex, insideDiamond, rectCorners, rectGap, rectInside, separation } from '../test/geometry.js';
+import { insideConvex, insideDiamond, rectCorners, rectGap, rectInside, separation } from '../test/geometry.js';
 import { COMPACT_BELOW, computeLayout, mountHeight, type LayoutRoom, type Pt, type RoomLayout } from './layout.js';
 import { corridorLight, toSceneModel } from './model.js';
 import { isNavKey, nextRoom, tabOrder, type NavKey } from './selection.js';
@@ -45,14 +45,9 @@ describe('Property 7: the layout fits and never overlaps', () => {
             expect(p.y).toBeGreaterThanOrEqual(-eps);
             expect(p.y).toBeLessThanOrEqual(viewport.height + eps);
           }
-          // The hunt slot is inside the room (on its left back wall) and clear of every text box.
+          // The hunt slot is inside the room (on its left back wall) and clear of the chip.
           for (const c of rectCorners(r.huntRect)) expect(insideConvex(r.silhouette, c)).toBeGreaterThanOrEqual(-eps);
-          expect(rectGap(r.huntRect, r.labelBox)).toBeGreaterThan(0);
-          expect(rectGap(r.huntRect, r.badgeBox)).toBeGreaterThan(0);
-          expect(rectGap(r.huntRect, r.incidentBox)).toBeGreaterThan(0);
-          expect(rectGap(r.labelBox, r.badgeBox)).toBeGreaterThan(0);
-          expect(rectGap(r.incidentBox, r.badgeBox)).toBeGreaterThan(0);
-          if (!layout.compact) expect(rectGap(r.labelBox, r.incidentBox)).toBeGreaterThan(0);
+          expect(rectGap(r.huntRect, r.chipBox)).toBeGreaterThan(0);
         }
         for (let i = 0; i < layout.rooms.length; i++) {
           for (let j = i + 1; j < layout.rooms.length; j++) {
@@ -81,8 +76,8 @@ const HOUSE: LayoutRoom[] = [
 ];
 
 // Feature: scene-engine, Property 15
-describe('Property 15: the nameplate and the badges stay inside their room', () => {
-  it('keeps label, incident and reason boxes inside the screen bounds of the floor, clear of other rooms, for every gallery size', () => {
+describe('Property 15: the chip stays under its room', () => {
+  it('keeps the chip of every room in the band under it, clear of the hunt slot, for every gallery size', () => {
     // The gallery range: the four-room house from 360 to 3840 px wide, at the mount height or any height.
     const galleryArb = fc
       .record({ width: fc.integer({ min: 360, max: 3840 }), windowHeight: fc.integer({ min: 360, max: 2160 }), free: fc.boolean(), height: fc.integer({ min: 360, max: 2160 }), dpr: fc.constantFrom(1, 2) })
@@ -94,15 +89,44 @@ describe('Property 15: the nameplate and the badges stay inside their room', () 
       fc.property(galleryArb, (viewport) => {
         const layout = computeLayout(HOUSE, viewport);
         for (const r of layout.rooms) {
-          const floorBounds = bounds(r.floor);
-          for (const box of [r.labelBox, r.incidentBox, r.badgeBox]) {
-            expect(rectInside(box, floorBounds)).toBe(true);
-            for (const other of layout.rooms) {
-              if (other !== r) expect(separation(rectCorners(box), other.silhouette)).toBeGreaterThan(0);
-            }
+          expect(rectInside(r.chipBox, r.chipBand)).toBe(true);
+          expect(rectGap(r.huntRect, r.chipBox)).toBeGreaterThan(0);
+          // The chip is centred under its room.
+          expect(r.chipBox.x + r.chipBox.w / 2).toBeCloseTo(r.center.x, 3);
+        }
+      }),
+      RUNS,
+    );
+  }, 30_000);
+});
+
+// Feature: visual-refresh, Property 7
+describe('Property 7: one chip per room, in the band under it, and no two chips overlap', () => {
+  it('holds for any room set of the 3 by 3 grid and any viewport width from 320 to 1920', () => {
+    const aspect = computeLayout(HOUSE, { width: 1000, height: 1000, dpr: 1 }).aspect;
+    const arb = fc.record({ rooms: fewRooms, width: fc.integer({ min: 320, max: 1920 }), windowHeight: fc.integer({ min: 560, max: 1200 }) });
+    fc.assert(
+      fc.property(arb, ({ rooms, width, windowHeight }) => {
+        const layout = computeLayout(rooms, { width, height: mountHeight(width, aspect, windowHeight), dpr: 1 });
+        const eps = 1e-6;
+        expect(layout.rooms).toHaveLength(rooms.length);
+        // Under 640 px the chip text is 14 px or more; from 640 px the 11 px rule stays.
+        expect(layout.labelPx).toBeGreaterThanOrEqual(width < 640 ? 14 : 11);
+        for (const r of layout.rooms) {
+          const band = { x: r.center.x - 3.2 * layout.scale, w: 6.4 * layout.scale, y: r.hit.y + 0.8 * r.hit.h, h: 0 };
+          // Inside the column of its room, and starting in the bottom 20 % of the room's screen rect.
+          expect(r.chipBox.x).toBeGreaterThanOrEqual(band.x - eps);
+          expect(r.chipBox.x + r.chipBox.w).toBeLessThanOrEqual(band.x + band.w + eps);
+          expect(r.chipBox.y).toBeGreaterThanOrEqual(band.y - eps);
+          // It covers at most the bottom 20 % of the room: the rest hangs below the front corner.
+          const covered = Math.max(0, Math.min(r.chipBox.y + r.chipBox.h, r.hit.y + r.hit.h) - r.chipBox.y);
+          expect(covered).toBeLessThanOrEqual(0.2 * r.hit.h + eps);
+          expect(rectInside(r.chipBox, r.chipBand)).toBe(true);
+        }
+        for (let i = 0; i < layout.rooms.length; i++) {
+          for (let j = i + 1; j < layout.rooms.length; j++) {
+            expect(rectGap(layout.rooms[i]!.chipBox, layout.rooms[j]!.chipBox)).toBeGreaterThan(0);
           }
-          // The incident row is never wider than the room.
-          expect(r.incidentBox.w).toBeLessThanOrEqual(floorBounds.w);
         }
       }),
       RUNS,

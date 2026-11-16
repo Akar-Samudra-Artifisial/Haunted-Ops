@@ -125,12 +125,52 @@ Make the page around the Scene modern and easy to read, in the look "a lantern i
 - [x] 17. Steering and records of part 2
   - [x] 17.1 Update `.kiro/steering/scene-rendering.md` with the level to look table and the new layers; add one `2026-11-17 | visual-refresh/N | …` line per finished task to `docs/KIRO_USAGE.md` (the file ends with a newline); run the spec validator
     - _Requirements: 17.4, 17.5_
+- [x] 18. One chip per room
+  - [x] 18.1 Layout: replace the label, badge and incident boxes with `chipAt`, `chipBox`, `chipBand` and `chipReserve` (one chip under the room, top in the bottom 20 %, the rest below the front corner, the fit keeps the overhang inside the canvas); the Exorcist figure stands above the chip
+    - _Requirements: 18.3, 18.4, 18.6_
+  - [x] 18.2 Drawing: `chipLayout` in `shapes.ts` in place of `plaqueLayout`; `pixi-surface.ts` draws one pill with the level mark and name and a `!` in `--danger` while an incident is open, and no badge or incident word; `levelMark` in the model and the contrast pair of the `!`
+    - _Requirements: 18.1, 18.2_
+  - [x]* 18.3 Property test: one chip per room, in the band under it, no two overlap, for any room set and width from 320 to 1920 (Property 7)
+    - _Requirements: 18.1, 18.3, 18.4, 18.5_
+  - [x] 18.4 Update `layout.test.ts`, `layout.property.test.ts` (rectGap and Property 15), `art.test.ts`, `hunt-scene.test.ts` and `animator.test.ts` to the single chip
+    - _Requirements: 18.5, 18.6, 22.2_
+- [x] 19. Ghosts as separate silhouettes
+  - [x] 19.1 `particles.ts`: ghost sites on a hex lattice inside the band 0.25 to 0.8, seeded order, size 0.5 to 0.8, small drift, `ghostMinDistance` and `ghostDistance`; remove `GHOST_BACK_LIMIT`
+    - _Requirements: 19.1, 19.3_
+  - [x] 19.2 Ghost alpha at most 0.7 in the model, and a ghost texture with a cold body, a dark outline and deeper eye holes
+    - _Requirements: 19.3, 19.4, 19.5_
+  - [x]* 19.3 Property test: ghosts keep their distance and stay in the room for any seed and level (Property 8)
+    - _Requirements: 19.1, 19.2, 19.3_
+  - [x] 19.4 Update `model.test.ts`, `model.property.test.ts` and `animator.test.ts` to the new opacity and band
+    - _Requirements: 22.2_
+- [x] 20. The hunt mist can be seen
+  - [x] 20.1 Write the failing test first in `pixi-surface.test.ts` (mist visible, ecto tint, alpha 0.6 or more, above the floor and the glow, at least 60 % of the room width) and run it: it fails on alpha 0.5
+    - _Requirements: 20.1, 20.2_
+  - [x] 20.2 Fix the cause: a dense `fog` puff for the first mist sprite, alphas 0.92 and 0.78, a slow breath of 4 s (`mistBreath`) with a swing of 0.12, Low quality with one layer; write the cause in the design
+    - _Requirements: 20.2, 20.3, 20.4, 20.5_
+  - [x] 20.3 Tests of the breath (cycle, swing, floor of 0.6), Reduced motion (still and visible), Low quality (one layer) and `mistBreath` zero in Property 6
+    - _Requirements: 20.3, 20.4, 22.2_
+- [x] 21. The Incident column of the table
+  - [x] 21.1 `styles.css`: widths 6.5, 9.5, 7, 5.5, 4.5, 3.5, 10, 9.5, 6 rem, `min-width: 62rem` with the total in a comment, `overflow-wrap: break-word`
+    - _Requirements: 21.1, 21.2, 21.4_
+  - [x] 21.2 `layout.spec.ts`: at 1440×900 and demo second 20, every Incident cell is at most two lines high; the stable-width and no-clip tests keep passing at 1440 and 1024
+    - _Requirements: 21.3_
+- [x] 22. Budget
+  - [x] 22.1 Build the web app, run `node scripts/check-scene-bundle.mjs` once and write the measured numbers under "Budget record, part 3" in the design; add no import to `apps/web/src/scene/hooks.ts`
+    - _Requirements: 22.1_
+- [x] 23. Checks of part 3
+  - [x] 23.1 Run `pnpm typecheck`, `pnpm lint`, only the test files created or changed, `e2e/layout.spec.ts` once and the spec validator (the full suite and the whole end-to-end run are the orchestrator's)
+    - _Requirements: 22.3_
+- [x] 24. Steering and records of part 3
+  - [x] 24.1 Update `.kiro/steering/scene-rendering.md` with the chip rule and the ghost spacing rule (two lines); add one `2026-11-17 | visual-refresh/N | …` line per finished task to `docs/KIRO_USAGE.md` (the file ends with a newline)
+    - _Requirements: 22.4, 22.5_
 ## Notes
 - Scope: tasks 1 to 11 are part 1 of the refresh; `apps/web/src/scene/` changes there only in `palette.ts` (`bg`, and `focus` if it changed). Tasks 12 to 17 are part 2: the PixiJS scene (rooms, ghosts, fog, sky) and four fixes of the page. There is no zoom in the Scene; the camera of the parallax and of the roof is the focused room.
 - Entry chunk before this spec: 90.4 of 92 KiB gzip (`check-scene-bundle.mjs`; the 92 KiB comes from `accessible-mode/design.md`). The budget may rise to 94 KiB at most, only on a measured need. Replay chunk: 5665 bytes, budget 6800 bytes.
 - `HuntSummary.stepCount` is the number of steps done; there is no total, so the Web never shows "x of y".
 - Card mode keeps the table semantics by writing the roles as attributes, because `display: block` on table elements can remove the table role in some engines.
 - Checks while building: `pnpm typecheck`, `pnpm lint`, the touched test files, `pnpm --filter @haunted-ops/web build`, `node scripts/check-scene-bundle.mjs`, the spec validator. Not run: the full suite, `pnpm test` three times, `test:scripts`, `check:build`, `db:drift`, the whole Playwright run.
+- Part 3 (tasks 18 to 24): the chip, the ghosts, the hunt mist and the Incident column, written in a third prompt. The mist test is written first and fails on alpha 0.5 before the drawing is fixed. Checks while building: `pnpm typecheck`, `pnpm lint`, the created or changed test files, `e2e/layout.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator.
 - Out of scope: spatial audio, any API change, any new dependency, a font file, CSS-in-JS.
 ## Task Dependency Graph
 ```mermaid
@@ -155,6 +195,16 @@ graph TD
   T14 --> T15
   T15 --> T16[16 Checks of part 2]
   T16 --> T17[17 Steering and records of part 2]
+  T17 --> T18[18 One chip per room]
+  T17 --> T19[19 Ghosts as separate silhouettes]
+  T17 --> T20[20 The hunt mist can be seen]
+  T17 --> T21[21 The Incident column of the table]
+  T18 --> T22[22 Budget]
+  T19 --> T22
+  T20 --> T22
+  T21 --> T22
+  T22 --> T23[23 Checks of part 3]
+  T23 --> T24[24 Steering and records of part 3]
 ```
 ```json
 {
@@ -176,7 +226,13 @@ graph TD
     { "id": 14, "tasks": ["13.7", "13.8", "13.9"] },
     { "id": 15, "tasks": ["15.1"] },
     { "id": 16, "tasks": ["16.1"] },
-    { "id": 17, "tasks": ["17.1"] }
+    { "id": 17, "tasks": ["17.1"] },
+    { "id": 18, "tasks": ["18.1", "19.1", "20.1", "21.1"] },
+    { "id": 19, "tasks": ["18.2", "19.2", "20.2", "21.2"] },
+    { "id": 20, "tasks": ["18.3", "18.4", "19.3", "19.4", "20.3"] },
+    { "id": 21, "tasks": ["22.1"] },
+    { "id": 22, "tasks": ["23.1"] },
+    { "id": 23, "tasks": ["24.1"] }
   ]
 }
 ```

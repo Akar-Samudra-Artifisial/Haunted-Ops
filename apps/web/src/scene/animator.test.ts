@@ -64,7 +64,7 @@ describe('Animator transitions', () => {
     expect(early.ghosts.count).toBe(12);
     expect(early.ghosts.alpha[0]!).toBeGreaterThan(early.ghosts.alpha[11]!);
     const settled = run(a, 4000, 400);
-    expect(settled.frame.ghosts.alpha[11]!).toBeGreaterThan(0.8);
+    expect(settled.frame.ghosts.alpha[11]!).toBeGreaterThan(0.65);
     expect(settled.frame.ghosts.alpha[0]!).toBeCloseTo(settled.frame.ghosts.alpha[11]!, 2);
     // Slots leave in reverse order: the last goes first.
     a.setModel(calm.model);
@@ -129,7 +129,7 @@ describe('Animator transitions', () => {
     [360, 300],
     [1280, 504],
     [3840, 2160],
-  ])('keeps the ghost feet above every text pill of their room at %i by %i', (width, height) => {
+  ])('keeps the ghost feet above the chip of their room at %i by %i', (width, height) => {
     for (const name of ['gate', 'orders', 'payments', 'ledger'] as const) {
       const services = house({ [name]: { hauntLevel: 3, metrics: metrics(0.5, 100, 1) } });
       const { model, layout } = scene(services, FULL, { width, height, dpr: 1 });
@@ -143,7 +143,7 @@ describe('Animator transitions', () => {
         for (let i = 0; i < f.ghosts.count; i++) {
           // The ghost sprite is anchored at its feet: everything of it is above this line.
           expect(f.ghosts.y[i]!).toBeLessThanOrEqual(room.textTop);
-          expect(f.ghosts.y[i]!).toBeLessThan(room.labelBox.y);
+          expect(f.ghosts.y[i]!).toBeLessThan(room.chipBox.y);
         }
       }
     }

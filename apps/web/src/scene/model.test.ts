@@ -125,10 +125,10 @@ describe('toSceneModel', () => {
     expect(at(0).ghostCount).toBe(0);
     expect(at(0).ghostOpacity).toBe(0);
     expect(at(0.25).ghostCount).toBe(GHOST_MAX / 2);
-    expect(at(0.25).ghostOpacity).toBeCloseTo(0.25 + 0.6 * 0.5);
+    expect(at(0.25).ghostOpacity).toBeCloseTo(0.25 + 0.45 * 0.5);
     expect(at(0.5).ghostCount).toBe(GHOST_MAX);
     expect(at(1).ghostCount).toBe(GHOST_MAX);
-    expect(at(1).ghostOpacity).toBeCloseTo(0.85);
+    expect(at(1).ghostOpacity).toBeCloseTo(0.7);
   });
 
   it('scales fog with the p95, from 0 at 200 ms to full at 3000 ms', () => {

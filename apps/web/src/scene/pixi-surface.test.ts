@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { FULL, NOW, house, scene } from '../test/scene-fakes.js';
+import { FULL, NOW, REDUCED, house, scene } from '../test/scene-fakes.js';
 import { huntOf } from '../test/hunt-arbs.js';
 import { createAnimator } from './animator.js';
 import { SceneInitError } from './surface.js';
@@ -12,7 +12,7 @@ import type * as TexturesModule from './textures.js';
  */
 const pixi = vi.hoisted(() => {
   const state = {
-    apps: [] as Array<{ destroy: Mock; render: Mock; canvas: HTMLCanvasElement }>,
+    apps: [] as Array<{ destroy: Mock; render: Mock; canvas: HTMLCanvasElement; stage: unknown }>,
     texts: 0,
     created: { graphics: 0, sprites: 0 },
     textures: 0,
@@ -262,6 +262,100 @@ describe('PixiSurface', () => {
     expect(frame.rooms.find((r) => r.name === 'payments')?.hunt.figure).toBeCloseTo(1, 3);
     expect(frame.rooms.find((r) => r.name === 'gate')?.hunt.figure).toBe(0);
     surface.destroy();
+  });
+
+  describe('the mist of a Hunt (Feature: visual-refresh, part 3, C)', () => {
+    type Node = { children: Node[]; alpha: number; tint?: number; width?: number; blendMode?: string; visible: boolean; position: { x: number; y: number } };
+    const ECTO = 0x9bf2c4;
+
+    function find(node: Node, test: (n: Node) => boolean, out: Node[] = []): Node[] {
+      if (test(node)) out.push(node);
+      for (const c of node.children) find(c, test, out);
+      return out;
+    }
+
+    async function hunted(options = FULL, quality: 'full' | 'low' = 'full') {
+      const host = document.createElement('div');
+      const running = huntOf({ status: 'running', startedAt: NOW - 20_000, stepCount: 3 });
+      const s = scene(house({ payments: { hauntLevel: 2, reason: { kind: 'error_rate', value: 0.4 }, metrics, openIncident: incident, hunt: running } }), options);
+      const surface = new PixiSurface();
+      await surface.init({ host, width: s.layout.width, height: s.layout.height, dpr: 1, quality });
+      surface.applyLayout(s.layout);
+      surface.applyModel(s.model);
+      const a = createAnimator();
+      a.setLayout(s.layout);
+      a.setModel(s.model);
+      const stage = pixi.state.apps[pixi.state.apps.length - 1]!.stage as unknown as Node;
+      const room = s.layout.rooms.find((r) => r.name === 'payments')!;
+      const mine = (): Node[] => find(stage, (n) => n.tint === ECTO && Math.hypot(n.position.x - room.center.x, n.position.y - room.center.y) < 1.2 * s.layout.scale);
+      let t = 0;
+      const run = (ms: number): void => {
+        for (let e = 0; e < ms; e += 16) {
+          t += 16;
+          surface.draw(a.step(16, t));
+        }
+      };
+      return { s, surface, room, stage, mine, run };
+    }
+
+    it('shows the green mist over the room that is hunted: visible, ecto, above the floor and the glow, wide, clear of the other rooms', async () => {
+      const { s, surface, room, stage, mine, run } = await hunted();
+      run(4000);
+      const mist = mine();
+      expect(mist.length).toBeGreaterThan(0);
+      for (const sp of mist) {
+        expect(sp.visible).toBe(true);
+        expect(sp.tint).toBe(ECTO);
+        expect(sp.width).toBeGreaterThanOrEqual(0.6 * room.hit.w);
+      }
+      // The first mist sprite is dense enough to read against the danger glow: alpha of 0.6 or more.
+      expect(Math.max(...mist.map((sp) => sp.alpha))).toBeGreaterThanOrEqual(0.6);
+      // Drawn above the floor (the body) and the lamp glow (a sprite in additive blend) of the same room, in the rooms layer.
+      const root = find(stage, (n) => n.children.includes(mist[0]!))[0]!;
+      const glowAt = root.children.findIndex((c) => c.blendMode === 'add');
+      expect(glowAt).toBeGreaterThan(0);
+      for (const sp of mist) expect(root.children.indexOf(sp)).toBeGreaterThan(glowAt);
+      // Below the chip layer: the texts container comes after the rooms container on the stage.
+      const roomsLayer = find(stage, (n) => n.children.includes(root))[0]!;
+      const order = stage.children.indexOf(roomsLayer);
+      expect(order).toBeGreaterThanOrEqual(0);
+      // The other rooms have no visible mist.
+      const others = find(stage, (n) => n.tint === ECTO && !mist.includes(n) && n.alpha > 0.01 && n.visible && (n.width ?? 0) > 100);
+      expect(others.filter((n) => Math.hypot(n.position.x - room.center.x, n.position.y - room.center.y) >= 1.2 * s.layout.scale && n.blendMode !== 'add').length).toBe(0);
+      surface.destroy();
+    });
+
+    it('breathes slowly: a cycle of 2 s or more, a swing of 0.15 or less, and never below 0.6', async () => {
+      const { surface, mine, run } = await hunted();
+      run(3000);
+      const samples: number[] = [];
+      for (let i = 0; i < 400; i++) {
+        run(16);
+        samples.push(Math.max(...mine().map((sp) => sp.alpha)));
+      }
+      expect(Math.min(...samples)).toBeGreaterThanOrEqual(0.6);
+      expect(Math.max(...samples) - Math.min(...samples)).toBeLessThanOrEqual(0.15);
+      // One rise and one fall take at least 2 s: no sample-to-sample step is larger than the swing over 1 s allows.
+      let maxStep = 0;
+      for (let i = 1; i < samples.length; i++) maxStep = Math.max(maxStep, Math.abs(samples[i]! - samples[i - 1]!));
+      expect(maxStep).toBeLessThanOrEqual(0.15 * ((2 * Math.PI * 16) / 2000));
+      surface.destroy();
+    });
+
+    it('stands still but stays visible under Reduced motion, and stays in Low quality', async () => {
+      const still = await hunted(REDUCED);
+      still.run(4000);
+      const a = still.mine().map((sp) => [sp.alpha, sp.position.x, sp.position.y]);
+      still.run(1500);
+      expect(still.mine().map((sp) => [sp.alpha, sp.position.x, sp.position.y])).toEqual(a);
+      expect(Math.max(...still.mine().map((sp) => sp.alpha))).toBeGreaterThanOrEqual(0.6);
+      still.surface.destroy();
+      const low = await hunted({ reducedMotion: false, quality: 'low' }, 'low');
+      low.run(4000);
+      expect(Math.max(...low.mine().map((sp) => sp.alpha))).toBeGreaterThanOrEqual(0.6);
+      expect(low.mine().filter((sp) => sp.alpha > 0.01)).toHaveLength(1);
+      low.surface.destroy();
+    });
   });
 
   it('reuses the incident mark texts on every model change', async () => {

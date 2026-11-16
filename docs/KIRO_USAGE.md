@@ -143,3 +143,10 @@ One line per finished task: date | spec/task | what Kiro did.
 2026-11-17 | visual-refresh/15 | budget measured: entry 92.7 of 94 KiB (CSS of the fixes), scene chunk 161.0 of 180, scene file 99.7 of 119, replay 6579 of 6800 bytes, hooks.ts untouched
 2026-11-17 | visual-refresh/16 | typecheck, lint and the created or changed test files pass; no full suite, no e2e run
 2026-11-17 | visual-refresh/17 | scene-rendering steering with the level to look table and the layers, usage lines, spec validator
+2026-11-17 | visual-refresh/18 | one chip per room: layout with chipAt, chipBox, chipBand and a bottom reserve, chipLayout and one pill with level mark, name and a danger "!", no badge or incident word; Property 7 tested; layout, art, hunt-scene and animator tests moved to the chip
+2026-11-17 | visual-refresh/19 | ghosts as separate silhouettes: seeded hex-lattice sites inside 0.25 to 0.8, size 0.5 to 0.8, alpha at most 0.7, cold body with dark outline and deeper eyes; Property 8 tested; model tests moved to the new opacity and band
+2026-11-17 | visual-refresh/20 | hunt mist: test written first and failing on alpha 0.5 (thin noise texture), fixed with a dense puff, alphas 0.92 and 0.78, a 4 s breath of 0.12, one layer in Low quality, still under Reduced motion
+2026-11-17 | visual-refresh/21 | table Incident column 10 rem, widths summing to 62 rem, whole-word wrapping, layout.spec asserts Incident cells of at most two lines at 1440 px
+2026-11-17 | visual-refresh/22 | budget measured: entry 92.8 of 94 KiB, scene chunk 160.6 of 180, scene file 99.3 of 119, replay 6579 of 6800 bytes, hooks.ts untouched
+2026-11-17 | visual-refresh/23 | typecheck, lint, the created or changed test files, e2e/layout.spec.ts once and the spec validator pass; no full suite
+2026-11-17 | visual-refresh/24 | scene-rendering steering with the chip rule and the ghost spacing rule, usage lines, spec validator

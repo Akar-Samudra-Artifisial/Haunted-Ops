@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { insideDiamond } from '../test/geometry.js';
 import { computeLayout } from './layout.js';
 import { PALETTE } from './palette.js';
-import { CORRIDOR_STYLE, buildHouseArt, buildRoomArt, clockHands, pillRect, plaqueLayout, starField, wallHeightPx } from './shapes.js';
+import { CORRIDOR_STYLE, buildHouseArt, buildRoomArt, clockHands, chipLayout, pillRect, starField, wallHeightPx } from './shapes.js';
 import { TEXTURE_NAMES, TEXTURE_RECIPES, drawTexture } from './textures.js';
 import type { LayoutRoom } from './layout.js';
 
@@ -48,11 +48,11 @@ describe('shapes', () => {
     expect(wallHeightPx(layout.scale)).toBeCloseTo(layout.scale);
   });
 
-  it('puts the rug on the floor, and the nameplate at the front, clear of the clock and the lamp', () => {
+  it('puts the rug on the floor, and the chip at the front, clear of the clock and the lamp', () => {
     for (const room of layout.rooms) {
       const art = buildRoomArt(room, layout.scale);
       for (const p of art.polys[3]!.points) expect(insideDiamond(room.floor, p)).toBeGreaterThan(0);
-      const label = room.labelBox;
+      const label = room.chipBox;
       const clock = art.clock;
       expect(clock.center.y + clock.radius).toBeLessThan(label.y);
       expect(art.lampTop.y).toBeLessThan(label.y);
@@ -106,33 +106,24 @@ describe('shapes', () => {
     expect(CORRIDOR_STYLE.pulseAlpha).toBeGreaterThan(CORRIDOR_STYLE.idleAlpha);
   });
 
-  it('puts the incident mark on the nameplate and falls back to "!" when the measured text is wider than the room allows', () => {
+  it('puts the "!" marker after the name inside one chip, only when an incident is open', () => {
     const room = layout.rooms[2]!;
-    const s = layout.badgePx;
-    const base = { room, compact: false, markPx: s, labelW: 80, labelH: layout.labelPx };
-    const closed = plaqueLayout({ ...base, open: false, wordW: 50 });
-    expect(closed.mark).toBeNull();
-    const long = plaqueLayout({ ...base, open: true, wordW: 50 });
-    expect(long.mark?.form).toBe('long');
-    expect(long.mark?.word).not.toBeNull();
-    // Above the name, inside the same plate.
-    expect(long.mark!.tri.y).toBeLessThan(room.labelAt.y);
-    expect(long.plate.y).toBeLessThan(closed.plate.y);
-    const tooWide = plaqueLayout({ ...base, open: true, wordW: room.incidentBox.w });
-    expect(tooWide.mark?.form).toBe('short');
-    expect(tooWide.mark?.word).toBeNull();
-    const compact = plaqueLayout({ ...base, compact: true, open: true, wordW: 1 });
-    expect(compact.mark?.form).toBe('short');
-    expect(compact.mark!.tri.x).toBeLessThan(room.labelAt.x - 40);
-    expect(compact.mark!.tri.y).toBe(room.labelAt.y);
-    // Whatever the form, the plate covers the name and the mark.
-    for (const p of [long, tooWide, compact]) {
-      expect(p.plate.x).toBeLessThanOrEqual(room.labelAt.x - 40);
-      expect(p.plate.x + p.plate.w).toBeGreaterThanOrEqual(room.labelAt.x + 40);
-      expect(p.plate.x).toBeLessThanOrEqual(p.mark!.tri.x);
-    }
+    const base = { room, labelW: 80, labelH: layout.labelPx, bangW: 6 };
+    const closed = chipLayout({ ...base, open: false });
+    expect(closed.bang).toBeNull();
+    const open = chipLayout({ ...base, open: true });
+    expect(open.bang).not.toBeNull();
+    // Same height and centre, wider by the marker; the marker is right of the name and on its line.
+    expect(open.pill.h).toBeCloseTo(closed.pill.h);
+    expect(open.pill.y).toBeCloseTo(closed.pill.y);
+    expect(open.pill.w).toBeGreaterThan(closed.pill.w);
+    expect(open.pill.x + open.pill.w / 2).toBeCloseTo(room.chipAt.x);
+    expect(open.bang!.x).toBeGreaterThan(open.label.x + 80);
+    expect(open.bang!.y).toBe(open.label.y);
+    // The chip covers the name and the marker.
+    expect(open.pill.x).toBeLessThan(open.label.x);
+    expect(open.pill.x + open.pill.w).toBeGreaterThan(open.bang!.x + 6);
   });
-
   it('builds clock hands from the model angles', () => {
     const hands = clockHands({ hour: 0, minute: Math.PI / 2 }, { x: 10, y: 10 }, 10);
     expect(hands).toHaveLength(2);

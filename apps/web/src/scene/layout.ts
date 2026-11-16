@@ -26,15 +26,21 @@ export const ROOF_RISE = 0.9;
 /** Thickness of the ground plinth under the front edges. */
 export const PLINTH = 0.15;
 
-// --- the plaque and the text rows (iso units, measured from the floor centre; the front corner is +1) ---
-/** Bottom of the nameplate pill: just inside the front corner of the floor. */
-export const PLAQUE_FRONT = 0.97;
-/** Vertical gap between two pills. */
-export const ROW_GAP = 0.06;
-/** Widest the incident row may be; wider measured text falls back to the short "!" mark. */
-export const INCIDENT_ROW_W = 2.2;
-/** Pill padding as a share of the text height (the same rule as `pillRect`). */
-const PAD_Y = 0.2;
+// --- the chip (one per room, under the room) ---
+/** The chip may cover at most this share of the room's screen height (its bottom part); the rest hangs below the front corner. */
+export const CHIP_BAND = 0.2;
+/** Height of a room's screen rect in iso units: the floor (2) and the back wall (1). */
+export const ROOM_SCREEN_H = ROOM_SIZE + WALL_HEIGHT;
+/** Chip height as a share of the font size: the text and a padding of 0.3 of it above and below. */
+export const CHIP_H = 1.6;
+/** Characters of the chip text counted for its width: the level mark, a space, the name, a space and the "!" marker. */
+export const CHIP_EXTRA_CHARS = 4;
+/** Average width of a character of the chip, in font sizes. */
+export const CHIP_CHAR_W = 0.55;
+/** Horizontal padding of the chip, in font sizes. */
+export const CHIP_PAD_X = 0.45;
+/** The figure stands right of the centre of the floor, above the chip. */
+const FIGURE_X = 0.55;
 
 const A = 1;
 const B = 0.5;
@@ -59,26 +65,22 @@ export interface RoomLayout {
   /** Floor plus the two back walls: left, left-up, top-up, right-up, right, bottom. */
   silhouette: Pt[];
   center: Pt;
-  /** Centre of the name on the nameplate at the front corner of the floor. */
-  labelAt: Pt;
-  /** Centre of the reason badge, the row behind the nameplate. */
-  badgeAt: Pt;
-  /** Centre of the incident mark: on the nameplate, above the name (left of it in compact mode). */
-  incidentAt: Pt;
-  labelBox: Rect;
-  badgeBox: Rect;
-  /** The room the incident mark may use: wider measured text falls back to the short "!" mark. */
-  incidentBox: Rect;
-  /** Top (y) of the highest text pill: ghosts keep their feet above it. */
+  /** Centre of the room's chip: the level mark, the name and, when an incident is open, a "!" marker. */
+  chipAt: Pt;
+  /** The chip, in CSS pixels, under the room: its top is in the bottom 20 % of the room's screen rect, the rest hangs below the front corner. */
+  chipBox: Rect;
+  /** The band under the room the chip stays in: the width of the room's own column and the bottom 20 % of the room plus the overhang. */
+  chipBand: Rect;
+  /** Top (y) of the chip: ghosts keep their feet above it. */
   textTop: number;
   hit: Rect;
   /** The silhouette relative to `hit`, for a CSS clip-path. */
   hitPolygon: Pt[];
-  /** Reserved for the hunt overlay: on the left back wall, clear of the label and the badges. */
+  /** Reserved for the hunt overlay: on the left back wall, clear of the chip. */
   huntRect: Rect;
   /** The feet of the Exorcist figure, at the right corner of the floor. */
   exorcistAt: Pt;
-  /** The box of the figure: inside the silhouette, right of every text box, clear of the clock. */
+  /** The box of the figure: inside the silhouette, above the chip, clear of the clock. */
   exorcistBox: Rect;
   /** Midpoints of the floor edges facing +x, -x, +y, -y neighbours. */
   doors: { px: Pt; mx: Pt; py: Pt; my: Pt };
@@ -101,6 +103,8 @@ export interface SceneLayout {
   compact: boolean;
   labelPx: number;
   badgePx: number;
+  /** Overhang of the chips below the lowest room, in CSS pixels: the fit leaves this room at the bottom. */
+  chipReserve: number;
   rooms: RoomLayout[];
   corridors: CorridorLayout[];
   /** The house drawn behind the rooms; null when there is no room. */
@@ -353,10 +357,10 @@ export const FIGURE_GAP = 0.05;
 const CLOCK_BOX = { x0: 1.03, x1: 1.47, bottom: -0.78 };
 
 /**
- * The feet and the box of the figure, relative to the floor centre. It stands right of every text
- * box (`textRight`, relative to the centre), at a height where its box is inside the floor and the
- * right wall and below the clock. When the text boxes leave no room there, it stands at the back,
- * above the highest text box (`textTop`, relative to the centre).
+ * The feet and the box of the figure, relative to the floor centre. It stands right of `textRight`
+ * (relative to the centre), at a height where its box is inside the floor and the right wall, below the
+ * clock and above the chip (`textTop`, relative to the centre). When that leaves no room, it stands at the
+ * back, above the chip.
  */
 export function figurePlace(textRight: number, textTop: number): { feet: Pt; box: Rect } {
   const make = (cx: number, fy: number): { feet: Pt; box: Rect } => ({
@@ -370,7 +374,8 @@ export function figurePlace(textRight: number, textTop: number): { feet: Pt; box
     const hi = (ROOM_SIZE - xr) / 2 - 0.01;
     let lo = -2 + xr / 2 + FIGURE_H + 0.01;
     if (cx - FIGURE_W / 2 < CLOCK_BOX.x1 && xr > CLOCK_BOX.x0) lo = Math.max(lo, CLOCK_BOX.bottom + FIGURE_H + 0.02);
-    if (lo <= hi) return make(cx, (lo + hi) / 2);
+    const fy = Math.min((lo + hi) / 2, textTop - FIGURE_GAP);
+    if (lo <= hi && fy >= lo) return make(cx, Math.min(fy, hi));
   }
   // The text boxes reach the right corner (a narrow screen): stand at the back, above the highest
   // text box, between the Hunt slot and the clock. Its box is on the floor and the back walls.
@@ -379,10 +384,10 @@ export function figurePlace(textRight: number, textTop: number): { feet: Pt; box
 
 // --- text boxes ---
 
-const boxSize = (chars: number, px: number, scale: number, wide: number): { w: number; h: number } => ({
-  w: (chars * wide * px) / scale,
-  h: px / scale,
-});
+/** The chip's text size in px: 14 px or more under 40rem, the 11 px rule from there up. */
+const chipFont = (width: number, scale: number): number => Math.max(width < NARROW_BELOW ? MIN_FONT_NARROW_PX : MIN_FONT_PX, 0.34 * scale);
+/** How far the chip hangs below the front corner of its room, in px. */
+const chipOverhang = (width: number, scale: number): number => Math.max(0, CHIP_H * chipFont(width, scale) - CHIP_BAND * ROOM_SCREEN_H * scale);
 
 /** Computes the whole layout for a viewport. Pure: no PixiJS, no DOM. */
 export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport): SceneLayout {
@@ -403,7 +408,7 @@ export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport):
 
   const units = ordered.map(unitRoom);
   if (units.length === 0) {
-    return { width, height, dpr, scale: 1, offset: { x: width / 2, y: height / 2 }, compact: true, labelPx: MIN_FONT_PX, badgePx: MIN_FONT_PX, rooms: [], corridors: [], house: null, aspect: 1 };
+    return { width, height, dpr, scale: 1, offset: { x: width / 2, y: height / 2 }, compact: true, labelPx: MIN_FONT_PX, badgePx: MIN_FONT_PX, chipReserve: 0, rooms: [], corridors: [], house: null, aspect: 1 };
   }
   const houseU = unitHouse(ordered);
   // The house (roof, chimney, plinth) is part of the fit, so it never leaves the canvas.
@@ -415,51 +420,34 @@ export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport):
   const bw = Math.max(maxX - minX, 1e-6);
   const bh = Math.max(maxY - minY, 1e-6);
   const pad = Math.max(8, 0.04 * Math.min(width, height));
-  const scale = Math.max(1e-3, Math.min((width - 2 * pad) / bw, (height - 2 * pad) / bh, MAX_SCALE));
+  // The chips hang a little below the lowest room: the fit leaves that room at the bottom (it settles in a few passes).
+  const fit = (reserve: number): number => Math.max(1e-3, Math.min((width - 2 * pad) / bw, (height - 2 * pad - reserve) / bh, MAX_SCALE));
+  let scale = fit(0);
+  for (let k = 0; k < 4; k++) scale = fit(chipOverhang(width, scale));
+  const chipReserve = chipOverhang(width, scale);
   const offset: Pt = {
     x: (width - bw * scale) / 2 - minX * scale,
-    y: (height - bh * scale) / 2 - minY * scale,
+    y: (height - bh * scale - chipReserve) / 2 - minY * scale,
   };
   const tx = (p: Pt): Pt => ({ x: offset.x + p.x * scale, y: offset.y + p.y * scale });
 
-  // The room name is drawn at 14 px or more on a narrow viewport. The boxes of the rows keep the 11 px rule, so the
-  // rows (and the Hunt slot above them) fit the room; the pill around the name follows the measured text.
-  const labelBoxPx = Math.max(MIN_FONT_PX, 0.34 * scale);
-  const labelPx = Math.max(width < NARROW_BELOW ? MIN_FONT_NARROW_PX : MIN_FONT_PX, labelBoxPx);
+  // The chip text is 14 px or more on a narrow viewport. The reason badge keeps its 11 px rule (it sizes the Hunt slot).
+  const labelPx = chipFont(width, scale);
   const badgePx = Math.max(MIN_FONT_PX, 0.28 * scale);
   const compact = scale < COMPACT_BELOW;
-  const hL = labelBoxPx / scale;
-  const hB = badgePx / scale;
+  const chipH = (CHIP_H * labelPx) / scale;
+  const roomH = ROOM_SCREEN_H;
 
   const roomLayouts: RoomLayout[] = units.map((u) => {
     const c = u.center;
-    // Unit-space rows, from the front corner of the floor (+1 below the centre) to the back:
-    //   1. the nameplate with the name, just inside the front corner;
-    //   2. the incident mark, on the nameplate above the name (in compact mode a "!" left of the name);
-    //   3. the reason badge, behind the nameplate.
-    // Every row leaves room for the pill padding and a small gap. The hunt slot is on the left back wall.
-    const labelBottom = PLAQUE_FRONT - PAD_Y * hL;
-    const labelTop = labelBottom - hL;
-    const labelSize = boxSize(u.name.length, labelBoxPx, scale, 0.6);
-    const labelBoxU: Rect = { x: c.x - labelSize.w / 2, y: c.y + labelTop, w: labelSize.w, h: hL };
-    let incidentBoxU: Rect;
-    let rowTop: number; // top of the pills in front of the reason badge
-    if (compact) {
-      incidentBoxU = { x: labelBoxU.x - 0.08 - hB, y: c.y + labelTop + (hL - hB) / 2, w: hB, h: hB };
-      rowTop = labelTop - PAD_Y * hL;
-    } else {
-      const incidentBottom = labelTop - PAD_Y * hL - ROW_GAP - PAD_Y * hB;
-      incidentBoxU = { x: c.x - INCIDENT_ROW_W / 2, y: c.y + incidentBottom - hB, w: INCIDENT_ROW_W, h: hB };
-      rowTop = incidentBottom - hB - PAD_Y * hB;
-    }
-    const badgeBottom = rowTop - ROW_GAP - PAD_Y * hB;
-    const badgeTop = badgeBottom - hB;
-    const badgeSize = boxSize(compact ? 9 : 16, badgePx, scale, 0.55);
-    const badgeBoxU: Rect = { x: c.x - badgeSize.w / 2, y: c.y + badgeTop, w: badgeSize.w, h: hB };
+    // Unit space, relative to the floor centre (the front corner is +1 below it). One chip per room: its top is in
+    // the bottom 20 % of the room's screen rect, so a tall chip hangs below the front corner and a short one sits on it.
+    // The hunt slot is on the left back wall, far above.
+    const chipW = ((u.name.length + CHIP_EXTRA_CHARS) * CHIP_CHAR_W * labelPx) / scale + (2 * CHIP_PAD_X * labelPx) / scale;
+    const chipTop = 1 - Math.min(chipH, CHIP_BAND * roomH);
+    const chipBoxU: Rect = { x: c.x - chipW / 2, y: c.y + chipTop, w: chipW, h: chipH };
     const huntU: Rect = { x: c.x - 1.5, y: c.y - 1.15, w: 1.0, h: 0.3 };
-    const textRight = Math.max(labelBoxU.x + labelBoxU.w, incidentBoxU.x + incidentBoxU.w, badgeBoxU.x + badgeBoxU.w) - c.x;
-    const textTop = Math.min(labelBoxU.y, incidentBoxU.y, badgeBoxU.y) - PAD_Y * hB - c.y;
-    const figure = figurePlace(textRight, textTop);
+    const figure = figurePlace(FIGURE_X, chipTop);
     const toRect = (r: Rect): Rect => ({ x: offset.x + r.x * scale, y: offset.y + r.y * scale, w: r.w * scale, h: r.h * scale });
     const sil = u.silhouette.map(tx);
     const hx = Math.min(...sil.map((p) => p.x));
@@ -472,13 +460,10 @@ export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport):
       floor: u.floor.map(tx) as [Pt, Pt, Pt, Pt],
       silhouette: sil,
       center: tx(c),
-      labelAt: tx({ x: c.x, y: c.y + labelTop + hL / 2 }),
-      badgeAt: tx({ x: c.x, y: c.y + badgeTop + hB / 2 }),
-      incidentAt: tx({ x: incidentBoxU.x + incidentBoxU.w / 2, y: incidentBoxU.y + hB / 2 }),
-      labelBox: toRect(labelBoxU),
-      badgeBox: toRect(badgeBoxU),
-      incidentBox: toRect(incidentBoxU),
-      textTop: offset.y + (c.y + badgeTop - PAD_Y * hB) * scale,
+      chipAt: tx({ x: c.x, y: c.y + chipTop + chipH / 2 }),
+      chipBox: toRect(chipBoxU),
+      chipBand: toRect({ x: c.x - (ROOM_STRIDE * 1.0), y: c.y + 1 - CHIP_BAND * roomH, w: 2 * ROOM_STRIDE, h: CHIP_BAND * roomH + Math.max(0, chipH - CHIP_BAND * roomH) }),
+      textTop: offset.y + (c.y + chipTop) * scale,
       hit: { x: hx, y: hy, w: hw, h: hh },
       hitPolygon: sil.map((p) => ({ x: p.x - hx, y: p.y - hy })),
       huntRect: toRect(huntU),
@@ -497,6 +482,7 @@ export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport):
     compact,
     labelPx,
     badgePx,
+    chipReserve,
     rooms: roomLayouts,
     corridors: corridorsUnit.map((c) => ({ from: c.from, to: c.to, points: c.points.map(tx), width: CORRIDOR_WIDTH * scale })),
     house: {

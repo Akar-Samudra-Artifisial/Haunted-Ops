@@ -31,6 +31,8 @@ export const PULSE_GAP_MS = 350;
 export const FLICKER_CELL_MS = 500;
 /** The soft glow pulse after a level rise: one cycle (one rise, one fall) of this length, at least one second apart. */
 export const GLOW_PULSE_MS = 2000;
+/** One breath of the mist: a slow cycle of 4 s. */
+export const MIST_BREATH_MS = 4000;
 export const GLOW_PULSE_GAP_MS = 1000;
 /** The sky moves by at most this many pixels with the focused room, and sways by a few more. */
 export const PARALLAX_PX = 10;
@@ -208,6 +210,7 @@ export function createAnimator(): Animator {
           alarm: alarmTarget(v),
           pulse: 0,
           mist: v.mist ? 1 : 0,
+          mistBreath: 0,
           mistX: 0,
           mistY: 0,
           fogLayers: Array.from({ length: FOG_LAYERS }, (): FogLayerFrame => ({ x: 0, y: 0, alpha: 0 })),
@@ -500,6 +503,7 @@ export function createAnimator(): Animator {
         f.pulse = reduced || low ? 0 : glowPulse(st.pulseStart, timeMs);
         if (f.pulse > 0) flag.moving = true;
         const t = timeMs;
+        f.mistBreath = reduced ? 0 : 0.5 + 0.5 * Math.sin((t * Math.PI * 2) / MIST_BREATH_MS + v.seed);
         f.mistX = reduced ? 0 : 0.25 * Math.sin(t * 0.0004 + v.seed);
         f.mistY = reduced ? 0 : 0.15 * Math.cos(t * 0.0003 + v.seed);
         for (let k = 0; k < FOG_LAYERS; k++) {
@@ -541,7 +545,7 @@ export function createAnimator(): Animator {
         stepProposal(st, v.proposal, timeMs, firstSeen, reduced);
 
         const hide = v.dark ? 0 : 1;
-        // Ghost feet stay above the highest text pill, so ghosts never cover the nameplate or the badges.
+        // Ghost feet stay above the chip, so ghosts never cover it.
         const ghostFeet = room.textTop - 0.04 * layout.scale;
         fill(frame.ghosts, st.ghostA, v.ghostCount, v.ghostOpacity * hide, st.ghostS, room, v, timeMs, dt, tau, 0.3, 1, ghostFeet, 0.08);
         const fog = splitFog(v.fogCount);
