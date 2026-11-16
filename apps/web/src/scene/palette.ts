@@ -3,7 +3,7 @@
  * that repeat CSS custom properties. Our own colours: a night house with a warm lamp and cold ghosts.
  */
 export const PALETTE = {
-  night: '#14121c', // page and sky (equal to --bg)
+  night: '#0b0a12', // page and sky (equal to --bg)
   nightDeep: '#0b0a10', // dark room fill, vignette
   wallLeft: '#3b3354',
   wallRight: '#2f2945',

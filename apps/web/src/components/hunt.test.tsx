@@ -65,7 +65,7 @@ describe('TableMode: the Hunt column and section', () => {
   it('shows the steps as an ordered list for the Service with the running Hunt, with no selection', () => {
     render(<TableMode services={[withHunt(null, 'gate'), withHunt(runningHunt(3))]} />);
     const list = screen.getByRole('list', { name: /steps of the hunt on payments/i });
-    expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+    expect(within(list).getAllByRole('listitem').map((li) => li.querySelector('.timeline-summary')?.textContent)).toEqual([
       'step 1: errors payments since 10:41:00',
       'step 2: errors payments since 10:41:00',
       'step 3: errors payments since 10:41:00',

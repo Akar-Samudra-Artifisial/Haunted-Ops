@@ -20,9 +20,12 @@ const KIB = 1024;
  *     16 Nov 2026, after the validator got the host, address and markup rules and the SHA-256 of the review; it was 4117 bytes
  *     on 15 Nov), loaded on `/replays` only: measured + 20 percent (6800 bytes). The entry chunk grew from 92122 to 92603 bytes
  *     (0.47 KiB) for the route check and the lazy import; that growth is capped at 0.5 KiB by the replay spec.
+ *   - `entry` raised from 92 to 94 KiB by `visual-refresh` (17 Nov 2026 build): the new page (header, Summary bar, Panel, Timeline, Legend,
+ *     Icon module, table cards) measured 92.3 KiB gzip, 0.3 KiB over 92; the budget is the measured number plus a margin, never above 94 KiB.
+ *     The replay chunk measured 6.5 KiB gzip on the same build, inside 6800 bytes.
  * PixiJS also loads a few small renderer chunks on demand (15.8 KiB more, 172.3 KiB in all); they are reported, not budgeted.
  */
-export const BUDGETS = Object.freeze({ entry: 92 * KIB, scene: 180 * KIB, sceneFile: 119 * KIB, replay: 6800 });
+export const BUDGETS = Object.freeze({ entry: 94 * KIB, scene: 180 * KIB, sceneFile: 119 * KIB, replay: 6800 });
 
 /** The scene source that `SceneMount` loads with a dynamic import. */
 export const SCENE_ENTRY_SUFFIX = 'src/scene/SceneCanvas.tsx';

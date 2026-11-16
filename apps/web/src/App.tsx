@@ -6,7 +6,9 @@ import { Header } from './components/Header.js';
 import { LiveAnnouncer, type Notice } from './components/LiveAnnouncer.js';
 import { SkipLink } from './components/SkipLink.js';
 import { SceneMount, type SceneMountProps } from './components/SceneMount.js';
-import type { LoadHuntDetail } from './components/HuntSection.js';
+import { HuntEmpty, HuntSection, huntSectionService, type LoadHuntDetail } from './components/HuntSection.js';
+import { Legend } from './components/Legend.js';
+import { SummaryBar } from './components/SummaryBar.js';
 import { TableMode } from './components/TableMode.js';
 import { fetchHuntDetail } from './net/api.js';
 import { SseClient, type SseClientOptions } from './net/sse-client.js';
@@ -139,6 +141,7 @@ export function App({ client, demo = null, scene = {}, replay = null }: AppProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [demo, replay?.loadHuntDetail],
   );
+  const huntService = huntSectionService(services, selected);
   const select = (name: ServiceName | null): void => dispatch(name === null ? { type: 'clear' } : { type: 'select', name });
   useEffect(() => {
     // A `/hunts/<id>` link opens on that Hunt's Service. The path is read once, at start.
@@ -188,20 +191,28 @@ export function App({ client, demo = null, scene = {}, replay = null }: AppProps
       <SkipLink />
       <Header status={status} demo={demo !== null} note={replay?.banner} accessible={{ on: accessible, onToggle: mode.toggle }} />
       <main className="app-main">
-        {replay?.controls}
-        {model === null ? null : (
-          <SceneMount
-            services={services}
-            model={model}
-            selected={selected}
-            onSelect={select}
-            onQuality={setQuality}
-            publishStats={demo !== null}
-            onNotice={say}
-            {...scene}
-          />
-        )}
-        <TableMode services={services} ingest={ingest} selected={selected} onSelect={select} loadHuntDetail={loadHuntDetail} captionNote={replay?.banner} />
+        <div className="layout-main">
+          {replay?.controls}
+          {accessible ? <SummaryBar services={services} /> : null}
+          {model === null ? null : (
+            <SceneMount
+              services={services}
+              model={model}
+              selected={selected}
+              onSelect={select}
+              onQuality={setQuality}
+              publishStats={demo !== null}
+              onNotice={say}
+              {...scene}
+            />
+          )}
+          <TableMode services={services} ingest={ingest} selected={selected} onSelect={select} loadHuntDetail={loadHuntDetail} captionNote={replay?.banner} showHunt={false} />
+        </div>
+        <aside className="panel" aria-label="Incident">
+          {accessible ? null : <SummaryBar services={services} />}
+          {huntService === null ? <HuntEmpty /> : <HuntSection service={huntService} loadDetail={loadHuntDetail} />}
+          <Legend />
+        </aside>
         <LiveAnnouncer services={services} notice={notice} />
       </main>
     </div>

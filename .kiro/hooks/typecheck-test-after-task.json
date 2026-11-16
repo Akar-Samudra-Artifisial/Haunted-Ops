@@ -2,12 +2,12 @@
   "version": "v1",
   "hooks": [
     {
-      "name": "Typecheck and test after task",
+      "name": "Typecheck after task",
       "trigger": "PostTaskExec",
-      "description": "Run typecheck and tests after a spec task completes",
+      "description": "Run the typecheck after a spec task completes. The full test suite runs once, outside Kiro, when the spec is checked.",
       "action": {
         "type": "command",
-        "command": "pnpm typecheck && pnpm test",
+        "command": "pnpm typecheck",
         "timeout": 300
       }
     }

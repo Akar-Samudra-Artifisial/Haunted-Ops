@@ -24,13 +24,20 @@ function useLoad<T>(load: () => Promise<ReplayLoad<T>>, key: string): ReplayLoad
   }, [key]);
   return result !== null && result.key === key ? result.load : null;
 }
+/** `2:05` from milliseconds. */
+function durationText(ms: number): string {
+  const total = Math.round(ms / 1000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
 function Page({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <main className="replay-page">
       <h1>{title}</h1>
       {children}
       <p>
-        <a href="/">Back to live</a>
+        <a className="button" href="/">
+          Back to live
+        </a>
       </p>
     </main>
   );
@@ -41,12 +48,18 @@ function ReplayList({ client }: { client: AppProps['client'] }) {
     <Page title="Replays">
       {load === null ? <p role="status">Loading the replays.</p> : null}
       {load?.status === 'error' || load?.status === 'missing' ? <p role="alert">The replays cannot be loaded now. Try again later.</p> : null}
-      {load?.status === 'ok' && load.value.length === 0 ? <p>There is no replay yet.</p> : null}
+      {load?.status === 'ok' && load.value.length === 0 ? (
+        <p className="empty-state"><strong>There is no replay yet.</strong> A replay is a recorded incident that you can play back, step by step, like the live page.</p>
+      ) : null}
       {load?.status === 'ok' && load.value.length > 0 ? (
-        <ul className="replay-list">
+        <ul className="replay-list cards">
           {load.value.map((r: ReplayListItem) => (
-            <li key={r.id}>
-              <a href={`/replays/${r.id}`}>{r.title}</a> ({r.scenario}, recorded on {r.recordedOn})
+            <li key={r.id} className="card">
+              <a href={`/replays/${r.id}`}>{r.title}</a>
+              <span className="pill pill--scenario">{r.scenario}</span>
+              <span className="card-meta">
+                Recorded on <time dateTime={r.recordedOn}>{r.recordedOn}</time>, <span className="num">{durationText(r.durationMs)}</span> long
+              </span>
             </li>
           ))}
         </ul>

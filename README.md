@@ -2,6 +2,10 @@
 
 Haunted Ops is an incident war room drawn as a 2.5D haunted house. Each service is a room, errors are ghosts, latency is fog, and a down service is a dark room. An "Exorcist" Kiro agent investigates through MCP tools, writes an evidence chain and proposes a fix as a pull request. A human approves before anything merges, then the room lights up again. Built for Kiroween 2026 (Costume Contest).
 
+## The legend
+
+The panel next to the house has a "What am I looking at?" key: a ghost is errors, fog is latency, a dark room is down, a lantern is a healthy room and green mist is the Exorcist investigating. It is open on your first visit and remembers your choice.
+
 ## Accessible mode
 
 Accessible mode turns the page into a table-first view: the house scene is not loaded (no WebGL, no canvas, no animation), and the table shows every fact the scene shows.

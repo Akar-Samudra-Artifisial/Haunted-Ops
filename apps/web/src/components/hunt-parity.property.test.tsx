@@ -71,7 +71,7 @@ describe('Property 14: the scene and the table agree on every hunt', () => {
         }
         const shown = huntSectionService(services, null);
         if (shown?.hunt) {
-          const items = screen.queryAllByRole('listitem').map((li) => li.textContent);
+          const items = screen.queryAllByRole('listitem').map((li) => li.querySelector('.timeline-summary')?.textContent);
           expect(items).toEqual(shown.hunt.steps.map((st) => `step ${st.index}: ${st.summary}`));
         }
       }),

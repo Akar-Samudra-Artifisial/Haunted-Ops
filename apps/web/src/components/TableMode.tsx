@@ -6,6 +6,7 @@ import { formatStaleNotice } from '../format.js';
 import { HuntSection, huntSectionService, type LoadHuntDetail } from './HuntSection.js';
 import { tableRowText } from './table-model.js';
 
+const COLUMNS = ['Service', 'Haunt level', 'Reason', 'Error ratio', 'p95', 'Up', 'Incident', 'Hunt', 'Fix'] as const;
 /** Accessible text view of the house, and the main view in Accessible mode. */
 export function TableMode({
   services,
@@ -14,6 +15,7 @@ export function TableMode({
   onSelect,
   loadHuntDetail,
   captionNote,
+  showHunt = true,
 }: {
   services: readonly ServiceState[];
   ingest?: IngestStatus | null;
@@ -23,6 +25,8 @@ export function TableMode({
   loadHuntDetail?: LoadHuntDetail;
   /** Said first in the caption: "Replay of <date>, not live". */
   captionNote?: string;
+  /** The page shows the Hunt in the Panel and turns this off; on its own the table holds the Hunt section. */
+  showHunt?: boolean;
 }) {
   const selectedRow = useRef<HTMLTableRowElement | null>(null);
   const region = useRef<HTMLElement | null>(null);
@@ -41,25 +45,23 @@ export function TableMode({
         </p>
       ) : null}
       <div className="table-scroll" tabIndex={0} role="group" aria-label="Services table, scrollable">
-        <table>
+        <table role="table">
           <caption className="visually-hidden">{captionNote === undefined ? '' : `${captionNote}. `}Haunt level, cause and metrics of each service</caption>
           <thead>
-            <tr>
-              <th scope="col">Service</th>
-              <th scope="col">Haunt level</th>
-              <th scope="col">Reason</th>
-              <th scope="col">Error ratio</th>
-              <th scope="col">p95</th>
-              <th scope="col">Up</th>
-              <th scope="col">Incident</th>
-              <th scope="col">Hunt</th>
-              <th scope="col">Fix</th>
+            <tr role="row">
+              {COLUMNS.map((c) => (
+                <th key={c} scope="col" role="columnheader">
+                  {c}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {services.length === 0 ? (
-              <tr>
-                <td colSpan={9}>No data yet</td>
+              <tr role="row">
+                <td colSpan={9} role="cell">
+                  No data yet
+                </td>
               </tr>
             ) : (
               services.map((s) => {
@@ -67,6 +69,7 @@ export function TableMode({
                 const isSelected = selected === s.name;
                 return (
                   <tr
+                    role="row"
                     key={s.name}
                     ref={isSelected ? selectedRow : undefined}
                     aria-current={isSelected ? 'true' : undefined}
@@ -74,7 +77,7 @@ export function TableMode({
                     data-selected={isSelected ? 'true' : undefined}
                     data-room-state={row.dark ? 'dark' : 'lit'}
                   >
-                    <th scope="row">
+                    <th scope="row" role="rowheader" data-label="Service">
                       {isSelected ? (
                         <span className="row-marker" aria-hidden="true">
                           ▶{' '}
@@ -84,19 +87,35 @@ export function TableMode({
                         {s.name}
                       </button>
                     </th>
-                    <td>
-                      <span className="marker" aria-hidden="true">
-                        {hauntMark(s.hauntLevel).symbol}
-                      </span>{' '}
-                      {row.level}
+                    <td role="cell" data-label="Haunt level">
+                      <span className="pill pill--level" data-level={s.hauntLevel}>
+                        <span className="marker" aria-hidden="true">
+                          {hauntMark(s.hauntLevel).symbol}
+                        </span>{' '}
+                        {row.level}
+                      </span>
                     </td>
-                    <td>{row.reason}</td>
-                    <td>{row.errorRatio}</td>
-                    <td>{row.p95}</td>
-                    <td>{row.up}</td>
-                    <td>{row.incident}</td>
-                    <td>{row.hunt}</td>
-                    <td data-testid="fix-cell">{row.fix}</td>
+                    <td role="cell" data-label="Reason">
+                      {row.reason}
+                    </td>
+                    <td role="cell" data-label="Error ratio" className="num">
+                      {row.errorRatio}
+                    </td>
+                    <td role="cell" data-label="p95" className="num">
+                      {row.p95}
+                    </td>
+                    <td role="cell" data-label="Up">
+                      {row.up}
+                    </td>
+                    <td role="cell" data-label="Incident">
+                      {row.incident}
+                    </td>
+                    <td role="cell" data-label="Hunt">
+                      {row.hunt}
+                    </td>
+                    <td role="cell" data-label="Fix" data-testid="fix-cell">
+                      {row.fix}
+                    </td>
                   </tr>
                 );
               })
@@ -104,7 +123,7 @@ export function TableMode({
           </tbody>
         </table>
       </div>
-      <HuntSection service={huntSectionService(services, selected)} loadDetail={loadHuntDetail} />
+      {showHunt ? <HuntSection service={huntSectionService(services, selected)} loadDetail={loadHuntDetail} /> : null}
     </section>
   );
 }

@@ -11,37 +11,47 @@ function tokens(selector: string): Record<string, string> {
   if (start < 0) return {};
   const body = css.slice(css.indexOf('{', start) + 1, css.indexOf('\n}', start));
   const out: Record<string, string> = {};
-  for (const m of body.matchAll(/(--[a-z-]+):\s*([^;]+);/g)) out[m[1] as string] = (m[2] as string).trim();
+  for (const m of body.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) out[m[1] as string] = (m[2] as string).trim();
   return out;
 }
 const normal = tokens(':root');
 const accessible = { ...normal, ...tokens(":root[data-a11y='on']") };
 
 type Kind = 'text' | 'ui';
+interface Pair {
+  name: string;
+  kind: Kind;
+  fg: string;
+  bg: string;
+  /** Pairs of lines and borders that only carry meaning in Accessible mode (the normal lines are decoration). */
+  accessibleOnly?: boolean;
+}
+const SURFACES = [
+  ['the page', '--bg'],
+  ['a surface', '--surface'],
+  ['a raised surface', '--surface-2'],
+] as const;
 /** Every foreground and background pair that styles.css puts together. Text needs 4.5, a UI part needs 3. */
-const PAIRS: ReadonlyArray<{ name: string; kind: Kind; fg: string; bg: string }> = [
-  { name: 'body text on the page', kind: 'text', fg: '--text', bg: '--bg' },
-  { name: 'body text on the header panel', kind: 'text', fg: '--text', bg: '--panel' },
-  { name: 'muted text on the page (placeholders, fallback)', kind: 'text', fg: '--muted', bg: '--bg' },
-  { name: 'muted text on the header panel (connection)', kind: 'text', fg: '--muted', bg: '--panel' },
-  { name: 'demo notice text on the header panel', kind: 'text', fg: '--warn', bg: '--panel' },
-  { name: 'stale notice text on the page', kind: 'text', fg: '--warn', bg: '--bg' },
+const PAIRS: readonly Pair[] = [
+  ...SURFACES.flatMap(([where, bg]): Pair[] => [
+    { name: `text on ${where}`, kind: 'text', fg: '--text', bg },
+    { name: `muted text on ${where}`, kind: 'text', fg: '--text-muted', bg },
+    { name: `lantern text (healthy, accents) on ${where}`, kind: 'text', fg: '--lantern', bg },
+    { name: `danger text on ${where}`, kind: 'text', fg: '--danger', bg },
+    { name: `fog text (latency) on ${where}`, kind: 'text', fg: '--fog', bg },
+    { name: `ecto text (the Exorcist) on ${where}`, kind: 'text', fg: '--ecto', bg },
+    { name: `focus outline on ${where}`, kind: 'ui', fg: '--focus', bg },
+  ]),
   { name: 'text on the selected row', kind: 'text', fg: '--text', bg: '--selected' },
-  { name: 'text on the pressed switch', kind: 'text', fg: '--text', bg: '--selected' },
-  { name: 'text on the switch', kind: 'text', fg: '--text', bg: '--panel' },
-  { name: 'skip link text on its focus-colour background', kind: 'text', fg: '--bg', bg: '--focus' },
-  { name: 'live symbol on the header panel', kind: 'ui', fg: '--live', bg: '--panel' },
-  { name: 'reconnecting symbol on the header panel', kind: 'ui', fg: '--warn', bg: '--panel' },
-  { name: 'offline symbol on the header panel', kind: 'ui', fg: '--down', bg: '--panel' },
-  { name: 'focus outline on the page', kind: 'ui', fg: '--focus', bg: '--bg' },
-  { name: 'focus outline on the header panel', kind: 'ui', fg: '--focus', bg: '--panel' },
+  { name: 'muted text on the selected row', kind: 'text', fg: '--text-muted', bg: '--selected' },
   { name: 'focus outline on the selected row', kind: 'ui', fg: '--focus', bg: '--selected' },
-  { name: 'selected row marker on the page', kind: 'ui', fg: '--focus', bg: '--bg' },
-  { name: 'switch border on the header panel', kind: 'ui', fg: '--border', bg: '--panel' },
-  { name: 'table lines on the page', kind: 'ui', fg: '--border', bg: '--bg' },
-  { name: 'stale notice border on the page', kind: 'ui', fg: '--warn', bg: '--bg' },
+  { name: 'skip link text on its focus-colour background', kind: 'text', fg: '--bg', bg: '--focus' },
+  { name: 'lantern border of the diagnosis card on a raised surface', kind: 'ui', fg: '--lantern', bg: '--surface-2' },
+  { name: 'lines on the page (Accessible mode)', kind: 'ui', fg: '--line', bg: '--bg', accessibleOnly: true },
+  { name: 'lines on a surface (Accessible mode)', kind: 'ui', fg: '--line', bg: '--surface', accessibleOnly: true },
+  { name: 'lines on a raised surface (Accessible mode)', kind: 'ui', fg: '--line', bg: '--surface-2', accessibleOnly: true },
 ];
-
+const pairsFor = (mode: 'normal' | 'accessible'): readonly Pair[] => PAIRS.filter((p) => mode === 'accessible' || p.accessibleOnly !== true);
 describe('contrast function', () => {
   it('matches known values', () => {
     expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21, 5);
@@ -59,7 +69,7 @@ describe('contrast function', () => {
 describe('contrast pairs of styles.css', () => {
   for (const [mode, theme] of [['normal theme', normal], ['Accessible mode', accessible]] as const) {
     describe(mode, () => {
-      for (const p of PAIRS) {
+      for (const p of pairsFor(mode === 'normal theme' ? 'normal' : 'accessible')) {
         it(`${p.name} (${p.kind}) meets ${p.kind === 'text' ? '4.5' : '3'}:1`, () => {
           const fg = theme[p.fg];
           const bg = theme[p.bg];
@@ -71,13 +81,14 @@ describe('contrast pairs of styles.css', () => {
     });
   }
   it('has no colour literal outside the custom properties, so no colour skips the check', () => {
-    const rules = css.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((line) => !/^\s*--[a-z-]+:/.test(line));
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((line) => !/^\s*--[a-z0-9-]+:/.test(line));
     for (const line of rules) expect(line, line).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/);
   });
-  it('uses every token it declares in a pair or as a wash', () => {
+  it('uses every colour token it declares in a pair or as a wash', () => {
     const washes = new Set(['--focus-wash', '--press-wash']);
-    for (const name of Object.keys(normal)) {
-      if (washes.has(name)) continue;
+    for (const [name, value] of Object.entries(normal)) {
+      // Only colour tokens: the type, space, radius and shadow tokens are not pairs.
+      if (washes.has(name) || !/^#[0-9a-f]{6}$/i.test(value)) continue;
       expect(PAIRS.some((p) => p.fg === name || p.bg === name), `${name} is in a pair`).toBe(true);
     }
   });
@@ -105,6 +116,7 @@ describe('Property 5: contrast pairs hold and the function is sound', () => {
   it('holds for every listed pair in both modes', () => {
     fc.assert(
       fc.property(fc.constantFrom(...PAIRS), fc.constantFrom(normal, accessible), (p, theme) => {
+        if (p.accessibleOnly === true && theme === normal) return;
         expect(contrastRatio(theme[p.fg] as string, theme[p.bg] as string)).toBeGreaterThanOrEqual(p.kind === 'text' ? 4.5 : 3);
       }),
       { numRuns: 100 },
@@ -126,12 +138,17 @@ describe('motion rule', () => {
     expect(css).toMatch(/\*,\s*\*::before,\s*\*::after \{/);
     expect(css).toMatch(/:root\[data-a11y='on'\] \*::after \{/);
   });
-  it('declares no keyframes, so nothing on the page can shake or blink', () => {
-    expect(css).not.toMatch(/@keyframes/);
-    expect(css).not.toMatch(/animation-name|animation:/);
+  it('declares one keyframes, the soft pulse, used only by the Hunt running pill', () => {
+    expect([...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((x) => x[1])).toEqual(['soft-pulse']);
+    const users = [...css.matchAll(/([^{}]+)\{[^}]*animation(?:-name)?:[^;}]*soft-pulse[^}]*\}/g)].map((x) => (x[1] as string).trim());
+    expect(users).toEqual(['.pill--running']);
   });
-  it('has no animation or transition longer than 0 s outside the rule', () => {
+  it('has only transitions shorter than 200 ms outside the rule, and no other animation', () => {
     const outside = css.replace(blocks[0] as string, '').replace(blocks[1] as string, '');
-    for (const m of outside.matchAll(/(animation|transition)[a-z-]*:\s*([^;]+);/g)) expect(m[2]).toMatch(/^(none|0s|1)\b/);
+    for (const m of outside.matchAll(/transition:\s*([^;]+);/g)) {
+      for (const ms of (m[1] as string).matchAll(/(\d+)ms/g)) expect(Number(ms[1])).toBeLessThan(200);
+      expect(m[1]).not.toMatch(/\d(\.\d+)?s\b(?<!m)/);
+    }
+    for (const m of outside.matchAll(/animation[a-z-]*:\s*([^;]+);/g)) expect(m[1]).toMatch(/^(none|0s|1\b|soft-pulse )/);
   });
 });

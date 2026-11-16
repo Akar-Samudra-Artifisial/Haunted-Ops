@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { isActiveProposalStatus, type HuntDetail, type HuntSummary, type ServiceName, type ServiceState } from '@haunted-ops/shared';
 import { statusMark } from '../a11y/status-marks.js';
-import { huntCellText, huntStepText, huntView } from './hunt-text.js';
+import { formatClock } from '../format.js';
+import { huntCellText, huntStepText, huntView, TOOL_TEXT } from './hunt-text.js';
+import { Icon } from './icons.js';
 import { proposalView } from './proposal-text.js';
 
 export type LoadHuntDetail = (huntId: string) => Promise<HuntDetail>;
@@ -41,6 +43,14 @@ function useHuntDetail(hunt: HuntSummary | null, load: LoadHuntDetail | undefine
   return detail !== null && detail.id === id ? detail : null;
 }
 
+/** What the Panel says when no Hunt is on show. */
+export function HuntEmpty() {
+  return (
+    <section className="hunt-section hunt-empty" aria-label="Hunt" data-testid="hunt-empty">
+      <p>The Exorcist's steps, its diagnosis and the fix proposal appear here when a hunt starts.</p>
+    </section>
+  );
+}
 /** Text view of the latest Hunt of one Service: steps as an ordered list, and a valid diagnosis with its cited evidence. */
 export function HuntSection({ service, loadDetail }: { service: ServiceState | null; loadDetail?: LoadHuntDetail }) {
   const hunt = service?.hunt ?? null;
@@ -53,14 +63,24 @@ export function HuntSection({ service, loadDetail }: { service: ServiceState | n
   return (
     <section className="hunt-section" aria-labelledby="hunt-section-title" data-testid="hunt-section">
       <h3 id="hunt-section-title">Hunt on {service.name}</h3>
-      <p data-testid="hunt-state">{huntCellText(view)}</p>
+      <p className="hunt-state" data-testid="hunt-state">{huntCellText(view)}</p>
       {steps.length > 0 ? (
         <>
           {hidden > 0 ? <p>Showing the last {steps.length} of {hunt?.stepCount} steps.</p> : null}
-          <ol aria-label={`Steps of the hunt on ${service.name}`}>
+          <ol className="timeline" aria-label={`Steps of the hunt on ${service.name}`}>
             {steps.map((step) => (
-              <li key={step.index} value={step.index}>
-                {huntStepText(step)}
+              <li key={step.index} value={step.index} className="timeline-item" data-tool={step.tool}>
+                <span className="timeline-dot" aria-hidden="true" />
+                <span className="timeline-head">
+                  <Icon name={step.tool} />
+                  <span className="timeline-tool">{step.tool}</span>
+                  <time className="timeline-time num" dateTime={step.at}>
+                    {formatClock(step.at)}
+                  </time>
+                </span>
+                <span className="timeline-summary" title={TOOL_TEXT[step.tool]}>
+                  {huntStepText(step)}
+                </span>
               </li>
             ))}
           </ol>
@@ -69,7 +89,7 @@ export function HuntSection({ service, loadDetail }: { service: ServiceState | n
         <p>No steps yet.</p>
       )}
       {hunt?.diagnosis ? (
-        <div data-testid="hunt-diagnosis">
+        <div className="card card--diagnosis" data-testid="hunt-diagnosis">
           <p>
             Culprit: deploy {hunt.diagnosis.culpritDeploy}, commit {view.culprit?.shortSha}
             {view.causedBy === null ? '' : `, caused by ${view.causedBy}`}.
@@ -84,8 +104,8 @@ export function HuntSection({ service, loadDetail }: { service: ServiceState | n
           ) : null}
           {cited.length > 0 ? (
             <>
-              <p id="hunt-evidence-title">Cited evidence</p>
-              <ul aria-labelledby="hunt-evidence-title">
+              <p id="hunt-evidence-title" className="evidence-title">Cited evidence</p>
+              <ul className="evidence" aria-labelledby="hunt-evidence-title">
                 {cited.map((e) => (
                   <li key={e.index}>
                     {e.kind}: {e.detail}
@@ -107,19 +127,24 @@ function ProposalBlock({ service }: { service: ServiceState }) {
   if (p === null) return null;
   const v = proposalView(p, service.name);
   return (
-    <div data-testid="proposal-block">
+    <div className="card card--proposal" data-testid="proposal-block">
       <h4>
         <span className="marker" aria-hidden="true">
           {statusMark('proposal', p.status).symbol}
         </span>{' '}
         Fix proposal, attempt {p.attempt}
       </h4>
+      <p className="proposal-pill">
+        <span className={`pill pill--${p.status}`} data-testid="proposal-pill">
+          {v.statusText}
+        </span>
+      </p>
       <p data-testid="proposal-state">{v.cell}</p>
       {v.checksText === null ? null : <p>Checks: {v.checksText}.</p>}
       {v.aiFailText === null ? null : <p>AI patch not used: {v.aiFailText}.</p>}
       {v.link === null ? null : (
         <p>
-          <a href={v.link.href} target="_blank" rel="noopener noreferrer">
+          <a className="button" href={v.link.href} target="_blank" rel="noopener noreferrer">
             {v.link.label} on GitHub (opens in a new tab)
           </a>
         </p>
