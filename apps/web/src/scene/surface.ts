@@ -169,6 +169,10 @@ export interface Surface {
   draw(frame: Frame): void;
   resize(width: number, height: number, dpr: number): void;
   setQuality(quality: 'full' | 'low'): void;
+  /** The room with keyboard focus: the scene draws its ring (dashed when it is not the selected room). */
+  setFocus?(name: ServiceName | null): void;
+  /** The room pictures are in use (set once `init` is done): the outline of a room is then the outline of its picture. */
+  readonly spritesLoaded?: boolean;
   onContext(cb: (event: 'lost' | 'restored') => void): void;
   /** Idempotent. */
   destroy(): void;

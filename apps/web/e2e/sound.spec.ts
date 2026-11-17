@@ -23,4 +23,34 @@ test.describe('sound button (demo data)', () => {
     await expect.poll(() => sfx.length, { timeout: 10_000 }).toBeGreaterThan(0);
     for (const path of sfx) expect(path).toMatch(/^\/sfx\/[a-z-]+\.mp3$/);
   });
+
+  test('the click makes a running context and a cue starts within 3 s (the confirmation)', async ({ page, browserName }) => {
+    await page.addInitScript(() => {
+      const w = window as unknown as { __sound: { starts: number; contexts: AudioContext[] } };
+      w.__sound = { starts: 0, contexts: [] };
+      const start = AudioBufferSourceNode.prototype.start;
+      AudioBufferSourceNode.prototype.start = function (this: AudioBufferSourceNode, ...args: Parameters<typeof start>) {
+        w.__sound.starts += 1;
+        return start.apply(this, args);
+      };
+      const Native = window.AudioContext;
+      window.AudioContext = class extends Native {
+        constructor(options?: AudioContextOptions) {
+          super(options);
+          w.__sound.contexts.push(this);
+        }
+      };
+    });
+    await page.goto('/?demo=1');
+    const button = page.getByRole('button', { name: /^Sound (off|on)$/ });
+    await expect(button).toHaveText('Sound off');
+    await button.click();
+    const started = Date.now();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __sound: { starts: number } }).__sound.starts), { timeout: 3_000, intervals: [50] }).toBeGreaterThan(0);
+    expect(Date.now() - started).toBeLessThan(3_000);
+    const state = await page.evaluate(() => (window as unknown as { __sound: { contexts: AudioContext[] } }).__sound.contexts.map((c) => c.state));
+    expect(state).toHaveLength(1);
+    if (browserName === 'chromium') expect(state[0]).toBe('running');
+    await expect(button).toHaveText('Sound on');
+  });
 });

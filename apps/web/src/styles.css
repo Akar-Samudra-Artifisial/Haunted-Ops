@@ -25,9 +25,6 @@
   --level-dark: #dcd7ee;
   /* The selected row: the lantern at 12% over the surface, as one opaque colour. */
   --selected: #312827;
-  /* Washes over the picture; the outline, not the wash, is the focus indicator. */
-  --focus-wash: rgba(255, 216, 102, 0.2);
-  --press-wash: rgba(255, 216, 102, 0.1);
   --font-display: ui-serif, 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
   --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-num: ui-monospace, 'SF Mono', Menlo, monospace;
@@ -207,15 +204,15 @@ a {
   background: transparent;
   cursor: pointer;
 }
-.room-button:focus-visible {
-  /* The outline sits inside the box and the room-shaped clip would cut it, so the clip goes while focused. */
+.room-buttons:not([data-ring='scene']) .room-button:focus-visible {
+  /* Without a drawing scene the rectangle is the focus indicator: it sits inside the box and the room-shaped clip would cut it, so the clip goes while focused. */
   outline: 3px solid var(--focus);
   outline-offset: -3px;
   clip-path: none !important;
-  background: var(--focus-wash);
 }
-.room-button[aria-pressed='true'] {
-  background: var(--press-wash);
+/* While the scene draws, it draws the ring of the focused room on the outline of the room: no rectangle, no wash over the picture. */
+.room-buttons[data-ring='scene'] .room-button:focus-visible {
+  outline: none;
 }
 .scene-stage,
 .scene-canvas {

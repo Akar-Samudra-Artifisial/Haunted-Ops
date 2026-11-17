@@ -114,6 +114,54 @@ test.describe('keyboard and fallback', () => {
     await page.locator('#scene-mount').screenshot({ path: `${SHOTS}/selected-ledger.png` });
     await expect(page.getByRole('row', { name: /ledger/ })).toHaveAttribute('aria-current', 'true');
   });
+
+  test('Tab focus on a room: the scene draws the ring on its outline (part 8), no CSS rectangle and no wash, and the row stays current', async ({ page }) => {
+    mkdirSync(SHOTS, { recursive: true });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/?demo=1');
+    await expect(page.locator('#scene-mount canvas')).toBeVisible({ timeout: 45_000 });
+    await expect(page.locator('.room-buttons[data-ring="scene"]')).toHaveCount(1, { timeout: 15_000 });
+    const rooms = page.getByRole('group', { name: 'Rooms' }).getByRole('button');
+    // Tab from the page until the first room button has the focus.
+    for (let i = 0; i < 40; i++) {
+      await page.keyboard.press('Tab');
+      if (await rooms.first().evaluate((el) => el === document.activeElement)) break;
+    }
+    const first = rooms.first();
+    await expect(first).toBeFocused();
+    const name = (await first.getAttribute('aria-label'))?.split(',')[0] ?? '';
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __hauntedScene?: { focused?: string | null } }).__hauntedScene?.focused ?? null)).toBe(name);
+    const style = await first.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { outline: cs.outlineStyle, background: cs.backgroundColor, clip: cs.clipPath };
+    });
+    expect(style.outline).toBe('none');
+    expect(style.background).toBe('rgba(0, 0, 0, 0)');
+    expect(style.clip).toMatch(/^polygon\(/);
+    await expect(first).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveAttribute('aria-current', 'true');
+    // The ring is drawn: ring-yellow pixels along the edge of the focused room, inside the box of its button.
+    await page.waitForTimeout(500);
+    const box = (await first.boundingBox())!;
+    const png = await page.screenshot({ path: `${SHOTS}/focus-ring-1440.png`, clip: { x: box.x - 4, y: box.y - 4, width: box.width + 8, height: box.height + 8 } });
+    const yellow = await page.evaluate(async (b64) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) if ((d[i] as number) > 220 && (d[i + 1] as number) > 185 && (d[i + 2] as number) < 150 && (d[i + 2] as number) > 60) n += 1;
+      return { n, total: d.length / 4 };
+    }, png.toString('base64'));
+    // A thin line, not a fill: some yellow, and far less than a tenth of the box.
+    expect(yellow.n).toBeGreaterThan(50);
+    expect(yellow.n / yellow.total).toBeLessThan(0.1);
+  });
 });
 
 test.describe('the illustrated sprites (visual-refresh part 4)', () => {

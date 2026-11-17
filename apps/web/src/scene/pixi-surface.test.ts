@@ -56,6 +56,10 @@ const pixi = vi.hoisted(() => {
   }
   class Graphics extends Container {
     ops = 0;
+    /** What was drawn since the last `clear` (part 8: the ring is checked point by point). */
+    polys: Array<{ points: number[]; closed: boolean }> = [];
+    strokes: Array<Record<string, unknown>> = [];
+    fills = 0;
     constructor() {
       super();
       state.created.graphics += 1;
@@ -66,15 +70,21 @@ const pixi = vi.hoisted(() => {
     }
     clear(): this {
       this.ops = 0;
+      this.polys = [];
+      this.strokes = [];
+      this.fills = 0;
       return this;
     }
-    poly(): this {
+    poly(points: number[] = [], closed = true): this {
+      this.polys.push({ points: [...points], closed });
       return this.chain();
     }
     fill(): this {
+      this.fills += 1;
       return this.chain();
     }
-    stroke(): this {
+    stroke(style: Record<string, unknown> = {}): this {
+      this.strokes.push(style);
       return this.chain();
     }
     roundRect(): this {
@@ -183,6 +193,8 @@ vi.mock('./textures.js', async (importOriginal) => {
 });
 
 const { PixiSurface } = await import('./pixi-surface.js');
+const { roomOutline } = await import('./outline.js');
+const { RING_GLOW_ALPHA, RING_GLOW_PX, RING_LINE_PX } = await import('./ring.js');
 
 const incident = { id: 'inc', openedAt: '2026-11-13T10:00:00.000Z', peakLevel: 2 as const };
 const metrics = { errorRate: 0.4, p95Ms: 2400, up: 1, at: 'x' };
@@ -752,5 +764,94 @@ describe('PixiSurface', () => {
     surface.applyModel(s.model);
     expect(pixi.state.texts).toBe(after);
     surface.destroy();
+  });
+  describe('the selection ring (visual-refresh part 8)', () => {
+    type Ring = { polys: Array<{ points: number[]; closed: boolean }>; strokes: Array<Record<string, unknown>>; fills: number };
+    const flatOf = (pts: readonly { x: number; y: number }[]): number[] => pts.flatMap((p) => [p.x, p.y]);
+    async function ringed(sprites: boolean) {
+      pixi.state.sprites = sprites;
+      pixi.state.webgl = sprites;
+      const s = scene(house(), FULL);
+      const surface = new PixiSurface();
+      await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
+      surface.applyLayout(s.layout);
+      surface.applyModel(s.model);
+      const a = createAnimator();
+      a.setLayout(s.layout);
+      a.setModel(s.model);
+      const ring = (surface as unknown as { layers: { ring: Ring } }).layers.ring;
+      return { s, surface, a, ring };
+    }
+    for (const sprites of [true, false]) {
+      it(`strokes the room outline exactly (${sprites ? 'sprite outline' : 'procedural silhouette'}): a 6 px glow at 0.25 under a 2.5 px line, round joins, no fill`, async () => {
+        const { s, surface, a, ring } = await ringed(sprites);
+        expect(surface.spritesLoaded).toBe(sprites);
+        a.select('gate');
+        surface.draw(a.step(16, 16));
+        const room = s.layout.rooms.find((r) => r.name === 'gate')!;
+        const outline = flatOf(roomOutline(room, sprites));
+        expect(outline).toEqual(flatOf(sprites ? roomOutline(room, true) : room.silhouette));
+        expect(ring.polys).toEqual([
+          { points: outline, closed: true },
+          { points: outline, closed: true },
+        ]);
+        expect(ring.fills).toBe(0);
+        expect(ring.strokes.map((st) => [st.width, st.alpha, st.join, st.color])).toEqual([
+          [RING_GLOW_PX, RING_GLOW_ALPHA, 'round', 0xffd866],
+          [RING_LINE_PX, 1, 'round', 0xffd866],
+        ]);
+        expect([RING_LINE_PX, RING_GLOW_PX, RING_GLOW_ALPHA]).toEqual([2.5, 6, 0.25]);
+        // Fixed px: the same widths at another width of the page.
+        const wide = scene(house(), FULL, { width: 390, height: 700, dpr: 1 });
+        surface.applyLayout(wide.layout);
+        surface.draw(a.step(16, 32));
+        expect(ring.strokes.map((st) => st.width)).toEqual([RING_GLOW_PX, RING_LINE_PX]);
+        surface.destroy();
+      });
+    }
+
+    it('draws the ring of the keyboard-focused room in dashes on its outline, and one solid ring when it is also selected', async () => {
+      const { s, surface, a, ring } = await ringed(true);
+      a.select('gate');
+      surface.setFocus('payments');
+      surface.draw(a.step(16, 16));
+      const room = s.layout.rooms.find((r) => r.name === 'payments')!;
+      const open = ring.polys.filter((p) => !p.closed);
+      expect(open.length).toBeGreaterThan(4);
+      const outline = roomOutline(room, true);
+      const onOutline = (x: number, y: number): boolean =>
+        outline.some((p, i) => {
+          const q = outline[(i + 1) % outline.length]!;
+          const cross = (q.x - p.x) * (y - p.y) - (q.y - p.y) * (x - p.x);
+          const len = Math.hypot(q.x - p.x, q.y - p.y);
+          const t = ((x - p.x) * (q.x - p.x) + (y - p.y) * (q.y - p.y)) / (len * len);
+          return Math.abs(cross / len) < 1e-6 && t >= -1e-9 && t <= 1 + 1e-9;
+        });
+      for (const path of open) for (let i = 0; i < path.points.length; i += 2) expect(onOutline(path.points[i]!, path.points[i + 1]!)).toBe(true);
+      expect(ring.polys.filter((p) => p.closed)).toHaveLength(2);
+      expect(surface.ringed).toEqual(new Set(['gate', 'payments']));
+      surface.setFocus('gate');
+      surface.draw(a.step(16, 32));
+      expect(ring.polys).toHaveLength(2);
+      expect(ring.polys.every((p) => p.closed)).toBe(true);
+      surface.setFocus(null);
+      a.select(null);
+      surface.draw(a.step(16, 48));
+      expect(ring.polys).toHaveLength(0);
+      surface.destroy();
+    });
+
+    it('gives the chip of the selected room the ring colour at 1.5 px, and hides the trim line of a ringed room', async () => {
+      const { surface, a } = await ringed(true);
+      a.select('gate');
+      for (let t = 1; t <= 5; t++) surface.draw(a.step(16, t * 16));
+      const views = (surface as unknown as { views: Map<string, { plate: Ring; outlineTrim: { alpha: number } }> }).views;
+      const pill = (name: string) => views.get(name)!.plate.strokes[0]!;
+      expect([pill('gate').color, pill('gate').width]).toEqual([0xffd866, 1.5]);
+      expect(pill('orders').color).not.toBe(0xffd866);
+      expect(views.get('gate')!.outlineTrim.alpha).toBe(0);
+      expect(views.get('orders')!.outlineTrim.alpha).toBeGreaterThan(0);
+      surface.destroy();
+    });
   });
 });

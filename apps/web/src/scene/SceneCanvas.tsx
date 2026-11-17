@@ -2,24 +2,30 @@ import { useEffect, useRef } from 'react';
 import type { ServiceName } from '@haunted-ops/shared';
 import { createBrowserEnv, createRafLoop } from './frame-loop.js';
 import type { Quality } from './governor.js';
-import type { SceneLayout } from './layout.js';
+import type { Pt, RoomLayout, SceneLayout } from './layout.js';
 import type { SceneModel } from './model.js';
+import { roomOutline } from './outline.js';
 import { PixiSurface } from './pixi-surface.js';
 import { createSceneRenderer, type SceneRenderer } from './renderer.js';
 
 export interface RendererCallbacks {
   onQuality: (quality: Quality) => void;
   onContext: (event: 'lost' | 'restored') => void;
+  onSprites?: (loaded: boolean) => void;
 }
 
 export interface SceneCanvasProps {
   model: SceneModel;
   layout: SceneLayout;
   selected: ServiceName | null;
+  /** The room with keyboard focus: the scene draws its ring. */
+  focused?: ServiceName | null;
   /** The renderer could not start. */
   onFailure: () => void;
   onQuality: (quality: Quality) => void;
   onContext: (event: 'lost' | 'restored') => void;
+  /** Said once the scene runs: the one outline of a room (`roomOutline` with the pictures in use or not), for the hit shape of the room buttons. */
+  onOutline?: (outline: (room: RoomLayout) => Pt[]) => void;
   /** Tests inject a fake renderer. */
   createRenderer?: (callbacks: RendererCallbacks) => SceneRenderer;
   /** Demo mode publishes the renderer statistics here for measurement. */
@@ -33,6 +39,7 @@ function defaultRenderer(callbacks: RendererCallbacks): SceneRenderer {
     env: createBrowserEnv(),
     onQuality: callbacks.onQuality,
     onContext: callbacks.onContext,
+    onSprites: callbacks.onSprites,
   });
 }
 
@@ -64,6 +71,10 @@ export default function SceneCanvas(props: SceneCanvasProps) {
       onContext: (e) => {
         if (!disposed) callbacks.current.onContext(e);
       },
+      onSprites: (loaded) => {
+        // The outline code stays in this chunk: the entry gets the function, not the sprite geometry.
+        if (!disposed) callbacks.current.onOutline?.((room) => roomOutline(room, loaded));
+      },
     });
     rendererRef.current = renderer;
     if (callbacks.current.publishStats) (window as unknown as { __hauntedScene?: unknown }).__hauntedScene = renderer.stats;
@@ -87,6 +98,9 @@ export default function SceneCanvas(props: SceneCanvasProps) {
   useEffect(() => {
     rendererRef.current?.select(props.selected);
   }, [props.selected]);
+  useEffect(() => {
+    rendererRef.current?.focus?.(props.focused ?? null);
+  }, [props.focused]);
 
   return <div ref={hostRef} className="scene-canvas" role="img" aria-label={props.model.summary} />;
 }

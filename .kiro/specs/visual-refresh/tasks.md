@@ -349,6 +349,42 @@ Make the page around the Scene modern and easy to read, in the look "a lantern i
 - [x] 65. Checks and records of the fix
   - [x] 65.1 Run `pnpm typecheck`, `pnpm lint`, `src/sound` and `refresh7.test.ts`, `e2e/sound.spec.ts` and `e2e/scene.spec.ts`, the build with the bundle check and the spec validator once; one `2026-11-17 | visual-refresh/N | …` line per task in `docs/KIRO_USAGE.md`
     - _Requirements: 47.4, 47.5_
+- [x] 66. One room outline
+  - [x] 66.1 Move the room box, `roomSpriteFit` and `spriteSilhouette` to `scene/outline.ts` (re-exported by `sprites.ts`) and add `roomOutline(room, spriteLoaded)`; use it for the outline lines and the dim overlay of a room and for the ring in `pixi-surface.ts`
+    - _Requirements: 48.1_
+  - [x] 66.2 Report the sprites from the renderer (`onSprites`), hand `(room) => roomOutline(room, loaded)` from `SceneCanvas` through `SceneMount` to `RoomButtons`, and take the position, size and `clip-path` of each button from it (the procedural silhouette before the scene runs)
+    - _Requirements: 48.1_
+- [x] 67. A thin glowing ring and no wash
+  - [x] 67.1 Draw the ring as a 6 px glow at alpha 0.25 under a 2.5 px line in `PALETTE.ring`, round joins, no fill, fixed px, static; hide the trim line of a ringed room
+    - _Requirements: 48.2, 48.5_
+  - [x] 67.2 Remove `--focus-wash`, `--press-wash` and the backgrounds of `.room-button`; stroke the chip of the selected room in the ring colour at 1.5 px
+    - _Requirements: 48.3_
+  - [x] 67.3 Draw the ring of the room with `:focus-visible` (dashed when it is not selected) through `renderer.focus` and `surface.setFocus`; mark the group `data-ring="scene"` and remove the CSS outline only then
+    - _Requirements: 48.4_
+- [x] 68. Sound you hear at once
+  - [x] 68.1 Make and resume the `AudioContext` synchronously in the click and the first-click listener (`makeContext` in `useSound.ts`), then pass it to `createPlayer(ctx)`
+    - _Requirements: 49.1_
+  - [x] 68.2 Play one `hunt-step` at gain 0.5 once the files are decoded after turning sound on; nothing on off
+    - _Requirements: 49.2_
+  - [x] 68.3 Show the silence hint after 20 s without a cue in `title` and `aria-describedby`, only while sound is on
+    - _Requirements: 49.3_
+  - [x] 68.4 Keep "Sound unavailable" enabled; a click tries again with a new context
+    - _Requirements: 49.4_
+- [x] 69. Tests of part 8
+  - [x] 69.1 Unit tests: the ring polygon equals the sprite outline and the procedural silhouette, the hit polygon equals the same outline, widths, alpha and no fill, the dashed focus ring, the chip stroke, no wash on `.room-button`
+    - _Requirements: 50.1_
+  - [x]* 69.2 Property test: for every room at 390, 768, 1024 and 1440 the ring bounds equal the outline bounds (±1 px) and contain the chip-free picture of the room (Property 16)
+    - _Requirements: 48.1, 48.4, 50.1_
+  - [x] 69.3 Sound tests: the context made and resumed in the click before the import resolves, one confirmation after decode, none on off, the hint with fake timers and its removal, "Sound unavailable" clickable and retrying
+    - _Requirements: 50.2_
+  - [x] 69.4 E2E: Tab focus on a room in `scene.spec.ts`, and a source start within 3 s and a running context in `sound.spec.ts`
+    - _Requirements: 50.3_
+- [x] 70. Budget of part 8
+  - [x] 70.1 Build, run `node scripts/check-scene-bundle.mjs`; the entry measured 95.4 KiB (97710 bytes), so `BUDGETS.entry` is raised from 95 to 95.5 KiB with the reason in the script comment; sound chunk 575 bytes, scene chunk 178.2 KiB
+    - _Requirements: 49.5_
+- [x] 71. Checks and records of part 8
+  - [x] 71.1 Run `pnpm typecheck`, `pnpm lint`, the changed test files, `e2e/scene.spec.ts`, `e2e/accessible.spec.ts` and `e2e/sound.spec.ts`, the build with the bundle check and the spec validator once; one `2026-11-17 | visual-refresh/N | …` line per task in `docs/KIRO_USAGE.md`
+    - _Requirements: 50.4_
 ## Notes
 - Scope: tasks 1 to 11 are part 1 of the refresh; `apps/web/src/scene/` changes there only in `palette.ts` (`bg`, and `focus` if it changed). Tasks 12 to 17 are part 2: the PixiJS scene (rooms, ghosts, fog, sky) and four fixes of the page. There is no zoom in the Scene; the camera of the parallax and of the roof is the focused room.
 - Entry chunk before this spec: 90.4 of 92 KiB gzip (`check-scene-bundle.mjs`; the 92 KiB comes from `accessible-mode/design.md`). The budget may rise to 94 KiB at most, only on a measured need. Replay chunk: 5665 bytes, budget 6800 bytes.
@@ -360,6 +396,7 @@ Make the page around the Scene modern and easy to read, in the look "a lantern i
 - Part 5 (tasks 34 to 41): the polish of the sprite scene (room size, leftovers, calm darker, the Exorcist), written in a fifth prompt. Checks while building: `pnpm typecheck`, `pnpm lint`, the changed test files, `e2e/scene.spec.ts` and `e2e/layout.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator.
 - Part 6 (tasks 42 to 48): the tint on the sprite floor, the visible mint glow and the Hunt marks on a phone, written in a sixth prompt. Checks while building: `pnpm typecheck`, `pnpm lint`, the changed test files, `e2e/scene.spec.ts` and `e2e/layout.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator.
 - Part 7 (tasks 49 to 61): the chips like the panel pills, the hunt badge, the moon sprite, the dust, the lamp glow clip and the hunt ring, and the sound cues with the header button, written in a seventh prompt. Checks while building: `pnpm typecheck`, `pnpm lint`, the created or changed test files, `e2e/scene.spec.ts`, `e2e/layout.spec.ts` and `e2e/sound.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator. Not run: the full suite, the whole Playwright run.
+- Part 8 (tasks 66 to 71): the selection and focus ring on the room outline and sound heard at once, written in an eighth prompt. Entry budget: the build measured 95.4 KiB gzip (97710 bytes), about 0.4 KiB over 95.0, for the synchronous `AudioContext` code in the click, the confirmation cue, the silence hint, the retry and the focus plumbing of the room buttons; `BUDGETS.entry` is raised from 95 to 95.5 KiB (the most allowed) and the reason is in the comment of `check-scene-bundle.mjs`. Sound chunk 575 bytes of 4 KiB, scene chunk 178.2 KiB (182527 bytes) of 180, replay chunk 6708 bytes of 6800. Checks while building: `pnpm typecheck`, `pnpm lint`, the changed test files, `e2e/scene.spec.ts`, `e2e/accessible.spec.ts` and `e2e/sound.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator. Not run: the full suite, the whole Playwright run.
 - Out of scope: spatial audio (replaced by the simple cues of part 7), any API change, any new dependency, a font file, CSS-in-JS.
 ## Task Dependency Graph
 ```mermaid
@@ -445,6 +482,13 @@ graph TD
   T62 --> T64[64 Tests of the fix]
   T63 --> T64
   T64 --> T65[65 Checks and records of the fix]
+  T65 --> T66[66 One room outline]
+  T65 --> T68[68 Sound you hear at once]
+  T66 --> T67[67 A thin glowing ring and no wash]
+  T67 --> T69[69 Tests of part 8]
+  T68 --> T69
+  T69 --> T70[70 Budget of part 8]
+  T70 --> T71[71 Checks and records of part 8]
 ```
 ```json
 {
@@ -504,7 +548,13 @@ graph TD
     { "id": 52, "tasks": ["61.1"] },
     { "id": 53, "tasks": ["62.1", "63.1"] },
     { "id": 54, "tasks": ["62.2", "64.1"] },
-    { "id": 55, "tasks": ["65.1"] }
+    { "id": 55, "tasks": ["65.1"] },
+    { "id": 56, "tasks": ["66.1", "68.1"] },
+    { "id": 57, "tasks": ["66.2", "67.1", "67.2", "68.2", "68.3", "68.4"] },
+    { "id": 58, "tasks": ["67.3", "69.3"] },
+    { "id": 59, "tasks": ["69.1", "69.2", "69.4"] },
+    { "id": 60, "tasks": ["70.1"] },
+    { "id": 61, "tasks": ["71.1"] }
   ]
 }
 ```

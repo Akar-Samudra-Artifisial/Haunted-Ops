@@ -10,7 +10,9 @@ import { FOG_BANK_MAX, FOG_WISP_MAX, GHOST_KINDS, GHOST_KIND_MAX, GHOST_MAX, MOT
 import { CORRIDOR_STYLE, HUNT_ICON, buildHouseArt, buildRoomArt, chipLayout, clockHands, huntBadgeRect, fitHuntRing, huntBadgeWidth, huntRingArt, ringStrokes, starField, type RingPlacement, type RingStrokes, type RoomArt, type RoomIcon } from './shapes.js';
 import { FOG_LAYERS, SceneInitError, type Frame, type HuntFrame, type ParticleBuffer, type RoomFrame, type Surface, type SurfaceInit } from './surface.js';
 import { FIGURE_GLOW_REST } from './surface.js';
-import { loadSprites, ROOM_SPRITE_SCALE, roomSpriteFit, spriteBrightness, spriteFloor, spriteSilhouette, unloadSprites, type SpriteSet } from './sprites.js';
+import { roomOutline } from './outline.js';
+import { RING_GLOW_ALPHA, RING_GLOW_PX, RING_LINE_PX, ringShape } from './ring.js';
+import { loadSprites, ROOM_SPRITE_SCALE, roomSpriteFit, spriteBrightness, spriteFloor, unloadSprites, type SpriteSet } from './sprites.js';
 import { TEXTURE_NAMES, drawTexture, type TextureName } from './textures.js';
 
 const num = hexToNumber;
@@ -217,7 +219,11 @@ export class PixiSurface implements Surface {
   private dpr = 1;
   private size = { width: 0, height: 0 };
   private contextCb: ((e: 'lost' | 'restored') => void) | null = null;
-  private ringFor: ServiceName | null = null;
+  private ringFor: string | null = null;
+  private focused: ServiceName | null = null;
+  private selectedName: ServiceName | null = null;
+  /** The rooms the ring is drawn on now (selected and focused). */
+  readonly ringed = new Set<ServiceName>();
   private readonly cleanups: Array<() => void> = [];
 
   async init(opts: SurfaceInit): Promise<void> {
@@ -298,7 +304,7 @@ export class PixiSurface implements Surface {
       pools.fog.container,
       pools.motes.container,
       pools.pulses.container,
-      // The ring runs along the silhouette, through the front corner. Then the ghosts, the Exorcist above them, and the chips on top of everything.
+      // The ring runs along the outline of the room (`roomOutline`), through the front corner. Then the ghosts, the Exorcist above them, and the chips on top of everything.
       layers.ui,
       ...pools.ghosts.map((g) => g.container),
       layers.figures,
@@ -461,7 +467,7 @@ export class PixiSurface implements Surface {
       glow.mask = glowMask;
     }
 
-    const sil = flat(fit ? spriteSilhouette(fit) : room.silhouette);
+    const sil = flat(roomOutline(room, fit !== null));
     const dim = new Graphics();
     dim.poly(sil, true).fill({ color: num(PALETTE.nightDeep) });
     dim.alpha = 0;
@@ -689,7 +695,7 @@ export class PixiSurface implements Surface {
     view.plate
       .roundRect(p.x, p.y, p.w, p.h, p.r)
       .fill({ color: num(PALETTE.surface), alpha: CHIP_ALPHA })
-      .stroke({ color: num(open ? PALETTE.danger : PALETTE.line), width: open ? 1.5 : 1 });
+      .stroke({ color: num(this.selectedName === view.room.name ? PALETTE.ring : open ? PALETTE.danger : PALETTE.line), width: open || this.selectedName === view.room.name ? 1.5 : 1 });
     view.plate.circle(chip.dot.x, chip.dot.y, chip.dot.r).fill({ color: num(LEVEL_COLOR[v.dark ? 4 : v.level] as string) });
     if (chip.alert) view.plate.circle(chip.alert.x, chip.alert.y, chip.alert.r).fill({ color: num(PALETTE.danger) });
     view.label.position.set(chip.name.x, chip.name.y);
@@ -733,7 +739,7 @@ export class PixiSurface implements Surface {
     const pools = this.pools;
     const layout = this.layout;
     if (this.destroyed || !app || !layers || !pools || !layout) return;
-
+    this.drawRing(frame.selected, layout);
     for (const rf of frame.rooms) {
       const view = this.views.get(rf.name);
       if (view) this.drawRoom(view, rf);
@@ -753,7 +759,6 @@ export class PixiSurface implements Surface {
     else (pools.ghosts[0] as Pool).fill(frame.ghosts);
     pools.motes.fill(frame.motes);
     pools.pulses.fill(frame.pulses);
-    this.drawRing(frame.selected, layout);
     app.render();
   }
 
@@ -775,7 +780,8 @@ export class PixiSurface implements Surface {
     view.tint.alpha = clamp(rf.tint * (1 + 0.6 * rf.pulse), 0, 0.8) * (rf.dark ? 0 : 1);
     view.outlineAlarm.alpha = rf.alarm;
     view.outlineEdge.alpha = rf.edge;
-    view.outlineTrim.alpha = rf.outlineAlpha;
+    // A ringed room hides its trim line, which is wider than the ring on large screens: only the ring shows on its edge.
+    view.outlineTrim.alpha = this.ringed.has(rf.name) ? 0 : rf.outlineAlpha;
     for (let k = 0; k < FOG_LAYERS; k++) {
       const layer = rf.fogLayers[k];
       const sp = view.fogLayers[k];
@@ -856,16 +862,37 @@ export class PixiSurface implements Surface {
     }
   }
 
+  /** The room with keyboard focus (or null): the scene draws its ring, dashed when the room is not also selected. */
+  setFocus(name: ServiceName | null): void {
+    this.focused = name;
+  }
+  /** True when the room pictures are in use: the outline of every room is then the outline of the picture. */
+  get spritesLoaded(): boolean {
+    return this.sprites !== null;
+  }
+  /** The ring of the selected room and of the room with keyboard focus, on the one outline of the room, redrawn only when one of them or the layout changes. */
   private drawRing(selected: ServiceName | null, layout: SceneLayout): void {
     const ring = this.layers?.ring;
-    if (!ring || this.ringFor === selected) return;
-    this.ringFor = selected;
+    const key = `${selected ?? ''}|${this.focused ?? ''}`;
+    if (!ring || this.ringFor === key) return;
+    this.ringFor = key;
+    // The chip of the selected room takes the ring colour, so its pill is painted again when the selection moves.
+    if (this.selectedName !== selected) {
+      this.selectedName = selected;
+      if (this.model) this.applyModel(this.model);
+    }
     ring.clear();
-    const room = selected === null ? undefined : layout.rooms.find((r) => r.name === selected);
-    if (!room) return;
-    ring.poly(flat(room.silhouette), true).stroke({ color: num(PALETTE.ring), width: Math.max(3, layout.scale * 0.09), join: 'round', alpha: 1 });
+    this.ringed.clear();
+    for (const name of new Set([selected, this.focused])) {
+      const room = name === null ? undefined : layout.rooms.find((r) => r.name === name);
+      if (!room) continue;
+      this.ringed.add(room.name);
+      const shape = ringShape(roomOutline(room, this.sprites?.rooms[room.name] !== undefined), name === selected);
+      for (const width of [RING_GLOW_PX, RING_LINE_PX]) {
+        for (const path of shape.paths) ring.poly(flat(path), shape.closed).stroke({ color: num(PALETTE.ring), width, join: 'round', cap: 'round', alpha: width === RING_GLOW_PX ? RING_GLOW_ALPHA : 1 });
+      }
+    }
   }
-
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;

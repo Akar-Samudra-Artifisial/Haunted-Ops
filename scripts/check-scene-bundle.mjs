@@ -31,9 +31,14 @@ const KIB = 1024;
  *     shared diff of the announcer (`changes.ts`), the sound storage key, the Legend rows and the model and layout additions (chip size, level word,
  *     hunt badge words) measured 94.8 KiB gzip (97092 bytes), 0.8 KiB over 94 (the hook and the button alone are 1.1 KiB of the 1.8 KiB growth
  *     from 93.0). The replay chunk measured 6707 bytes on the same build, inside 6800.
+ *   - `entry` raised from 95 to 95.5 KiB by `visual-refresh` part 8 (17 Nov 2026 build): the entry measured 95.4 KiB gzip (97710 bytes, about 0.4 KiB over
+ *     95.0). The growth is the `AudioContext` made and resumed synchronously inside the click (it cannot wait for the lazy chunk: Safari drops the user
+ *     activation), the confirmation cue, the 20 s silence hint and the "Sound unavailable" retry of `useSound` and `SoundButton`, and the keyboard focus
+ *     plumbing of the room buttons (the focused room and the outline function handed over by the scene chunk; the sprite geometry stays in that chunk).
+ *     Never above 95.5 KiB. The sound chunk measured 575 bytes, the scene chunk 178.2 KiB (182527 bytes) and the replay chunk 6708 bytes.
  * PixiJS also loads a few small renderer chunks on demand (15.8 KiB more, 172.3 KiB in all); they are reported, not budgeted.
  */
-export const BUDGETS = Object.freeze({ entry: 95 * KIB, scene: 180 * KIB, sceneFile: 119 * KIB, replay: 6800, sound: 4 * KIB });
+export const BUDGETS = Object.freeze({ entry: 95.5 * KIB, scene: 180 * KIB, sceneFile: 119 * KIB, replay: 6800, sound: 4 * KIB });
 
 /**
  * Budgets of the illustrated sprites (`visual-refresh` part 4), in bytes of the files in `dist/scene/*.webp` (they are already

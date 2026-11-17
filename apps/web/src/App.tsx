@@ -192,7 +192,7 @@ export function App({ client, demo = null, scene = {}, replay = null }: AppProps
   return (
     <div className="app">
       <SkipLink />
-      <Header status={status} demo={demo !== null} note={replay?.banner} accessible={{ on: accessible, onToggle: mode.toggle }} sound={replay === null ? { on: sound.on, unavailable: sound.unavailable, onToggle: sound.toggle } : undefined} />
+      <Header status={status} demo={demo !== null} note={replay?.banner} accessible={{ on: accessible, onToggle: mode.toggle }} sound={replay === null ? { on: sound.on, unavailable: sound.unavailable, hint: sound.hint, onToggle: sound.toggle } : undefined} />
       <main className="app-main">
         <div className="layout-main">
           {replay?.controls}

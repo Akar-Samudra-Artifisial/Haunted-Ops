@@ -12,6 +12,8 @@ export interface RendererStats {
   particles: number;
   quality: Quality;
   frames: number;
+  /** The room with keyboard focus whose ring the scene draws (part 8), or null. */
+  focused?: ServiceName | null;
 }
 
 export interface SceneRenderer {
@@ -19,6 +21,8 @@ export interface SceneRenderer {
   update(model: SceneModel): void;
   resize(layout: SceneLayout): void;
   select(name: ServiceName | null): void;
+  /** The room with keyboard focus, or null (`visual-refresh` part 8). */
+  focus?(name: ServiceName | null): void;
   /** Idempotent. Safe before `start` has finished. */
   destroy(): void;
   readonly stats: RendererStats;
@@ -32,6 +36,8 @@ export interface RendererDeps {
   governor?: PerfGovernor;
   onQuality?: (quality: Quality) => void;
   onContext?: (event: 'lost' | 'restored') => void;
+  /** Said once the surface is running: whether the room pictures are in use (the outline of the room follows). */
+  onSprites?: (loaded: boolean) => void;
 }
 
 /**
@@ -42,7 +48,7 @@ export function createSceneRenderer(deps: RendererDeps): SceneRenderer {
   const { surface, loop, env } = deps;
   const animator = deps.animator ?? createAnimator();
   const governor = deps.governor ?? new PerfGovernor();
-  const stats: RendererStats = { frameMs: 16.7, particles: 0, quality: 'full', frames: 0 };
+  const stats: RendererStats = { frameMs: 16.7, particles: 0, quality: 'full', frames: 0, focused: null };
   const unsubscribes: Array<() => void> = [];
   let destroyed = false;
   let started = false;
@@ -108,6 +114,7 @@ export function createSceneRenderer(deps: RendererDeps): SceneRenderer {
         else kick();
       });
       started = true;
+      deps.onSprites?.(surface.spritesLoaded === true);
       surface.applyLayout(layout);
       surface.applyModel(model);
       animator.setLayout(layout);
@@ -141,6 +148,12 @@ export function createSceneRenderer(deps: RendererDeps): SceneRenderer {
     select(name) {
       if (destroyed) return;
       animator.select(name);
+      kick();
+    },
+    focus(name) {
+      if (destroyed) return;
+      stats.focused = name;
+      surface.setFocus?.(name);
       kick();
     },
     destroy() {

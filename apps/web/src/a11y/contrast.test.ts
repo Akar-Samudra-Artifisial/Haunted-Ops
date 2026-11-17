@@ -98,8 +98,14 @@ describe('contrast pairs of styles.css', () => {
     }
   });
   it('keeps an outline on a focused room button', () => {
+    // Without a drawing scene the rectangle is the indicator; with one, the scene draws the ring on the outline of the room (visual-refresh part 8).
     const block = /\.room-button:focus-visible \{([^}]*)\}/.exec(css)?.[1] ?? '';
     expect(block).toMatch(/outline:\s*3px solid var\(--focus\)/);
+  });
+  it('paints no wash over a room button (part 8): the ring and the chip say selected and focused', () => {
+    expect(css).not.toMatch(/--focus-wash|--press-wash/);
+    const rules = [...css.matchAll(/\.room-button[^{]*\{([^}]*)\}/g)].map((m) => m[1] as string);
+    for (const rule of rules) for (const m of rule.matchAll(/background(?:-color)?:\s*([^;]+);/g)) expect(m[1]?.trim()).toBe('transparent');
   });
 });
 

@@ -3,6 +3,7 @@ import type { ServiceName, ServiceState } from '@haunted-ops/shared';
 import type { Quality } from '../scene/governor.js';
 import { useElementSize } from '../scene/hooks.js';
 import { computeLayout, mountHeight } from '../scene/layout.js';
+import type { Pt, RoomLayout } from '../scene/layout.js';
 import type { SceneModel } from '../scene/model.js';
 import { RoomButtons } from '../scene/RoomButtons.js';
 import type { SceneCanvasProps } from '../scene/SceneCanvas.js';
@@ -78,6 +79,10 @@ export function SceneMount(props: SceneMountProps) {
   const size = useElementSize(ref);
   const [failed, setFailed] = useState(false);
   const [contextLost, setContextLost] = useState(false);
+  // The outline of a room from the scene chunk (`roomOutline`): `null` until the scene runs, and the buttons keep their CSS focus outline; then the
+  // hit shape of a room button is that outline and the scene draws the ring of keyboard focus.
+  const [outline, setOutline] = useState<((room: RoomLayout) => Pt[]) | null>(null);
+  const [focused, setFocused] = useState<ServiceName | null>(null);
 
   const rooms = useMemo(() => services.map((s) => ({ name: s.name, grid: s.room })), [services]);
   const aspect = useMemo(() => computeLayout(rooms, { width: 1000, height: 1000, dpr: 1 }).aspect, [rooms]);
@@ -94,6 +99,7 @@ export function SceneMount(props: SceneMountProps) {
   }, [showsFallback, onNotice]);
   const onFailure = useCallback(() => setFailed(true), []);
   const onContext = useCallback((event: 'lost' | 'restored') => setContextLost(event === 'lost'), []);
+  const onOutline = useCallback((fn: (room: RoomLayout) => Pt[]) => setOutline(() => fn), []);
   const onQuality = props.onQuality ?? (() => undefined);
   const onSelect = props.onSelect ?? (() => undefined);
 
@@ -112,9 +118,11 @@ export function SceneMount(props: SceneMountProps) {
                     model={model}
                     layout={layout}
                     selected={selected}
+                    focused={focused}
                     onFailure={onFailure}
                     onQuality={onQuality}
                     onContext={onContext}
+                    onOutline={onOutline}
                     createRenderer={createRenderer}
                     publishStats={publishStats}
                   />
@@ -124,7 +132,7 @@ export function SceneMount(props: SceneMountProps) {
               )}
             </CanvasBoundary>
           </Suspense>
-          {layout && !contextLost ? <RoomButtons layout={layout} model={model} selected={selected} onSelect={onSelect} /> : null}
+          {layout && !contextLost ? <RoomButtons layout={layout} model={model} selected={selected} onSelect={onSelect} outline={contextLost ? null : outline} onFocusVisible={setFocused} /> : null}
           {contextLost ? <SceneFallback /> : null}
         </>
       )}

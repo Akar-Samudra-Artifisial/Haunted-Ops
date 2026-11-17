@@ -16,8 +16,8 @@ export const CUE_FILES: Readonly<Record<CueName, string>> = {
 };
 
 export interface SoundPlayer {
-  /** Plays one cue now. Never throws. */
-  play(cue: CueName): void;
+  /** Plays one cue now, at `gain` times the master volume (1 unless given). Never throws. */
+  play(cue: CueName, gain?: number): void;
   /** Resumes the audio context (after a click). */
   resume(): Promise<void>;
   /** The state of the audio context: cues play only while it is `running`. */
@@ -26,26 +26,16 @@ export interface SoundPlayer {
 }
 
 export interface PlayerEnv {
-  AudioContext?: typeof AudioContext;
   fetch?: typeof fetch;
 }
 
 /**
- * Starts the Web Audio player: one `AudioContext`, one master gain of 0.6, and the eight files fetched and decoded once (the buffers are kept).
- * This module is a lazy chunk: it is imported only when the visitor turns sound on. Rejects when the context cannot start or a file fails, and
- * the caller shows sound as unavailable.
+ * Starts the Web Audio player on the context the caller made: one master gain of 0.6, and the eight files fetched and decoded once (the buffers
+ * are kept). The context is created and resumed by the caller inside the click (Safari drops the user activation while a chunk loads), never here.
+ * This module is a lazy chunk: it is imported only when the visitor turns sound on. Rejects when a file fails, and the caller shows sound as unavailable.
  */
-export async function createPlayer(env: PlayerEnv = {}): Promise<SoundPlayer> {
-  const Ctx = env.AudioContext ?? globalThis.AudioContext;
-  if (typeof Ctx !== 'function') throw new Error('no audio');
+export async function createPlayer(ctx: AudioContext, env: PlayerEnv = {}): Promise<SoundPlayer> {
   const get = env.fetch ?? globalThis.fetch.bind(globalThis);
-  const ctx = new Ctx();
-  // Called synchronously inside the click, before any fetch: Safari drops the user activation while the files load. A refusal is kept quiet; `resume` tries again.
-  try {
-    void ctx.resume().catch(() => undefined);
-  } catch {
-    /* a context that cannot resume stays suspended */
-  }
   try {
     const master = ctx.createGain();
     master.gain.value = MASTER_GAIN;
@@ -61,14 +51,20 @@ export async function createPlayer(env: PlayerEnv = {}): Promise<SoundPlayer> {
     // Once more now the files are ready; a refusal leaves it suspended and `resume` tries again on the next click.
     void ctx.resume().catch(() => undefined);
     return {
-      play(cue) {
+      play(cue, gain = 1) {
         try {
           const buffer = buffers.get(cue);
           // A cue is skipped, not queued, while the context is not running (queued sources would all sound at once).
           if (buffer === undefined || ctx.state !== 'running') return;
           const source = ctx.createBufferSource();
           source.buffer = buffer;
-          source.connect(master);
+          if (gain === 1) source.connect(master);
+          else {
+            const level = ctx.createGain();
+            level.gain.value = gain;
+            source.connect(level);
+            level.connect(master);
+          }
           source.start();
         } catch {
           /* a cue that cannot play is skipped */
