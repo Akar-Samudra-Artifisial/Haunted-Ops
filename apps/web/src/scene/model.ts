@@ -65,7 +65,7 @@ export const TREMBLE_AMPLITUDE = 0.012;
 export const ENTER_MS = 1200;
 /** The figure stays this long after a Hunt ends, then leaves; the result mark stays. */
 export const FIGURE_LINGER_MS = 8000;
-/** Marks of the Hunt slot: one per step, at most this many. */
+/** Ticks of the Hunt ring on the floor: one per step, at most this many. */
 export const MAX_MARKS = 8;
 
 /** What the scene draws of a Room's latest Hunt. Built from `huntView`, the same helper the table uses. */
@@ -73,8 +73,10 @@ export interface HuntVisual {
   phase: 'queued' | 'entering' | 'working' | 'sealed' | 'fizzled';
   /** The figure is drawn: while the Hunt runs and for 8 s after it ends (if it ever started). */
   figure: boolean;
-  /** Lit marks in the Hunt slot, 0 to 8. */
+  /** Lit ticks of the floor ring, 0 to 8: `min(steps, MAX_MARKS)`. */
   marks: number;
+  /** Steps done: the number the hunt badge shows. */
+  steps: number;
   result: 'none' | 'sealed' | 'failed';
   /** The table's hunt cell text. */
   label: string;
@@ -96,9 +98,9 @@ export function huntVisual(hunt: ServiceState['hunt'], now: number): HuntVisual 
     case 'none':
       return null;
     case 'queued':
-      return { phase: 'queued', figure: false, marks: 0, result: 'none', label, enteredAt: 0 };
+      return { phase: 'queued', figure: false, marks: 0, steps: 0, result: 'none', label, enteredAt: 0 };
     case 'running':
-      return { phase: now - startedAt < ENTER_MS ? 'entering' : 'working', figure: true, marks, result: 'none', label, enteredAt: startedAt };
+      return { phase: now - startedAt < ENTER_MS ? 'entering' : 'working', figure: true, marks, steps: hunt.stepCount, result: 'none', label, enteredAt: startedAt };
     case 'sealed':
     case 'failed':
     case 'cancelled': {
@@ -107,12 +109,24 @@ export function huntVisual(hunt: ServiceState['hunt'], now: number): HuntVisual 
         phase: view.phase === 'sealed' ? 'sealed' : 'fizzled',
         figure,
         marks,
+        steps: hunt.stepCount,
         result: view.phase === 'sealed' ? 'sealed' : 'failed',
         label,
         enteredAt: startedAt,
       };
     }
   }
+}
+
+/** The text of the hunt badge of a room: "Hunting · 5 steps" while running, then the words of the summary bar; null when there is nothing to say. Pure. */
+export function huntBadgeOf(s: Pick<ServiceState, 'hunt' | 'proposal'>): string | null {
+  const hunt = s.hunt;
+  if (hunt?.status === 'running') return `Hunting · ${hunt.stepCount} ${hunt.stepCount === 1 ? 'step' : 'steps'}`;
+  if (hunt?.status === 'queued') return 'Hunt queued';
+  if (s.proposal?.status === 'open') return 'Fix proposed';
+  if (s.proposal?.status === 'merged' || s.proposal?.status === 'deployed') return 'Fix merged';
+  if (hunt?.diagnosis) return 'Diagnosed';
+  return null;
 }
 
 /** The cleansing sweep after a fix is deployed lasts this long. */
@@ -141,6 +155,7 @@ export interface RoomVisual {
   levelLabel: string;
   /** The shape of the level (or of a dark room) from the table, drawn before the name on the chip. */
   levelMark: string;
+  /** The level word and the level colour of the chip's dot come from `level` (`LEVEL_COLOR`), or the dark entry when `dark`. */
   dark: boolean;
   light: number;
   /** The row of `LEVEL_LOOK` this room shows (the dark row when dark). */
@@ -162,6 +177,8 @@ export interface RoomVisual {
   clock: { hour: number; minute: number };
   seed: number;
   hunt: HuntVisual | null;
+  /** The words of the hunt badge (see `huntBadgeOf`), or null: no badge. */
+  huntBadge: string | null;
   proposal: ProposalVisual | null;
   summary: string;
 }
@@ -264,8 +281,8 @@ export function toSceneModel(services: readonly ServiceState[], now: number, opt
     const ghostCount = level === 0 ? 0 : Math.min(GHOST_MAX, Math.max(Math.round(e * GHOST_MAX), errorReason ? Math.max(level, ghostFloor(level)) : 0));
     // Fog grows with the level when slowness is the cause: at least 0.6 at level 2, 0.9 at level 3.
     const fogDensity = Math.min(1, Math.max(f, p95Reason ? 0.3 * level : 0));
-    // Dust drifts in lit rooms only, and not in low quality (the Animator also hides it under reduced motion).
-    const motes = dark || quality === 'low' ? 0 : level === 0 ? MOTE_MAX : level === 1 ? 3 : 0;
+    // Fine dust floats in the lantern light of a calm (4) or uneasy (2) room only: none when dark, in low quality or under reduced motion (it is removed, not frozen).
+    const motes = dark || quality === 'low' || reducedMotion ? 0 : level === 0 ? MOTE_MAX : level === 1 ? 2 : 0;
     return { s, dark, level, e, f, ghostCount, fogDensity, motes };
   });
 
@@ -317,6 +334,7 @@ export function toSceneModel(services: readonly ServiceState[], now: number, opt
       clock,
       seed: hashString(s.name),
       hunt,
+      huntBadge: huntBadgeOf(s),
       proposal,
       summary: roomSummary(s, dark, badge, hunt, proposal),
     };

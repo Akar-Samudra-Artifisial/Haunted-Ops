@@ -1,14 +1,13 @@
 import { Application, Container, Graphics, Particle, ParticleContainer, Sprite, Text, Texture } from 'pixi.js';
 import type { ServiceName } from '@haunted-ops/shared';
 import { MAX_PULSES, MAX_ROOMS } from './animator.js';
-import { FIGURE_H, FIGURE_H_SPRITE, FIGURE_MIN_PX_NARROW, FIGURE_W, NARROW_BELOW } from './layout.js';
-import { MAX_MARKS } from './model.js';
+import { CHIP_PAD_PX, CHIP_GAP, FIGURE_H, FIGURE_H_SPRITE, FIGURE_MIN_PX_NARROW, FIGURE_W, NARROW_BELOW } from './layout.js';
 import { clamp } from './math.js';
 import type { Pt, RoomLayout, SceneLayout } from './layout.js';
 import type { RoomVisual, SceneModel } from './model.js';
-import { FONT_STACK, PALETTE, PILL_ALPHA, hexToNumber } from './palette.js';
+import { CHIP_ALPHA, FONT_STACK, LEVEL_COLOR, PALETTE, hexToNumber } from './palette.js';
 import { FOG_BANK_MAX, FOG_WISP_MAX, GHOST_KINDS, GHOST_KIND_MAX, GHOST_MAX, MOTE_MAX } from './particles.js';
-import { CORRIDOR_STYLE, buildHouseArt, buildRoomArt, chipLayout, clockHands, huntMarkStyle, starField, type RoomArt, type RoomIcon } from './shapes.js';
+import { CORRIDOR_STYLE, HUNT_ICON, buildHouseArt, buildRoomArt, chipLayout, clockHands, huntBadgeRect, fitHuntRing, huntBadgeWidth, huntRingArt, ringStrokes, starField, type RingPlacement, type RingStrokes, type RoomArt, type RoomIcon } from './shapes.js';
 import { FOG_LAYERS, SceneInitError, type Frame, type HuntFrame, type ParticleBuffer, type RoomFrame, type Surface, type SurfaceInit } from './surface.js';
 import { FIGURE_GLOW_REST } from './surface.js';
 import { loadSprites, ROOM_SPRITE_SCALE, roomSpriteFit, spriteBrightness, spriteFloor, spriteSilhouette, unloadSprites, type SpriteSet } from './sprites.js';
@@ -105,16 +104,32 @@ interface RoomView {
   outlineAlarm: Graphics;
   outlineEdge: Graphics;
   clock: Graphics;
-  /** The chip: one pill, the level mark with the name, and the "!" marker of an open incident. Made once, updated in place. */
+  /** The chip: one pill with the level dot, the name, from 640 px up the level word, and the danger dot of an open incident. Made once, updated in place. */
   plate: Graphics;
   label: Text;
-  bang: Text;
+  word: Text;
+  /** The level is calm and the room is lit: its lamp glow stays at 0.25 or less. */
+  calm: boolean;
   hunt: Container;
   huntArt: HuntArt;
 }
 
-/** Points of the seal ring; it is drawn as the first `n` segments. */
+/** Points of the cleansing ring. */
 const SEAL_STEPS = 48;
+/** Alpha of the floor ring of a Hunt, of a lit tick and of the next, dim one. */
+const RING_ALPHA = 0.4;
+const TICK_ALPHA = 1;
+const TICK_DIM_ALPHA = 0.3;
+/** The floor ring around the Exorcist's feet, in iso units (the floor plane is half as high as wide). */
+const RING_RX = 0.55;
+const RING_RY = 0.275;
+/** Alpha of the moon sprite, and of the halo behind it. */
+const MOON_ALPHA = 0.92;
+const MOON_HALO_ALPHA = 0.18;
+/** The moon is a share of the scene width, between these px; under 640 px it is the least. */
+const MOON_W = { share: 0.09, min: 56, max: 150 } as const;
+/** The calm lamp glow is at most this alpha. */
+const CALM_GLOW_MAX = 0.25;
 /** The lantern of the illustrated Exorcist, as shares of the figure's height (left of its centre, up from its feet). */
 const SPRITE_LANTERN = { x: 0.23, y: 0.42 } as const;
 /** A fizzle throws at most this many spark dots (Graphics, not particles). */
@@ -125,11 +140,15 @@ const FIGURE_GLOW_MIN_PX_NARROW = 40;
 /** The objects of one room's hunt, made once. */
 interface HuntArt {
   container: Container;
-  /** The dark pill behind the marks and the empty rings: both are shown only while the room has a hunt. */
-  marksBack: Graphics;
-  marksOff: Graphics;
-  marksOn: Graphics;
-  result: Graphics;
+  /** The hunt badge: the pill, the magnifier (it breathes while a hunt runs) and the text; shown only while the room has something to say. */
+  badge: Graphics;
+  badgeIcon: Graphics;
+  badgeText: Text;
+  /** The text now drawn, so the pill is redrawn only when it changes. */
+  drawnBadge: string | null;
+  /** A hunt is running: the magnifier breathes. */
+  running: boolean;
+  /** The floor ring under the Exorcist with a tick per step done. */
   seal: Graphics;
   figure: Container;
   /** The illustrated figure (null: the procedural body), its two poses and its height. */
@@ -142,16 +161,15 @@ interface HuntArt {
   sparks: Graphics[];
   lanternX: number;
   lanternY: number;
-  /** Lantern of the sprite figure, in figure heights from its feet (x is for a figure facing left). */
-  slot: { x: number; y: number; w: number; h: number; midY: number; r: number; markX: (i: number) => number; resultX: number; resultY: number };
-  /** The figure glow, and the "Hunt · n steps" text of a narrow slot too small for the dots (null: dots). */
+  /** The hunt slot (it does not change); the fix scroll is placed from it. */
+  slot: { x: number; y: number; w: number; h: number; midY: number };
+  /** The figure glow. */
   figureGlow: Sprite;
-  huntText: Text | null;
-  ringPts: number[];
-  /** What is drawn now, so a frame redraws a Graphics only when it changed. */
-  sealN: number;
+  /** What is drawn now, so a frame redraws the ring only when the number of ticks changed. */
   drawnMarks: number;
-  drawnResult: 'none' | 'sealed' | 'failed' | null;
+  /** Where the floor ring rests (a centre inside the floor, shrunk if the floor is small) and its strokes in px. Fixed for the layout. */
+  ringFit: RingPlacement;
+  ringStrokes: RingStrokes;
   /** The fix scroll (with its glow) and the cleansing ring, made once and only moved or faded. */
   scroll: Container;
   scrollGlow: Sprite;
@@ -250,7 +268,8 @@ export class PixiSurface implements Surface {
     const ui = new Container();
     ui.addChild(ring);
     const moon = new Container();
-    moon.addChild(new Sprite(this.textures.get('glow') as Texture), new Graphics());
+    // The moon: a soft halo and the illustrated moon; without the files, one plain disc.
+    moon.addChild(new Sprite(this.textures.get('glow') as Texture), sprites ? new Sprite(sprites.moon) : new Graphics());
     const layers: Layers = { background: new Graphics(), farStars: new Graphics(), nearStars: new Graphics(), moon, house: new Graphics(), roof: new Graphics(), corridors: new Container(), rooms: new Container(), texts: new Container(), figures: new Container(), ui, ring };
     this.layers = layers;
 
@@ -328,19 +347,31 @@ export class PixiSurface implements Surface {
     for (const s of starField(layout.width, layout.height, 40, 7)) layers.farStars.circle(s.x, s.y, s.r * 0.8).fill({ color: num(PALETTE.ghost), alpha: s.alpha * 0.7 });
     layers.nearStars.clear();
     for (const s of starField(layout.width, layout.height, 16, 19)) layers.nearStars.circle(s.x, s.y, s.r * 1.4).fill({ color: num(PALETTE.ghost), alpha: Math.min(1, s.alpha + 0.2) });
-    // The moon: a pale disc with a bite taken out of it, in a soft halo.
-    const mr = Math.max(6, Math.min(layout.width, layout.height) * 0.04);
-    const [halo, disc] = layers.moon.children as [Sprite, Graphics];
+    // The moon, top right, behind the house: the sprite (56 px under 640 px wide, else 9 % of the width between 56 and 150 px) in a faint halo; one plain disc without it.
+    const moonW = layout.width < NARROW_BELOW ? MOON_W.min : clamp(layout.width * MOON_W.share, MOON_W.min, MOON_W.max);
+    const [halo, moonArt] = layers.moon.children as [Sprite, Sprite | Graphics];
+    const mx = layout.width * 0.88;
+    const my = layout.height * 0.13;
     layers.moon.position.set(0, 0);
     halo.anchor.set(0.5);
-    halo.position.set(layout.width * 0.88, layout.height * 0.13);
-    halo.width = mr * 7;
-    halo.height = mr * 7;
+    halo.position.set(mx, my);
+    halo.width = moonW * 2.2;
+    halo.height = moonW * 2.2;
     halo.tint = num(PALETTE.moon);
-    halo.alpha = 0.3;
-    disc.clear();
-    disc.circle(layout.width * 0.88, layout.height * 0.13, mr).fill({ color: num(PALETTE.moon), alpha: 0.85 });
-    disc.circle(layout.width * 0.88 + mr * 0.45, layout.height * 0.13 - mr * 0.2, mr * 0.85).fill({ color: num(PALETTE.night) });
+    halo.alpha = MOON_HALO_ALPHA;
+    if (this.sprites) {
+      const sp = moonArt as Sprite;
+      const tex = this.sprites.moon;
+      sp.anchor.set(0.5);
+      sp.position.set(mx, my);
+      sp.width = moonW;
+      sp.height = (moonW * tex.height) / Math.max(1, tex.width);
+      sp.alpha = MOON_ALPHA;
+    } else {
+      const disc = moonArt as Graphics;
+      disc.clear();
+      disc.circle(mx, my, moonW * 0.32).fill({ color: num(PALETTE.moon), alpha: MOON_ALPHA });
+    }
 
     const g = layers.house;
     g.clear();
@@ -415,12 +446,20 @@ export class PixiSurface implements Surface {
 
     const glow = new Sprite(this.textures.get('glow') as Texture);
     glow.anchor.set(0.5);
-    glow.position.set(art.lampTop.x, art.lampTop.y);
-    // The glow of a sprite room stays inside the picture, which is drawn ROOM_SPRITE_SCALE times the floor.
+    // The glow of a sprite room is light on its floor: centred on the floor and clipped to `spriteFloor(fit)`, so no blurred disc spills over the walls.
+    // The procedural room keeps its lamp spot.
+    const lamp = fit ? { x: (room.floor[1].x + room.floor[3].x) / 2, y: (room.floor[0].y + room.floor[2].y) / 2 } : art.lampTop;
+    glow.position.set(lamp.x, lamp.y);
     glow.width = art.glowSize * (fit ? ROOM_SPRITE_SCALE : 1);
     glow.height = glow.width;
     glow.blendMode = 'add';
     glow.tint = num(PALETTE.glowWarm);
+    let glowMask: Graphics | null = null;
+    if (fit) {
+      glowMask = new Graphics();
+      glowMask.poly(flat(spriteFloor(fit)), true).fill({ color: 0xffffff });
+      glow.mask = glowMask;
+    }
 
     const sil = flat(fit ? spriteSilhouette(fit) : room.silhouette);
     const dim = new Graphics();
@@ -455,21 +494,23 @@ export class PixiSurface implements Surface {
     outlineAlarm.poly(sil, true).stroke({ color: num(PALETTE.alarm), width: Math.max(2, layout.scale * 0.07), join: 'round' });
     outlineAlarm.alpha = 0;
 
-    const style = (size: number, fill: string, weight: '600' | '700' = '600') => ({ fontFamily: FONT_STACK, fontSize: size, fill, fontWeight: weight });
+    // The chip reads like the pills of the side panel: the same font, weight 500, a fixed size.
+    const style = (size: number, fill: string) => ({ fontFamily: FONT_STACK, fontSize: size, fill, fontWeight: '500' as const });
     const plate = new Graphics();
-    const label = new Text({ text: room.name, style: style(layout.labelPx, PALETTE.text) });
+    const label = new Text({ text: room.name, style: style(layout.labelPx, PALETTE.uiText) });
     label.anchor.set(0, 0.5);
-    const bang = new Text({ text: '!', style: style(layout.labelPx, PALETTE.danger, '700') });
-    bang.anchor.set(0, 0.5);
-    bang.visible = false;
+    const word = new Text({ text: '', style: style(layout.labelPx, PALETTE.uiMuted) });
+    word.anchor.set(0, 0.5);
+    word.visible = false;
     // The hunt: the slot with its marks, the Exorcist figure with its lantern, and the seal ring on the floor.
     const huntArt = this.buildHunt(room, layout);
     const hunt = huntArt.container;
 
     root.addChild(body, tint, ...fogLayers, glow, dim, ...mist, outlineTrim, outlineEdge, outlineAlarm, huntArt.seal, huntArt.sweep);
+    if (glowMask) root.addChild(glowMask);
     const texts = new Container();
-    texts.addChild(plate, label, bang, hunt);
-    return { room, art, root, texts, body, sprite, glow, dim, tint, fogLayers, mist, half, outlineTrim, outlineEdge, outlineAlarm, clock, plate, label, bang, hunt, huntArt };
+    texts.addChild(plate, label, word, hunt);
+    return { room, art, root, texts, body, sprite, glow, dim, tint, fogLayers, mist, half, outlineTrim, outlineEdge, outlineAlarm, clock, plate, label, word, calm: false, hunt, huntArt };
   }
 
   /** Draws the small icon of a service on the back wall. */
@@ -485,37 +526,22 @@ export class PixiSurface implements Surface {
     const container = new Container();
     const slot = room.huntRect;
     const midY = slot.y + slot.h / 2;
-    const style = huntMarkStyle(slot, layout.width, MAX_MARKS, room.hit);
-    const r = style.kind === 'dots' ? style.r : 0;
-    const step = style.kind === 'dots' ? style.step : 0;
-    const markX = (i: number): number => slot.x + step * (i + 0.5);
+    // The hunt badge (pill, magnifier, text): made once, hidden until the room has something to say; `paintTexts` sizes it from the measured text.
+    const font = layout.labelPx;
+    const badge = new Graphics();
+    badge.visible = false;
+    const badgeIcon = new Graphics();
+    badgeIcon.visible = false;
+    const badgeText = new Text({ text: '', style: { fontFamily: FONT_STACK, fontSize: font, fill: PALETTE.ecto, fontWeight: '500' } });
+    badgeText.anchor.set(0, 0.5);
+    badgeText.visible = false;
 
-    // A narrow slot too small for the dots shows a text pill instead (same pill style as the room chip).
-    const pill = style.kind === 'text' ? style.pill : slot;
-    const marksBack = new Graphics();
-    marksBack.roundRect(pill.x, pill.y, pill.w, pill.h, pill.h / 2).fill({ color: num(PALETTE.pill), alpha: PILL_ALPHA });
-    marksBack.visible = false;
-    let huntText: Text | null = null;
-    if (style.kind === 'text') {
-      huntText = new Text({ text: '', style: { fontFamily: FONT_STACK, fontSize: style.fontPx, fill: PALETTE.text, fontWeight: '600' } });
-      huntText.anchor.set(0, 0.5);
-      huntText.visible = false;
-      huntText.position.set(pill.x + 0.45 * style.fontPx, pill.y + pill.h / 2);
-    }
-    const marksOff = new Graphics();
-    marksOff.visible = false;
-    if (style.kind === 'dots') for (let i = 0; i < MAX_MARKS; i++) marksOff.circle(markX(i), midY, r).stroke({ color: num(PALETTE.trim), alpha: 0.55, width: Math.max(1, r * 0.35) });
-    const marksOn = new Graphics();
-    const result = new Graphics();
-
+    // The floor ring under the Exorcist: drawn when the number of ticks changes, placed with the figure.
     const seal = new Graphics();
-    const ringPts: number[] = [];
-    const rx = 1.3 * s;
-    const ry = 0.65 * s;
-    for (let i = 0; i <= SEAL_STEPS; i++) {
-      const a = -Math.PI / 2 + (i / SEAL_STEPS) * Math.PI * 2;
-      ringPts.push(room.center.x + rx * Math.cos(a), room.center.y + ry * Math.sin(a));
-    }
+    // The ring must stay on the floor of the picture (the sprite floor, else the layout floor), with a margin, whatever the width.
+    const strokes = ringStrokes(s);
+    const floor = this.sprites?.rooms[room.name] ? spriteFloor(roomSpriteFit(room.floor)) : room.floor;
+    const ringFit = fitHuntRing(floor, room.exorcistAt, RING_RX * s, RING_RY * s, strokes.len, strokes.tick / 2 + 2);
 
     const figure = new Container();
     const w = FIGURE_W * s;
@@ -600,14 +626,14 @@ export class PixiSurface implements Surface {
     sweep.visible = false;
 
     // The figure is not in this container: it has its own layer above the ghosts.
-    container.addChild(marksBack, marksOff, marksOn, result, scroll);
-    if (huntText) container.addChild(huntText);
+    container.addChild(badge, badgeIcon, badgeText, scroll);
     return {
       container,
-      marksBack,
-      marksOff,
-      marksOn,
-      result,
+      badge,
+      badgeIcon,
+      badgeText,
+      drawnBadge: null,
+      running: false,
       seal,
       figure,
       figureSprite,
@@ -619,13 +645,11 @@ export class PixiSurface implements Surface {
       sparks,
       lanternX,
       lanternY,
-      slot: { x: slot.x, y: slot.y, w: slot.w, h: slot.h, midY, r, markX, resultX: style.kind === 'text' ? pill.x + pill.w - 0.45 * style.fontPx - Math.max(2, slot.h * 0.34) : slot.x + slot.w * 0.93, resultY: pill.y + pill.h / 2 },
+      slot: { x: slot.x, y: slot.y, w: slot.w, h: slot.h, midY },
       figureGlow,
-      huntText,
-      ringPts,
-      sealN: 0,
       drawnMarks: -1,
-      drawnResult: null,
+      ringFit,
+      ringStrokes: strokes,
       scroll,
       scrollGlow,
       sweep,
@@ -644,28 +668,63 @@ export class PixiSurface implements Surface {
   }
 
   private paintTexts(view: RoomView, v: RoomVisual, layout: SceneLayout): void {
-    view.label.text = `${v.levelMark} ${v.label}`;
-    view.bang.visible = v.incident.open;
-    // The marks and their rings show only while the room has a hunt.
-    view.huntArt.marksBack.visible = v.hunt !== null;
-    view.huntArt.marksOff.visible = v.hunt !== null;
-    if (view.huntArt.huntText) view.huntArt.huntText.visible = v.hunt !== null;
+    const font = layout.labelPx;
+    const wide = layout.levelWord;
+    view.calm = v.level === 0 && !v.dark;
+    view.label.text = v.label;
+    // The level word ("· haunted") is shown from 640 px up when it fits the column of the room, in the muted colour of the panel.
+    view.word.visible = wide;
+    view.word.text = wide ? `· ${v.levelLabel}` : '';
 
     view.clock.clear();
     for (const hand of clockHands(v.clock, view.art.clock.center, view.art.clock.radius)) {
       view.clock.poly(flat(hand.points), false).stroke({ color: num(hand.color), width: hand.width, cap: 'round' });
     }
 
-    // One chip under the room: the level mark and the name, and "!" in the danger colour while an incident is open.
-    const chip = chipLayout({ room: view.room, open: v.incident.open, labelW: view.label.width, labelH: view.label.height, bangW: view.bang.width });
+    // One chip under the room, like a pill of the side panel: the level dot, the name, the level word and, while an incident is open, a danger dot.
+    const open = v.incident.open;
+    const chip = chipLayout({ room: view.room, open, font, nameW: view.label.width, wordW: wide ? view.word.width : 0 });
     view.plate.clear();
     const p = chip.pill;
     view.plate
       .roundRect(p.x, p.y, p.w, p.h, p.r)
-      .fill({ color: num(PALETTE.pill), alpha: PILL_ALPHA })
-      .stroke({ color: num(v.incident.open ? PALETTE.danger : PALETTE.lampWarm), alpha: 0.75, width: Math.max(1, 0.03 * layout.scale) });
-    view.label.position.set(chip.label.x, chip.label.y);
-    if (chip.bang) view.bang.position.set(chip.bang.x, chip.bang.y);
+      .fill({ color: num(PALETTE.surface), alpha: CHIP_ALPHA })
+      .stroke({ color: num(open ? PALETTE.danger : PALETTE.line), width: open ? 1.5 : 1 });
+    view.plate.circle(chip.dot.x, chip.dot.y, chip.dot.r).fill({ color: num(LEVEL_COLOR[v.dark ? 4 : v.level] as string) });
+    if (chip.alert) view.plate.circle(chip.alert.x, chip.alert.y, chip.alert.r).fill({ color: num(PALETTE.danger) });
+    view.label.position.set(chip.name.x, chip.name.y);
+    if (chip.word) view.word.position.set(chip.word.x, chip.word.y);
+
+    this.paintBadge(view.huntArt, view.room, v, layout);
+  }
+
+  /** The hunt badge: a mint pill with a magnifier and the words ("Hunting · 5 steps", "Diagnosed", "Fix proposed", "Fix merged"); redrawn only when its words change. */
+  private paintBadge(a: HuntArt, room: RoomLayout, v: RoomVisual, layout: SceneLayout): void {
+    const text = v.huntBadge;
+    a.running = v.hunt !== null && (v.hunt.phase === 'entering' || v.hunt.phase === 'working');
+    a.badge.visible = text !== null;
+    a.badgeIcon.visible = text !== null;
+    a.badgeText.visible = text !== null;
+    if (text === null || text === a.drawnBadge) {
+      if (text === null) a.drawnBadge = null;
+      return;
+    }
+    a.drawnBadge = text;
+    const font = layout.labelPx;
+    a.badgeText.text = text;
+    const rect = huntBadgeRect(room.hit, layout.width, huntBadgeWidth(a.badgeText.width, font), font, layout.rooms.map((r) => r.chipBox));
+    const cy = rect.y + rect.h / 2;
+    a.badge.clear();
+    a.badge.roundRect(rect.x, rect.y, rect.w, rect.h, rect.h / 2).fill({ color: num(PALETTE.surface), alpha: CHIP_ALPHA }).stroke({ color: num(PALETTE.ecto), width: 1 });
+    // The magnifier: a ring and a short handle in the space of one font size.
+    const ix = rect.x + CHIP_PAD_PX;
+    const r = 0.3 * font;
+    const cx = ix + 0.4 * font;
+    const w = Math.max(1.2, 0.11 * font);
+    a.badgeIcon.clear();
+    a.badgeIcon.circle(cx, cy - 0.1 * font, r).stroke({ color: num(PALETTE.ecto), width: w, cap: 'round' });
+    a.badgeIcon.poly([cx + r * 0.72, cy - 0.1 * font + r * 0.72, ix + HUNT_ICON * font - 0.04 * font, cy + 0.4 * font], false).stroke({ color: num(PALETTE.ecto), width: w, cap: 'round' });
+    a.badgeText.position.set(ix + (HUNT_ICON + CHIP_GAP) * font, cy);
   }
 
   draw(frame: Frame): void {
@@ -703,7 +762,7 @@ export class PixiSurface implements Surface {
     const light = rf.light * rf.flicker;
     view.body.position.set(rf.shakeX, rf.shakeY);
     // The glow is warm in a calm room and turns to the danger colour as the tint grows; a pulse adds one soft swell.
-    view.glow.alpha = clamp(light * breath + 0.35 * rf.pulse, 0, 1) * (rf.dark ? 0 : view.sprite ? 0.6 : 0.85);
+    view.glow.alpha = Math.min(view.calm ? CALM_GLOW_MAX : 1, clamp(light * breath + 0.35 * rf.pulse, 0, 1) * (rf.dark ? 0 : view.sprite ? 0.6 : 0.85));
     view.glow.tint = mixColor(num(PALETTE.glowWarm), num(PALETTE.danger), clamp(rf.tint / 0.6, 0, 1));
     const dimAlpha = clamp(rf.dim + (1 - clamp(light, 0, 1)) * 0.6 * (1 - rf.dim), 0, 0.95);
     // A sprite room is dimmed by tinting the picture itself (the overlay only covers the walls and floor of the plan).
@@ -732,32 +791,19 @@ export class PixiSurface implements Surface {
     this.drawHunt(view, rf.hunt, this.layout?.scale ?? 1);
   }
 
-  /** Moves the figure, recolours the lantern and redraws the marks, the result and the seal only when they change. */
+  /** Moves the figure, recolours the lantern and redraws the floor ring only when its tick count changes. */
   private drawHunt(view: RoomView, h: HuntFrame, scale: number): void {
     const a = view.huntArt;
     const { slot } = a;
+    // The ring on the floor under the Exorcist: one lit tick per step done (up to MAX_MARKS), the next one dim. It is drawn again only when the count changes.
     if (a.drawnMarks !== h.marks) {
       a.drawnMarks = h.marks;
-      a.marksOn.clear();
-      if (a.huntText) a.huntText.text = `Hunt · ${h.marks}${h.marks >= MAX_MARKS ? '+' : ''} ${h.marks === 1 ? 'step' : 'steps'}`;
-      else for (let i = 0; i < h.marks; i++) a.marksOn.circle(slot.markX(i), slot.midY, slot.r).fill({ color: num(PALETTE.lampWarm) });
-    }
-    if (a.drawnResult !== h.result) {
-      a.drawnResult = h.result;
-      a.result.clear();
-      const cx = slot.resultX;
-      const rr = Math.max(2, slot.h * 0.34);
-      const width = Math.max(1.5, rr * 0.35);
-      if (h.result === 'sealed') a.result.circle(cx, slot.resultY, rr).stroke({ color: num(PALETTE.lampWarm), width });
-      else if (h.result === 'failed') a.result.arc(cx, slot.resultY, rr, 0.6, Math.PI * 2 - 0.6).stroke({ color: num(PALETTE.alarm), width });
-    }
-    const n = Math.ceil(h.seal * SEAL_STEPS);
-    if (a.sealN !== n) {
-      a.sealN = n;
       a.seal.clear();
-      if (n > 0) a.seal.poly(a.ringPts.slice(0, 2 * (n + 1)), false).stroke({ color: num(PALETTE.lampWarm), width: Math.max(2, 0.07 * scale), cap: 'round', join: 'round' });
+      const art = huntRingArt({ x: 0, y: 0 }, a.ringFit.rx, a.ringFit.ry, h.marks, a.ringStrokes.len);
+      a.seal.poly(art.ring.flatMap((p) => [p.x, p.y]), false).stroke({ color: num(PALETTE.ecto), alpha: RING_ALPHA, width: a.ringStrokes.ring, join: 'round' });
+      for (const t of art.ticks) a.seal.poly([t.from.x, t.from.y, t.to.x, t.to.y], false).stroke({ color: num(PALETTE.ecto), alpha: t.lit ? TICK_ALPHA : TICK_DIM_ALPHA, width: a.ringStrokes.tick, cap: 'round' });
     }
-    a.seal.alpha = h.figure;
+    a.badgeIcon.alpha = a.running ? h.badgeGlow : 1;
 
     // The fix: glowing at the end of the Hunt slot while drafting (the figure has usually left by then), else
     // pinned on the wall above its start. Both spots stay clear of the chip.
@@ -777,10 +823,14 @@ export class PixiSurface implements Surface {
 
     const shown = h.figure > 0.003;
     a.figure.visible = shown;
+    a.seal.visible = shown;
     if (!shown) return;
     const { doors, exorcistAt } = view.room;
     a.figure.alpha = h.figure;
     a.figure.position.set(doors.px.x + (exorcistAt.x - doors.px.x) * h.walk, doors.px.y + (exorcistAt.y - doors.px.y) * h.walk);
+    // The ring lies on the floor under the figure's feet, in the rooms layer below the ghosts.
+    a.seal.position.set(doors.px.x + (a.ringFit.centre.x - doors.px.x) * h.walk, doors.px.y + (a.ringFit.centre.y - doors.px.y) * h.walk);
+    a.seal.alpha = h.figure;
     if (a.figureSprite && a.poses) {
       // Walking in or moving: the walk pose; working: the scan pose. The art faces left: mirror it to face its way.
       a.figureSprite.texture = h.walk < 0.999 ? a.poses.walk : a.poses.scan;

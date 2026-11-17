@@ -233,9 +233,11 @@ describe('Property 5: reduced motion removes motion and keeps the information', 
         still.rooms.forEach((r, i) => {
           const m = moving.rooms[i]!;
           expect(r.motion).toEqual({ drift: 0, flicker: 0, tremble: 0 });
-          expect({ ...r, motion: m.motion }).toEqual(m);
+          // The dust is removed under reduced motion, not frozen: it is the one count that changes (and the particle totals with it).
+          expect(r.moteCount).toBe(0);
+          expect({ ...r, motion: m.motion, moteCount: m.moteCount }).toEqual(m);
         });
-        expect(still.particles).toEqual(moving.particles);
+        expect(still.particles.cap).toBe(moving.particles.cap);
         expect(still.summary).toBe(moving.summary);
       }),
       RUNS,

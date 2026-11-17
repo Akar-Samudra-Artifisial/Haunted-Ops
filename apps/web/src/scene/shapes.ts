@@ -1,39 +1,180 @@
 import { PALETTE } from './palette.js';
-import { CHIP_H, CHIP_PAD_X, MIN_FONT_NARROW_PX, NARROW_BELOW, WALL_HEIGHT, type HouseLayout, type Pt, type Rect, type RoomLayout } from './layout.js';
+import { CHIP_ALERT_DOT, CHIP_CHAR_W, CHIP_DOT, CHIP_GAP, CHIP_H, CHIP_PAD_PX, ROOM_SCREEN_H, WALL_HEIGHT, type HouseLayout, type Pt, type Rect, type RoomLayout } from './layout.js';
 import { unit } from './rng.js';
 
-/** Under 40rem the Hunt dots are at least this big (radius) with at least this gap between them, in px; else a text pill replaces them. */
-export const HUNT_DOT_MIN_R = 4;
-export const HUNT_DOT_MIN_GAP = 2;
-/** The longest text of the narrow Hunt pill ("Hunt · 8+ steps"), in characters, and its width per character in font sizes (measured about 0.43 at 14 px). */
-const HUNT_TEXT_CHARS = 15;
-const HUNT_CHAR_W = 0.46;
+/** Most ticks on the floor ring of a Hunt, one per step done (the same count the model caps its marks at). */
+export const RING_TICKS = 8;
 
-export type HuntMarkStyle = { kind: 'dots'; r: number; step: number } | { kind: 'text'; fontPx: number; pill: Rect };
+/** The longest text of the hunt badge counted for its estimated width ("Hunting · 99 steps"), in characters. */
+export const HUNT_BADGE_CHARS = 18;
+
+/** Share of the badge height the magnifier icon takes, and the gap after it, in font sizes. */
+export const HUNT_ICON = 1.0;
 
 /**
- * How the marks of a Hunt slot are drawn. Desktop: dots of the slot's own size. Under `NARROW_BELOW`: dots of radius 4 px or more
- * with a gap of 2 px or more when `count` of them fit in 85 % of the slot, else the pill with the text "Hunt · n steps" at
- * `MIN_FONT_NARROW_PX`. The pill is wider than the slot, so it sits at the top of the room's screen rect `room` (the top of the
- * back wall, above the body of the figure): centred on a room of the middle column, on the outer half of a side room, kept
- * inside the canvas; the slot itself does not change. Pure. (Here and not in `layout.ts`, which the entry chunk shares.)
+ * The most width in px a hunt badge of this font may take: padding, magnifier, gap and text of `HUNT_BADGE_CHARS` characters. The drawn
+ * badge is measured; the layout tests keep this much free.
  */
-export function huntMarkStyle(slot: Rect, width: number, count: number, room: Rect): HuntMarkStyle {
-  const step = (slot.w * 0.85) / count;
-  const r = Math.max(1.5, Math.min(slot.h * 0.28, slot.w / 20));
-  if (width >= NARROW_BELOW) return { kind: 'dots', r, step };
-  if (step - 2 * HUNT_DOT_MIN_R >= HUNT_DOT_MIN_GAP) return { kind: 'dots', r: Math.min(Math.max(r, HUNT_DOT_MIN_R), (step - HUNT_DOT_MIN_GAP) / 2), step };
-  const fontPx = MIN_FONT_NARROW_PX;
-  const h = CHIP_H * fontPx;
-  const w = (HUNT_TEXT_CHARS * HUNT_CHAR_W + 2 * CHIP_PAD_X) * fontPx;
-  // A side room puts the pill on its outer half (inner edge at the room centre), away from the middle column and the figure.
-  const cx = room.x + room.w / 2;
-  const side = cx - width / 2;
-  const at = Math.abs(side) < room.w / 4 ? cx - w / 2 : side < 0 ? cx - w : cx;
-  const x = Math.max(0, Math.min(at, width - w));
-  return { kind: 'text', fontPx, pill: { x, y: room.y, w, h } };
+export function huntBadgeMaxWidth(font: number): number {
+  return 2 * CHIP_PAD_PX + (HUNT_ICON + CHIP_GAP) * font + HUNT_BADGE_CHARS * CHIP_CHAR_W * font;
 }
 
+/** The width of a hunt badge for a measured text width. */
+export const huntBadgeWidth = (textW: number, font: number): number => 2 * CHIP_PAD_PX + (HUNT_ICON + CHIP_GAP) * font + textW;
+
+/**
+ * Where the hunt badge of a room goes: the same height as the chip (`CHIP_H` of the font), a little below the top of the room's screen rect `room`
+ * (on the back wall, above the body of the figure and clear of every chip, or at the top of the canvas when a phone leaves no other gap): centred on a room of the middle column, on the outer half of a side
+ * room (inner edge at the room centre), kept inside the canvas. `width` is the canvas width, `badgeW` the badge width. The slot (`huntRect`)
+ * does not change. Pure. (Here and not in `layout.ts`, which the entry chunk shares.)
+ */
+export function huntBadgeRect(room: Rect, width: number, badgeW: number, font: number, avoid: readonly Rect[] = []): Rect {
+  const h = CHIP_H * font;
+  const cx = room.x + room.w / 2;
+  const side = cx - width / 2;
+  const at = Math.abs(side) < room.w / 4 ? cx - badgeW / 2 : side < 0 ? cx - badgeW : cx;
+  const x = Math.max(0, Math.min(at, width - badgeW));
+  const unit = room.h / ROOM_SCREEN_H;
+  // The first height (a little below the top of the room, then higher) that clears every chip in `avoid` and stays on the canvas.
+  // A badge never touches a chip: at least BADGE_GAP px of air on the side that separates them.
+  const clear = (r: Rect): boolean =>
+    r.y >= 0 && avoid.every((c) => c.x >= r.x + r.w + BADGE_GAP || r.x >= c.x + c.w + BADGE_GAP || c.y >= r.y + r.h + BADGE_GAP || r.y >= c.y + c.h + BADGE_GAP);
+  // Then, at each height, the place of the room first and then shifted along the row by 4 px steps (nearest first), inside the canvas.
+  const xs = [x];
+  for (let d = 4; d <= width; d += 4) {
+    for (const sign of [-1, 1]) {
+      const c = x + sign * d;
+      if (c >= 0 && c + badgeW <= width) xs.push(c);
+    }
+  }
+  for (const dy of BADGE_DY) {
+    for (const cx of xs) {
+      const r = { x: cx, y: room.y + dy * unit, w: badgeW, h };
+      if (clear(r)) return r;
+    }
+  }
+  // On a phone the rows of chips leave no gap as high as the badge near a front room: it then takes the top of the canvas, which no chip reaches.
+  for (const cx of xs) {
+    const r = { x: cx, y: 0, w: badgeW, h };
+    if (clear(r)) return r;
+  }
+  return { x, y: room.y + BADGE_DY[0] * unit, w: badgeW, h };
+}
+
+/** Heights of the hunt badge below the top of its room, in iso units, in the order they are tried. */
+const BADGE_DY = [0.15, 0, -0.15, -0.3] as const;
+/** Least space between a hunt badge and any chip, in CSS px. */
+const BADGE_GAP = 2;
+
+export interface RingTick {
+  from: Pt;
+  to: Pt;
+  /** Lit: a step done. Not lit: the next step, drawn dim. */
+  lit: boolean;
+}
+export interface HuntRingArt {
+  /** The ellipse on the floor plane, centred on `centre`, as points of a closed polyline. */
+  ring: Pt[];
+  /** One tick per step done (lit) up to `RING_TICKS`, then the next one dim while steps remain to count. */
+  ticks: RingTick[];
+}
+
+/** Strokes of the floor ring in screen px: the ring line is thin, a tick is a dash across it, at least 2 px wide and 3 times as long as it is wide. */
+export interface RingStrokes {
+  ring: number;
+  tick: number;
+  len: number;
+}
+export function ringStrokes(scale: number): RingStrokes {
+  const ring = Math.max(1, 0.02 * scale);
+  const tick = Math.max(2, 0.05 * scale);
+  return { ring, tick, len: 3.2 * tick };
+}
+/**
+ * The floor ring of a Hunt: a thin ellipse of semi-axes `rx` and `ry` around `centre` with `RING_TICKS` positions spread evenly, the first at the front
+ * (the bottom) of the ellipse. Each tick is a dash of length `len` across the ring (centred on it, along its normal). The first `min(steps, RING_TICKS)`
+ * are lit and the next one is dim. The count of lit ticks equals `min(steps, RING_TICKS)`; the badge shows `steps`. Pure.
+ */
+export function huntRingArt(centre: Pt, rx: number, ry: number, steps: number, len: number = Math.max(6, 0.3 * rx)): HuntRingArt {
+  const lit = Math.max(0, Math.min(RING_TICKS, Math.floor(Number.isFinite(steps) ? steps : 0)));
+  const ring: Pt[] = [];
+  const N = 48;
+  for (let i = 0; i <= N; i++) ring.push({ x: centre.x + rx * Math.cos((i / N) * Math.PI * 2), y: centre.y + ry * Math.sin((i / N) * Math.PI * 2) });
+  const ticks: RingTick[] = [];
+  const upto = lit < RING_TICKS ? lit + 1 : lit;
+  for (let i = 0; i < upto; i++) ticks.push(ringTick(centre, rx, ry, i, len, i < lit));
+  return { ring, ticks };
+}
+function ringTick(centre: Pt, rx: number, ry: number, i: number, len: number, lit: boolean): RingTick {
+  const a = Math.PI / 2 + (i / RING_TICKS) * Math.PI * 2;
+  const p = { x: centre.x + rx * Math.cos(a), y: centre.y + ry * Math.sin(a) };
+  // The normal of the ellipse at `p`.
+  const nx = ry * Math.cos(a);
+  const ny = rx * Math.sin(a);
+  const n = Math.hypot(nx, ny) || 1;
+  const dx = ((nx / n) * len) / 2;
+  const dy = ((ny / n) * len) / 2;
+  return { from: { x: p.x - dx, y: p.y - dy }, to: { x: p.x + dx, y: p.y + dy }, lit };
+}
+/** Every point of the ring that must stay on the floor: the ellipse and both ends of all `RING_TICKS` dashes (lit or not). */
+export function huntRingExtent(centre: Pt, rx: number, ry: number, len: number): Pt[] {
+  const pts = huntRingArt(centre, rx, ry, RING_TICKS, len).ring.slice(0, -1);
+  for (let i = 0; i < RING_TICKS; i++) {
+    const t = ringTick(centre, rx, ry, i, len, true);
+    pts.push(t.from, t.to);
+  }
+  return pts;
+}
+/** The smallest distance of `p` to the sides of a convex polygon, positive inside, negative outside. */
+export function insideMargin(poly: readonly Pt[], p: Pt): number {
+  let area = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]!;
+    const b = poly[(i + 1) % poly.length]!;
+    area += a.x * b.y - b.x * a.y;
+  }
+  const sign = area >= 0 ? 1 : -1;
+  let least = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]!;
+    const b = poly[(i + 1) % poly.length]!;
+    const d = (sign * ((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x))) / (Math.hypot(b.x - a.x, b.y - a.y) || 1);
+    least = Math.min(least, d);
+  }
+  return least;
+}
+export interface RingPlacement {
+  centre: Pt;
+  rx: number;
+  ry: number;
+  /** 1 when the wanted size fits, less when the ring had to shrink. */
+  k: number;
+}
+/**
+ * Fits the floor ring (ellipse and ticks) into the floor polygon with `margin` px to spare: the wanted centre `at` and size are tried first, then the
+ * centre moves toward the middle of the floor, then the ring shrinks. Always ends inside a floor that is large enough for a ring of at least 5 % of the size. Pure.
+ */
+export function fitHuntRing(floor: readonly Pt[], at: Pt, rx: number, ry: number, len: number, margin: number): RingPlacement {
+  const mid = { x: floor.reduce((s, p) => s + p.x, 0) / floor.length, y: floor.reduce((s, p) => s + p.y, 0) / floor.length };
+  const fits = (c: Pt, k: number): boolean => huntRingExtent(c, rx * k, ry * k, len).every((p) => insideMargin(floor, p) >= margin);
+  const toward = (t: number): Pt => ({ x: at.x + (mid.x - at.x) * t, y: at.y + (mid.y - at.y) * t });
+  let k = 1;
+  for (let step = 0; step < 40; step++) {
+    if (fits(toward(0), k)) return { centre: toward(0), rx: rx * k, ry: ry * k, k };
+    if (fits(toward(1), k)) {
+      let lo = 0;
+      let hi = 1;
+      for (let i = 0; i < 12; i++) {
+        const m = (lo + hi) / 2;
+        if (fits(toward(m), k)) hi = m;
+        else lo = m;
+      }
+      return { centre: toward(hi), rx: rx * k, ry: ry * k, k };
+    }
+    k *= 0.9;
+  }
+  return { centre: mid, rx: rx * k, ry: ry * k, k };
+}
 /** Pure builders of the static art: polygons and lines in CSS pixels. No PixiJS, no DOM. */
 export interface Poly {
   points: Pt[];
@@ -263,37 +404,56 @@ export function starField(width: number, height: number, count = 48, seed = 7): 
 
 export interface ChipInput {
   room: Pick<RoomLayout, 'chipAt'>;
-  /** An incident is open: the "!" marker follows the name. */
+  /** An incident is open: the danger dot sits at the right end. */
   open: boolean;
-  /** Measured text sizes: the level mark with the name, and the "!" marker. */
-  labelW: number;
-  labelH: number;
-  bangW: number;
+  /** The chip text size in px. */
+  font: number;
+  /** Measured widths of the name and of the level word (0 when the word is not shown, under 640 px). */
+  nameW: number;
+  wordW: number;
 }
 
 export interface ChipLayout {
-  /** The pill behind the text, centred on `chipAt`. */
+  /** The pill, centred on `chipAt`: exactly the padding and the measured parts. */
   pill: { x: number; y: number; w: number; h: number; r: number };
-  /** Left end (y is the middle) of the mark and name, and of the "!" marker (null when no incident is open). */
-  label: Pt;
-  bang: Pt | null;
+  /** Level dot (centre and radius). */
+  dot: { x: number; y: number; r: number };
+  /** Left end (y is the middle) of the name, and of the level word (null when not shown). */
+  name: Pt;
+  word: Pt | null;
+  /** The incident dot (centre and radius), null when no incident is open. */
+  alert: { x: number; y: number; r: number } | null;
 }
 
-/** Where the text of the room's chip goes: the mark and name, then "!" in the danger colour when an incident is open. Pure. */
+/** Gap before the level word, in font sizes (the name and the word are one phrase). */
+export const CHIP_WORD_GAP = 0.3;
+
+/**
+ * Where the parts of the room's chip go, left to right: the level dot, the name, the level word (from 640 px up) and the danger dot (open incident).
+ * The pill is exactly 8 px of padding around them, `CHIP_H` of the font high. Pure.
+ */
 export function chipLayout(p: ChipInput): ChipLayout {
-  const { room } = p;
-  const gap = p.open ? 0.35 * p.labelH : 0;
-  const textW = p.labelW + (p.open ? gap + p.bangW : 0);
-  const pill = pillRect(room.chipAt, textW, p.labelH);
-  const left = pill.x + (pill.w - textW) / 2;
-  return { pill, label: { x: left, y: room.chipAt.y }, bang: p.open ? { x: left + p.labelW + gap, y: room.chipAt.y } : null };
+  const { room, font } = p;
+  const dotD = CHIP_DOT * font;
+  const gap = CHIP_GAP * font;
+  const alertD = CHIP_ALERT_DOT * font;
+  const wordPart = p.wordW > 0 ? CHIP_WORD_GAP * font + p.wordW : 0;
+  const inner = dotD + gap + p.nameW + wordPart + (p.open ? gap + alertD : 0);
+  const pill = pillRect(room.chipAt, inner, CHIP_H * font);
+  const y = room.chipAt.y;
+  let x = pill.x + CHIP_PAD_PX;
+  const dot = { x: x + dotD / 2, y, r: dotD / 2 };
+  x += dotD + gap;
+  const name = { x, y };
+  x += p.nameW;
+  const word = p.wordW > 0 ? { x: x + CHIP_WORD_GAP * font, y } : null;
+  x += wordPart;
+  const alert = p.open ? { x: x + gap + alertD / 2, y, r: alertD / 2 } : null;
+  return { pill, dot, name, word, alert };
 }
 
-/** Rounded pill around a text box, as a polygon (for hit tests and for tests). */
-export function pillRect(centre: Pt, textWidth: number, textHeight: number): { x: number; y: number; w: number; h: number; r: number } {
-  const padX = Math.max(5, textHeight * 0.45);
-  const padY = Math.max(2, textHeight * 0.2);
-  const w = textWidth + 2 * padX;
-  const h = textHeight + 2 * padY;
-  return { x: centre.x - w / 2, y: centre.y - h / 2, w, h, r: h / 2 };
+/** The rounded pill around content `inner` px wide: 8 px of padding on each side, the given height, radius half the height. */
+export function pillRect(centre: Pt, inner: number, height: number): { x: number; y: number; w: number; h: number; r: number } {
+  const w = inner + 2 * CHIP_PAD_PX;
+  return { x: centre.x - w / 2, y: centre.y - height / 2, w, h: height, r: height / 2 };
 }

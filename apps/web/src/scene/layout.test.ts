@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SERVICE_NAMES } from '@haunted-ops/shared';
 import { insideConvex, insideDiamond, rectCorners, rectGap, separation } from '../test/geometry.js';
 import { COMPACT_BELOW, FIGURE_H_SPRITE, FIGURE_MIN_PX_NARROW, MIN_FONT_NARROW_PX, ROOM_STRIDE, computeLayout, mountHeight, readingOrder, type LayoutRoom } from './layout.js';
-import { HUNT_DOT_MIN_GAP, HUNT_DOT_MIN_R, huntMarkStyle } from './shapes.js';
+import { huntBadgeMaxWidth, huntBadgeRect } from './shapes.js';
 import { nextRoom, selectionReducer, tabOrder } from './selection.js';
 
 const HOUSE: LayoutRoom[] = [
@@ -65,13 +65,17 @@ describe('computeLayout', () => {
     expect(layout.badgePx).toBe(11);
   });
 
-  it('keeps the size rule of the room name on a desktop and raises it to 14 px only under 40rem (640 px)', () => {
-    expect(computeLayout(HOUSE, view(1280, 720)).labelPx).toBeCloseTo(0.34 * computeLayout(HOUSE, view(1280, 720)).scale, 6);
+  it('fixes the chip text at 12 px from 640 px up (not scaled by the zoom) and 14 px below', () => {
+    expect(computeLayout(HOUSE, view(1280, 720)).labelPx).toBe(12);
+    expect(computeLayout(HOUSE, view(1920, 1080)).labelPx).toBe(12);
+    expect(computeLayout(HOUSE, view(3840, 2160)).labelPx).toBe(12);
     const nine: LayoutRoom[] = Array.from({ length: 9 }, (_, i) => ({ name: SERVICE_NAMES[i % 4] as LayoutRoom['name'], grid: { x: i % 3, y: Math.floor(i / 3) } }));
-    expect(computeLayout(nine, view(639, 640)).labelPx).toBeGreaterThanOrEqual(14);
-    expect(computeLayout(nine, view(640, 640)).labelPx).toBeLessThan(14);
-    expect(computeLayout(nine, view(640, 640)).labelPx).toBeGreaterThanOrEqual(11);
-    expect(computeLayout(HOUSE, view(390, 560)).labelPx).toBeGreaterThanOrEqual(14);
+    expect(computeLayout(nine, view(639, 640)).labelPx).toBe(MIN_FONT_NARROW_PX);
+    expect(computeLayout(nine, view(640, 640)).labelPx).toBe(12);
+    expect(computeLayout(HOUSE, view(390, 560)).labelPx).toBe(14);
+    // The level word shows from 640 px up when it fits the column of its room, never under 640 px.
+    expect(computeLayout(HOUSE, view(1440, 900)).levelWord).toBe(true);
+    expect(computeLayout(HOUSE, view(390, 844)).levelWord).toBe(false);
   });
 
   it('caps the device pixel ratio at 2 and handles a house with gaps and a single room', () => {
@@ -97,37 +101,30 @@ describe('computeLayout', () => {
     expect(ordersPayments!.points.some((p) => Math.abs(p.x - centreX) < 1e-6)).toBe(true);
   });
 
-  it('draws the Hunt marks readable at 390 px: dots of 4 px or more with a gap of 2 px or more, or a text pill of 14 px or more, clear of the chip', () => {
-    for (const w of [390, 364, 320, 639]) {
-      const layout = computeLayout(HOUSE, view(w, 844));
+  it('puts the hunt badge in the hunt slot rules: 12 px from 640 px up and 14 px below, 1.9 of the font high, clear of every chip and inside the canvas', () => {
+    for (const w of [390, 768, 1024, 1440, 364, 320, 639, 640]) {
+      const layout = computeLayout(HOUSE, view(w, w < 640 ? 844 : 900));
+      const font = w < 640 ? 14 : 12;
       for (const r of layout.rooms) {
-        const style = huntMarkStyle(r.huntRect, w, 8, r.hit);
-        if (style.kind === 'dots') {
-          expect(style.r).toBeGreaterThanOrEqual(HUNT_DOT_MIN_R);
-          expect(style.step - 2 * style.r).toBeGreaterThanOrEqual(HUNT_DOT_MIN_GAP - 1e-9);
-          expect(r.huntRect.x + style.step * 8).toBeLessThanOrEqual(r.huntRect.x + r.huntRect.w + 1e-6);
-        } else {
-          expect(style.fontPx).toBeGreaterThanOrEqual(MIN_FONT_NARROW_PX);
-          // Clear of its own chip at every width, and of every chip from 364 px (a 390 px phone) up; at 320 px the ledger pill
-          // touches the chips around it by about 2 px (no free place of its size there; the chips are drawn above it).
-          expect(rectGap(style.pill, r.chipBox)).toBeGreaterThan(0);
-          for (const other of layout.rooms) {
-            if (w >= 364 || r.name !== 'ledger') expect(rectGap(style.pill, other.chipBox), `${r.name} pill over the ${other.name} chip at ${w}`).toBeGreaterThan(0);
-            else expect(rectGap(style.pill, other.chipBox)).toBeGreaterThan(-2.5);
-          }
-          expect(style.pill.x).toBeGreaterThanOrEqual(0);
-          expect(style.pill.x + style.pill.w).toBeLessThanOrEqual(w + 1e-6);
-          // Above the body of the working figure (its glow is centred at half its height; the figure layer is drawn over the pill).
-          const figureH = Math.max(FIGURE_H_SPRITE * layout.scale, FIGURE_MIN_PX_NARROW);
-          expect(style.pill.y + style.pill.h).toBeLessThanOrEqual(r.exorcistAt.y - 0.5 * figureH);
+        const badge = huntBadgeRect(r.hit, w, huntBadgeMaxWidth(font), font, layout.rooms.map((o) => o.chipBox));
+        expect(badge.h).toBeCloseTo(1.9 * font);
+        expect(badge.x).toBeGreaterThanOrEqual(0);
+        expect(badge.x + badge.w).toBeLessThanOrEqual(w + 1e-6);
+        expect(badge.y + badge.h).toBeLessThanOrEqual(layout.height);
+        // Clear of its own chip at every width, and of every chip from 364 px (a 390 px phone) up; at 320 px the ledger badge touches
+        // the chips around it by a few px (no free place of its size there; the chips are drawn above it).
+        expect(rectGap(badge, r.chipBox)).toBeGreaterThan(0);
+        for (const other of layout.rooms) {
+          if (w >= 364 || r.name !== 'ledger') expect(rectGap(badge, other.chipBox), `${r.name} badge over the ${other.name} chip at ${w}`).toBeGreaterThan(0);
+          else expect(rectGap(badge, other.chipBox)).toBeGreaterThan(-6);
         }
+        // Above the body of the working figure (its glow is centred at half its height; the figure layer is drawn over the badge).
+        const figureH = Math.max(FIGURE_H_SPRITE * layout.scale, w < 640 ? FIGURE_MIN_PX_NARROW : 0);
+        expect(badge.y + badge.h).toBeLessThanOrEqual(r.exorcistAt.y - 0.5 * figureH + 1e-6);
+        // The slot itself does not change: it stays clear of the chip.
         expect(rectGap(r.huntRect, r.chipBox)).toBeGreaterThan(0);
       }
     }
-    // Desktop keeps the dots of the slot's own size.
-    const wide = computeLayout(HOUSE, view(1440, 900)).rooms[0]!;
-    const d = huntMarkStyle(wide.huntRect, 1440, 8, wide.hit);
-    expect(d.kind).toBe('dots');
   });
   it('puts one chip under each room, in its bottom 20 % and below the front corner, and the hunt slot on the back wall', () => {
     for (const [w, h] of [[1440, 900], [390, 844]] as const) {

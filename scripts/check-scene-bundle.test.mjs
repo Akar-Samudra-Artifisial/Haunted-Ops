@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ASSET_BUDGETS, BUDGETS, analyze, assetProblems, manifestFiles, closure, gzipSize, problems, splitChunks } from './check-scene-bundle.mjs';
+import { ASSET_BUDGETS, BUDGETS, SFX_BUDGETS, analyze, assetProblems, manifestFiles, sfxManifestFiles, sfxProblems, closure, gzipSize, problems, splitChunks } from './check-scene-bundle.mjs';
 
 const manifest = {
   'index.html': { file: 'assets/index-a.js', isEntry: true, imports: ['_shared.js'], dynamicImports: ['src/scene/SceneCanvas.tsx', 'src/replay/ReplayApp.tsx'] },
@@ -108,4 +108,45 @@ test('checks the sprite files: missing, over 80 KiB, over 400 KiB in all', () =>
   assert.match(assetProblems(many, [])[0], /in all, budget 400\.0 KiB/);
   assert.equal(ASSET_BUDGETS.file, 80 * KIB);
   assert.equal(ASSET_BUDGETS.total, 400 * KIB);
+});
+
+test('splits the sound chunk: only the player needs its files, and a static import from the entry is a problem', () => {
+  const withSound = {
+    ...manifest,
+    'index.html': { ...manifest['index.html'], dynamicImports: [...manifest['index.html'].dynamicImports, 'src/sound/player.ts'] },
+    'src/sound/player.ts': { file: 'assets/player-g.js', isDynamicEntry: true, imports: ['_shared.js'] },
+  };
+  const soundFiles = { ...files, 'assets/player-g.js': 'export function createPlayer(){}'.repeat(30) };
+  const readSound = (f) => Buffer.from(soundFiles[f]);
+  const split = splitChunks(withSound);
+  assert.deepEqual(split.sound, ['assets/player-g.js']);
+  assert.equal(split.soundFile, 'assets/player-g.js');
+  assert.equal(split.soundInEntry, false);
+  const r = analyze(withSound, readSound);
+  assert.equal(r.soundGzip, gzipSize(readSound('assets/player-g.js')));
+  assert.deepEqual(problems(r), []);
+  assert.equal(BUDGETS.sound, 4 * 1024);
+  assert.match(problems(r, { ...BUDGETS, sound: r.soundGzip - 1 })[0], /sound chunk is .* gzip, budget/);
+  const eager = { ...withSound, 'index.html': { ...withSound['index.html'], imports: ['_shared.js', 'src/sound/player.ts'] } };
+  assert.equal(splitChunks(eager).soundInEntry, true);
+  assert.ok(problems(analyze(eager, readSound)).some((p) => /entry chunk reaches the sound chunk with a static import/.test(p)));
+  // A manifest without a sound chunk has none and no problem (the main check fails an empty sound chunk of a real build).
+  assert.deepEqual(splitChunks(manifest).sound, []);
+});
+
+test('reads the sound files of the player and checks them: missing, over 32 KiB, over 200 KiB in all', () => {
+  const source = "export const F = { a: '/sfx/hunt-step.mp3', b: \"/sfx/room-dark.mp3\", c: '/sfx/hunt-step.mp3' } as const; // /sfx/<file>";
+  assert.deepEqual(sfxManifestFiles(source), ['hunt-step.mp3', 'room-dark.mp3']);
+  const KIB = 1024;
+  const files = [
+    { name: 'hunt-step.mp3', size: 16 * KIB },
+    { name: 'room-dark.mp3', size: 32 * KIB },
+  ];
+  assert.deepEqual(sfxProblems(files, ['hunt-step.mp3', 'room-dark.mp3']), []);
+  assert.match(sfxProblems(files, ['hunt-step.mp3', 'fix-merged.mp3'])[0], /fix-merged\.mp3 is listed in the sound player but missing/);
+  assert.match(sfxProblems([{ name: 'big.mp3', size: 32 * KIB + 1 }], [])[0], /big\.mp3 is .* budget 32\.0 KiB per file/);
+  const many = Array.from({ length: 7 }, (_, i) => ({ name: `f${i}.mp3`, size: 30 * KIB }));
+  assert.match(sfxProblems(many, [])[0], /in all, budget 200\.0 KiB/);
+  assert.equal(SFX_BUDGETS.file, 32 * KIB);
+  assert.equal(SFX_BUDGETS.total, 200 * KIB);
 });

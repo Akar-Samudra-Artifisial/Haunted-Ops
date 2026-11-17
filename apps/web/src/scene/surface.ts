@@ -32,7 +32,7 @@ export interface HuntFrame {
   walk: number;
   /** Lantern brightness, 0 to 1. */
   lantern: number;
-  /** Lit marks in the Hunt slot, 0 to 8. */
+  /** Lit ticks of the floor ring, 0 to 8 (`min(steps, 8)`). */
   marks: number;
   /** The seal ring on the floor: 0 not drawn, up to 1 closed. */
   seal: number;
@@ -43,6 +43,8 @@ export interface HuntFrame {
   result: 'none' | 'sealed' | 'failed';
   /** Alpha of the mint glow behind the figure: 0.85 at rest, a 3 s breath between 0.7 and 0.9 (fixed under Reduced motion and in Low quality). */
   figureGlow: number;
+  /** Alpha of the magnifier of the hunt badge while a hunt runs: a 2 s breath between 0.7 and 1 (fixed at 1 under Reduced motion and in Low quality). */
+  badgeGlow: number;
   /** The fix of the Hunt. */
   proposal: ProposalFrame;
 }
@@ -51,8 +53,13 @@ export interface HuntFrame {
 export const FIGURE_GLOW_REST = 0.85;
 export const FIGURE_GLOW_MS = 3000;
 
+/** The magnifier of the hunt badge breathes between `BADGE_GLOW_REST - BADGE_GLOW_SWING` (0.7) and 1 over `BADGE_GLOW_MS` (2 s). */
+export const BADGE_GLOW_REST = 0.85;
+export const BADGE_GLOW_SWING = 0.15;
+export const BADGE_GLOW_MS = 2000;
+
 export function emptyHuntFrame(): HuntFrame {
-  return { figure: 0, walk: 0, lantern: 0, marks: 0, seal: 0, fizzle: 0, sparks: 0, result: 'none', figureGlow: FIGURE_GLOW_REST, proposal: emptyProposalFrame() };
+  return { figure: 0, walk: 0, lantern: 0, marks: 0, seal: 0, fizzle: 0, sparks: 0, result: 'none', figureGlow: FIGURE_GLOW_REST, badgeGlow: 1, proposal: emptyProposalFrame() };
 }
 
 /** The fix scroll and the cleansing sweep of one room. */

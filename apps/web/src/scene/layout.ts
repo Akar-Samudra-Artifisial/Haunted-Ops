@@ -31,14 +31,20 @@ export const PLINTH = 0.15;
 export const CHIP_BAND = 0.2;
 /** Height of a room's screen rect in iso units: the floor (2) and the back wall (1). */
 export const ROOM_SCREEN_H = ROOM_SIZE + WALL_HEIGHT;
-/** Chip height as a share of the font size: the text and a padding of 0.3 of it above and below. */
-export const CHIP_H = 1.6;
-/** Characters of the chip text counted for its width: the level mark, a space, the name, a space and the "!" marker. */
-export const CHIP_EXTRA_CHARS = 4;
-/** Average width of a character of the chip, in font sizes. */
+/** Chip text size in CSS px (fixed, not scaled by the zoom): 12 px from `NARROW_BELOW` up, `MIN_FONT_NARROW_PX` (14) below it. */
+export const CHIP_FONT_PX = 12;
+/** Chip height as a share of the font size, and its horizontal padding in px (the pills of the side panel). */
+export const CHIP_H = 1.9;
+export const CHIP_PAD_PX = 8;
+/** Level dot of the chip: its diameter and the gap after it and before the next part, in font sizes. */
+export const CHIP_DOT = 0.5;
+export const CHIP_GAP = 0.4;
+/** The incident dot at the right end of the chip, in font sizes. */
+export const CHIP_ALERT_DOT = 0.4;
+/** Upper bound of the width of a character of the chip text (weight 500 of the UI font), in font sizes. The drawn pill is measured; this is what the layout keeps free. */
 export const CHIP_CHAR_W = 0.55;
-/** Horizontal padding of the chip, in font sizes. */
-export const CHIP_PAD_X = 0.45;
+/** Characters of the level word part (" · possessed", the longest) counted for the width of the chip from `NARROW_BELOW` up. */
+export const CHIP_WORD_CHARS = 12;
 /** The figure stands right of the centre of the floor, above the chip. */
 const FIGURE_X = 0.55;
 
@@ -103,6 +109,8 @@ export interface SceneLayout {
   compact: boolean;
   labelPx: number;
   badgePx: number;
+  /** The chip shows the level word ("payments · haunted"): from 640 px up, when the longest chip fits the column of its room (it does not on a short, wide window). */
+  levelWord: boolean;
   /** Overhang of the chips below the lowest room, in CSS pixels: the fit leaves this room at the bottom. */
   chipReserve: number;
   rooms: RoomLayout[];
@@ -387,10 +395,19 @@ export function figurePlace(textRight: number, textTop: number): { feet: Pt; box
 
 // --- text boxes ---
 
-/** The chip's text size in px: 14 px or more under 40rem, the 11 px rule from there up. */
-const chipFont = (width: number, scale: number): number => Math.max(width < NARROW_BELOW ? MIN_FONT_NARROW_PX : MIN_FONT_PX, 0.34 * scale);
+/** The chip's text size in px: fixed, 14 px under 40rem and 12 px from there up. */
+export const chipFont = (width: number): number => (width < NARROW_BELOW ? MIN_FONT_NARROW_PX : CHIP_FONT_PX);
+/**
+ * The most width in px the chip of a room named `nameLength` characters may take: padding, level dot, name, from 640 px up (when it fits the column of the room, see
+ * `SceneLayout.levelWord`) the level word (" · possessed" at most) and the incident dot. The pill is drawn from the measured text and is never wider than this.
+ */
+export function chipWidthPx(nameLength: number, width: number, levelWord: boolean): number {
+  const f = chipFont(width);
+  const word = levelWord ? CHIP_WORD_CHARS * CHIP_CHAR_W * f : 0;
+  return 2 * CHIP_PAD_PX + (CHIP_DOT + CHIP_GAP) * f + nameLength * CHIP_CHAR_W * f + word + (CHIP_GAP + CHIP_ALERT_DOT) * f;
+}
 /** How far the chip hangs below the front corner of its room, in px. */
-const chipOverhang = (width: number, scale: number): number => Math.max(0, CHIP_H * chipFont(width, scale) - CHIP_BAND * ROOM_SCREEN_H * scale);
+const chipOverhang = (width: number, scale: number): number => Math.max(0, CHIP_H * chipFont(width) - CHIP_BAND * ROOM_SCREEN_H * scale);
 
 /** Computes the whole layout for a viewport. Pure: no PixiJS, no DOM. */
 export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport): SceneLayout {
@@ -411,7 +428,7 @@ export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport):
 
   const units = ordered.map(unitRoom);
   if (units.length === 0) {
-    return { width, height, dpr, scale: 1, offset: { x: width / 2, y: height / 2 }, compact: true, labelPx: MIN_FONT_PX, badgePx: MIN_FONT_PX, chipReserve: 0, rooms: [], corridors: [], house: null, aspect: 1 };
+    return { width, height, dpr, scale: 1, offset: { x: width / 2, y: height / 2 }, compact: true, labelPx: MIN_FONT_PX, badgePx: MIN_FONT_PX, levelWord: false, chipReserve: 0, rooms: [], corridors: [], house: null, aspect: 1 };
   }
   const houseU = unitHouse(ordered);
   // The house (roof, chimney, plinth) is part of the fit, so it never leaves the canvas.
@@ -434,10 +451,11 @@ export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport):
   };
   const tx = (p: Pt): Pt => ({ x: offset.x + p.x * scale, y: offset.y + p.y * scale });
 
-  // The chip text is 14 px or more on a narrow viewport. The reason badge keeps its 11 px rule (it sizes the Hunt slot).
-  const labelPx = chipFont(width, scale);
+  // The chip text is fixed: 14 px on a narrow viewport and 12 px from there up. The reason badge keeps its 11 px rule (it sizes the Hunt slot).
+  const labelPx = chipFont(width);
   const badgePx = Math.max(MIN_FONT_PX, 0.28 * scale);
   const compact = scale < COMPACT_BELOW;
+  const levelWord = width >= NARROW_BELOW && units.every((u) => chipWidthPx(u.name.length, width, true) <= 2 * ROOM_STRIDE * scale);
   const chipH = (CHIP_H * labelPx) / scale;
   const roomH = ROOM_SCREEN_H;
 
@@ -446,7 +464,7 @@ export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport):
     // Unit space, relative to the floor centre (the front corner is +1 below it). One chip per room: its top is in
     // the bottom 20 % of the room's screen rect, so a tall chip hangs below the front corner and a short one sits on it.
     // The hunt slot is on the left back wall, far above.
-    const chipW = ((u.name.length + CHIP_EXTRA_CHARS) * CHIP_CHAR_W * labelPx) / scale + (2 * CHIP_PAD_X * labelPx) / scale;
+    const chipW = chipWidthPx(u.name.length, width, levelWord) / scale;
     const chipTop = 1 - Math.min(chipH, CHIP_BAND * roomH);
     const chipBoxU: Rect = { x: c.x - chipW / 2, y: c.y + chipTop, w: chipW, h: chipH };
     const huntU: Rect = { x: c.x - 1.5, y: c.y - 1.15, w: 1.0, h: 0.3 };
@@ -485,6 +503,7 @@ export function computeLayout(rooms: readonly LayoutRoom[], viewport: Viewport):
     compact,
     labelPx,
     badgePx,
+    levelWord,
     chipReserve,
     rooms: roomLayouts,
     corridors: corridorsUnit.map((c) => ({ from: c.from, to: c.to, points: c.points.map(tx), width: CORRIDOR_WIDTH * scale })),

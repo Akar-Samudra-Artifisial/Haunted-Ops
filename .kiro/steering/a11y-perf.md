@@ -12,4 +12,4 @@ fileMatchPattern: "apps/web/**"
 - Use an ARIA live region for state changes (room goes dark, hunt step, diagnosis, fix merged). Keep announcements short and not repetitive.
 - Contrast at least 4.5:1 for text, 3:1 for UI components. Do not rely on color alone.
 - Honor `prefers-reduced-motion`.
-- Performance: keep the main bundle small, lazy-load audio and heavy scene code, avoid layout thrash.
+- Performance: keep the main bundle small, lazy-load audio and heavy scene code, avoid layout thrash. Sound (`visual-refresh` part 7) is a lazy chunk plus the files of `public/sfx/`, loaded only when the visitor turns sound on with the header button ("Sound off" / "Sound on", `aria-pressed`, default off, kept under `haunted-ops.sound.v1`); the browser needs one click per page load, so a stored "on" starts at the first click. The same changes that the live region announces make the cues (`components/changes.ts`); no cue for the first snapshot or on the replay page; at most one cue per 700 ms, `hunt-step` once per 3 s, the same cue for the same room once per 5 s.

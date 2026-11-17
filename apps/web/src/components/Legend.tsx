@@ -8,6 +8,8 @@ const THINGS = [
   { icon: 'darkroom', term: 'Dark room', meaning: 'the service is down' },
   { icon: 'lantern', term: 'Lantern', meaning: 'healthy' },
   { icon: 'mist', term: 'Green mist', meaning: 'the Exorcist is investigating' },
+  { icon: 'dust', term: 'Dust floating in lantern light', meaning: 'a quiet, healthy room' },
+  { icon: 'incident', term: 'Red outline and dot on a room label', meaning: 'an incident is open' },
 ] as const;
 const LEVELS = [0, 1, 2, 3, 4] as const;
 /** A short key to the picture. Open on a first visit; after that it stays as the visitor left it. */

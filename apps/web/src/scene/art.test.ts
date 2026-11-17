@@ -106,23 +106,33 @@ describe('shapes', () => {
     expect(CORRIDOR_STYLE.pulseAlpha).toBeGreaterThan(CORRIDOR_STYLE.idleAlpha);
   });
 
-  it('puts the "!" marker after the name inside one chip, only when an incident is open', () => {
+  it('puts the level dot, the name, the level word and the danger dot in one chip; the dot only when an incident is open', () => {
     const room = layout.rooms[2]!;
-    const base = { room, labelW: 80, labelH: layout.labelPx, bangW: 6 };
+    const font = 12;
+    const base = { room, font, nameW: 60, wordW: 50 };
     const closed = chipLayout({ ...base, open: false });
-    expect(closed.bang).toBeNull();
+    expect(closed.alert).toBeNull();
     const open = chipLayout({ ...base, open: true });
-    expect(open.bang).not.toBeNull();
-    // Same height and centre, wider by the marker; the marker is right of the name and on its line.
-    expect(open.pill.h).toBeCloseTo(closed.pill.h);
+    expect(open.alert).not.toBeNull();
+    // Height is 1.9 of the font, the radius half of it, the padding 8 px: the pill is exactly the padding and the parts.
+    expect(open.pill.h).toBeCloseTo(1.9 * font);
+    expect(open.pill.r).toBeCloseTo(open.pill.h / 2);
     expect(open.pill.y).toBeCloseTo(closed.pill.y);
     expect(open.pill.w).toBeGreaterThan(closed.pill.w);
     expect(open.pill.x + open.pill.w / 2).toBeCloseTo(room.chipAt.x);
-    expect(open.bang!.x).toBeGreaterThan(open.label.x + 80);
-    expect(open.bang!.y).toBe(open.label.y);
-    // The chip covers the name and the marker.
-    expect(open.pill.x).toBeLessThan(open.label.x);
-    expect(open.pill.x + open.pill.w).toBeGreaterThan(open.bang!.x + 6);
+    expect(closed.pill.x + 8).toBeCloseTo(closed.dot.x - closed.dot.r);
+    // Left to right: level dot (0.5 of the font wide), the name, the word, the danger dot (0.4 of the font), all on one line.
+    expect(closed.dot.r * 2).toBeCloseTo(0.5 * font);
+    expect(closed.name.x).toBeGreaterThan(closed.dot.x + closed.dot.r);
+    expect(closed.word!.x).toBeGreaterThan(closed.name.x + 60);
+    expect(open.alert!.r * 2).toBeCloseTo(0.4 * font);
+    expect(open.alert!.x - open.alert!.r).toBeGreaterThan(open.word!.x + 50);
+    expect(open.alert!.y).toBe(open.name.y);
+    // The right padding is 8 px after the danger dot (or after the word when closed).
+    expect(open.pill.x + open.pill.w - (open.alert!.x + open.alert!.r)).toBeCloseTo(8);
+    expect(closed.pill.x + closed.pill.w - (closed.word!.x + 50)).toBeCloseTo(8);
+    // Under 640 px there is no word.
+    expect(chipLayout({ ...base, wordW: 0, open: false }).word).toBeNull();
   });
   it('builds clock hands from the model angles', () => {
     const hands = clockHands({ hour: 0, minute: Math.PI / 2 }, { x: 10, y: 10 }, 10);
@@ -137,9 +147,11 @@ describe('shapes', () => {
     expect(starField(800, 600, 10)).toHaveLength(10);
     const stars = starField(800, 600);
     expect(stars.every((s) => s.x >= 0 && s.x <= 800 && s.y >= 0 && s.y <= 600)).toBe(true);
-    const pill = pillRect({ x: 100, y: 50 }, 60, 12);
+    const pill = pillRect({ x: 100, y: 50 }, 60, 22.8);
     expect(pill.x + pill.w / 2).toBeCloseTo(100);
-    expect(pill.w).toBeGreaterThan(60);
+    // 8 px of padding on each side of the content, no more.
+    expect(pill.w).toBeCloseTo(60 + 16);
+    expect(pill.h).toBeCloseTo(22.8);
     expect(pill.r).toBeCloseTo(pill.h / 2);
   });
 });
@@ -271,7 +283,7 @@ describe('asset audit', () => {
     expect(text).toContain('Assets.load<Texture>(SPRITE_MANIFEST[k])');
     const manifest = text.slice(text.indexOf('SPRITE_MANIFEST = {'), text.indexOf('} as const'));
     const paths = text.match(/['"`]\/scene\/[^'"`]*['"`]/g) ?? [];
-    expect(paths.length).toBe(10);
+    expect(paths.length).toBe(11);
     for (const quoted of paths) {
       const path = quoted.slice(1, -1);
       expect(path, path).toMatch(/^\/scene\/[a-z-]+\.webp$/);

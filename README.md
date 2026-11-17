@@ -8,7 +8,11 @@ The panel next to the house has a "What am I looking at?" key: a ghost is errors
 
 ## Art
 
-Scene art is procedural shapes plus the team's illustrated sprites in `apps/web/public/scene/` (generated with Seedream 5.5 via Runware and curated by the team; original, imitating no existing game, film or franchise); the procedural art stays as the fallback. The ten WebP files (four rooms, three ghosts, the Exorcist in two poses and one fog wisp) live in `apps/web/public/scene/`; if one cannot load, the house is drawn with shapes as before.
+Scene art is procedural shapes plus the team's illustrated sprites in `apps/web/public/scene/` (generated with Seedream 5.5 via Runware and curated by the team; original, imitating no existing game, film or franchise); the procedural art stays as the fallback. The ten WebP files (four rooms, three ghosts, the Exorcist in two poses and one fog wisp) live in `apps/web/public/scene/`; if one cannot load, the house is drawn with shapes as before. The eleventh file, `moon.webp`, is the moon of the sky (a plain disc without it).
+
+The eight sound cues in `apps/web/public/sfx/` (ghost appears, possessed, room dark, calm restored, hunt start, hunt step, diagnosed, fix merged) were made with Mirelo SFX 1.5 via Runware and curated by the team. They are original; none imitates an existing game, film or franchise.
+
+The header has a "Sound off" / "Sound on" button, off by default: nothing audio is loaded until you turn it on, and the browser plays sound only after a click on the page.
 
 ## Accessible mode
 

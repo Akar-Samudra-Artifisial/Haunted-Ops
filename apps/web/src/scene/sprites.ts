@@ -18,6 +18,7 @@ export const SPRITE_MANIFEST = {
   exorcistWalk: '/scene/exorcist-walk.webp',
   exorcistScan: '/scene/exorcist-scan.webp',
   fogWisp: '/scene/fog-wisp.webp',
+  moon: '/scene/moon.webp',
 } as const;
 export type SpriteKey = keyof typeof SPRITE_MANIFEST;
 export const SPRITE_KEYS = Object.keys(SPRITE_MANIFEST) as SpriteKey[];
@@ -48,6 +49,8 @@ export interface SpriteSet {
   /** calm, drift, angry. */
   ghosts: readonly [Texture, Texture, Texture];
   fog: Texture;
+  /** The moon of the sky (384 by 271, transparent). */
+  moon: Texture;
   exorcist: { walk: Texture; scan: Texture };
 }
 
@@ -110,7 +113,7 @@ function decoded(t: unknown): t is Texture {
   return !!tex && typeof tex.width === 'number' && typeof tex.height === 'number' && tex.width > 1 && tex.height > 1;
 }
 
-/** Loads the ten files in parallel. `null` on any error, on the timeout, or when a file is not a picture. */
+/** Loads the eleven files in parallel. `null` on any error, on the timeout, or when a file is not a picture. */
 export async function loadSprites(timeoutMs: number = LOAD_TIMEOUT_MS): Promise<SpriteSet | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -127,7 +130,7 @@ export async function loadSprites(timeoutMs: number = LOAD_TIMEOUT_MS): Promise<
     }
     const rooms: Partial<Record<ServiceName, Texture>> = {};
     for (const [name, key] of Object.entries(ROOM_SPRITE)) rooms[name as ServiceName] = by[key as SpriteKey];
-    return { rooms, ghosts: [by.ghostCalm, by.ghostDrift, by.ghostAngry], fog: by.fogWisp, exorcist: { walk: by.exorcistWalk, scan: by.exorcistScan } };
+    return { rooms, ghosts: [by.ghostCalm, by.ghostDrift, by.ghostAngry], fog: by.fogWisp, moon: by.moon, exorcist: { walk: by.exorcistWalk, scan: by.exorcistScan } };
   } catch {
     return null;
   } finally {

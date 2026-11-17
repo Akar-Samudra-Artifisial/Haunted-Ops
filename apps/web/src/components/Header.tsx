@@ -1,6 +1,7 @@
 import { statusMark } from '../a11y/status-marks.js';
 import type { ConnectionStatus } from '../net/status.js';
 import { AccessibleSwitch } from './AccessibleSwitch.js';
+import { SoundButton, type SoundSwitch } from './SoundButton.js';
 export interface AccessibleControl {
   on: boolean;
   onToggle: () => void;
@@ -13,8 +14,13 @@ function StatusIcon({ status }: { status: ConnectionStatus | 'demo' }) {
     </span>
   );
 }
-export function Header({ status, demo = false, note, accessible }: { status: ConnectionStatus; demo?: boolean; note?: string; accessible?: AccessibleControl }) {
-  const control = accessible === undefined ? null : <AccessibleSwitch on={accessible.on} onToggle={accessible.onToggle} />;
+export function Header({ status, demo = false, note, accessible, sound }: { status: ConnectionStatus; demo?: boolean; note?: string; accessible?: AccessibleControl; sound?: SoundSwitch }) {
+  const control = (
+    <>
+      {accessible === undefined ? null : <AccessibleSwitch on={accessible.on} onToggle={accessible.onToggle} />}
+      {sound === undefined ? null : <SoundButton {...sound} />}
+    </>
+  );
   const brand = (
     <div className="app-brand">
       <h1 className="app-title">Haunted Ops</h1>

@@ -5,7 +5,6 @@ import { huntOf } from '../test/hunt-arbs.js';
 import { MAX_ROOMS, createAnimator } from './animator.js';
 import { GHOST_KIND_MAX, GHOST_MAX, PARTICLE_CAP } from './particles.js';
 import { FIGURE_H_SPRITE } from './layout.js';
-import { huntMarkStyle } from './shapes.js';
 import { ROOM_SPRITE, SPRITE_KEYS, roomSpriteFit } from './sprites.js';
 import { SceneInitError } from './surface.js';
 import type * as TexturesModule from './textures.js';
@@ -408,7 +407,7 @@ describe('PixiSurface', () => {
       return rooms.children[idx]!.children[0]!;
     };
 
-    it('asks for the ten files once WebGL is there, and builds 7 textures (no procedural ghost)', async () => {
+    it('asks for the eleven files (the moon too) once WebGL is there, and builds 7 textures (no procedural ghost)', async () => {
       const { surface } = await start(true);
       expect(pixi.Assets.load).toHaveBeenCalledTimes(SPRITE_KEYS.length);
       expect(pixi.state.textures).toBe(7);
@@ -580,40 +579,38 @@ describe('PixiSurface', () => {
       expect(glows[0]!.width).toBeCloseTo(1.6 * h, 6);
       surface.destroy();
     });
-    it('shows "Hunt · n steps" in a pill of 14 px or more at 390 px when the eight dots do not fit, never "n of 8"', async () => {
+    it('shows one mint hunt badge, "Hunting · n steps" (1 step singular), at 12 px from 640 px up and 14 px below, never "n of 8"', async () => {
       pixi.state.sprites = true;
       pixi.state.webgl = true;
-      const running = huntOf({ status: 'running', startedAt: NOW - 20_000, stepCount: 3 });
-      const s = scene(house({ payments: { hauntLevel: 3, reason: { kind: 'error_rate', value: 0.4 }, metrics, openIncident: incident, hunt: running } }), FULL, { width: 390, height: 844, dpr: 1 });
-      const surface = new PixiSurface();
-      await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
-      surface.applyLayout(s.layout);
-      surface.applyModel(s.model);
-      const a = createAnimator();
-      a.setLayout(s.layout);
-      a.setModel(s.model);
-      for (let t = 1; t <= 200; t++) surface.draw(a.step(16, t * 16));
-      const texts: Array<{ text?: string; style?: { fontSize: number }; visible?: boolean; children: unknown[] }> = [];
-      const walk = (n: (typeof texts)[number]): void => {
-        if (n.visible === false) return;
-        if (typeof n.text === 'string' && n.text.startsWith('Hunt')) texts.push(n);
-        (n.children as typeof texts).forEach(walk);
-      };
-      walk(stageOf() as unknown as (typeof texts)[number]);
-      const payments = s.layout.rooms.find((r) => r.name === 'payments')!;
-      const style = huntMarkStyle(payments.huntRect, 390, 8, payments.hit);
-      if (style.kind === 'text') {
-        expect(texts).toHaveLength(1);
-        expect(texts[0]!.text).toBe('Hunt · 3 steps');
-        expect(texts[0]!.style!.fontSize).toBeGreaterThanOrEqual(14);
-      } else {
-        expect(texts).toHaveLength(0);
-        expect(style.r).toBeGreaterThanOrEqual(4);
+      for (const [width, height, font] of [[390, 844, 14], [1440, 900, 12]] as const) {
+        for (const steps of [1, 3, 12]) {
+          const running = huntOf({ status: 'running', startedAt: NOW - 20_000, stepCount: steps });
+          const s = scene(house({ payments: { hauntLevel: 3, reason: { kind: 'error_rate', value: 0.4 }, metrics, openIncident: incident, hunt: running } }), FULL, { width, height, dpr: 1 });
+          const surface = new PixiSurface();
+          await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
+          surface.applyLayout(s.layout);
+          surface.applyModel(s.model);
+          const a = createAnimator();
+          a.setLayout(s.layout);
+          a.setModel(s.model);
+          for (let t = 1; t <= 200; t++) surface.draw(a.step(16, t * 16));
+          const texts: Array<{ text?: string; style?: { fontSize: number; fill: string }; visible?: boolean; children: unknown[] }> = [];
+          const walk = (n: (typeof texts)[number]): void => {
+            if (n.visible === false) return;
+            if (typeof n.text === 'string' && n.text.startsWith('Hunting')) texts.push(n);
+            (n.children as typeof texts).forEach(walk);
+          };
+          walk(stageOf() as unknown as (typeof texts)[number]);
+          expect(texts).toHaveLength(1);
+          expect(texts[0]!.text).toBe(`Hunting · ${steps} ${steps === 1 ? 'step' : 'steps'}`);
+          expect(texts[0]!.style!.fontSize).toBe(font);
+          expect(texts[0]!.style!.fill).toBe('#9bf2c4');
+          expect(JSON.stringify(texts.map((t) => t.text))).not.toMatch(/ of /);
+          surface.destroy();
+        }
       }
-      expect(JSON.stringify(texts.map((t) => t.text))).not.toMatch(/ of /);
-      surface.destroy();
     });
-    it('the marks, their rings and the dark pill behind them show only in a room with a hunt', async () => {
+    it('the badge says Diagnosed, Fix proposed or Fix merged after the hunt, and shows only in a room that has something to say', async () => {
       for (const sprites of [true, false]) {
         pixi.state.sprites = sprites;
         pixi.state.webgl = true;
@@ -623,18 +620,124 @@ describe('PixiSurface', () => {
         await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
         surface.applyLayout(s.layout);
         surface.applyModel(s.model);
-        // The hunt container holds the pill, the rings, the lit marks, the result and the scroll.
+        // The hunt container holds the pill, the magnifier, the text and the scroll; only the hunted room shows the first three.
         const hunts: Node[] = [];
         const walk = (n: Node): void => {
-          if (n.children.length === 5 && n.children.slice(0, 4).every((c) => c.children.length === 0 && typeof c.visible === 'boolean')) hunts.push(n);
+          if (n.children.length === 4 && (n.children[2] as unknown as { style?: { fill?: string } }).style?.fill === '#9bf2c4') hunts.push(n);
           n.children.forEach(walk);
         };
         walk(stageOf());
         expect(hunts).toHaveLength(s.layout.rooms.length);
-        expect(hunts.filter((h) => h.children[0]!.visible === true && h.children[1]!.visible === true)).toHaveLength(1);
-        expect(hunts.filter((h) => h.children[0]!.visible === false && h.children[1]!.visible === false)).toHaveLength(s.layout.rooms.length - 1);
+        expect(hunts.filter((h) => h.children.slice(0, 3).every((c) => c.visible === true))).toHaveLength(1);
+        expect(hunts.filter((h) => h.children.slice(0, 3).every((c) => c.visible === false))).toHaveLength(s.layout.rooms.length - 1);
         surface.destroy();
       }
+    });
+    it('draws the chip like a pill of the panel: weight 500, name in text, level word in muted from 640 px, no "!" marker', async () => {
+      pixi.state.sprites = true;
+      pixi.state.webgl = true;
+      for (const [width, height] of [[1440, 900], [390, 844]] as const) {
+        const s = scene(house({ payments: { hauntLevel: 2, reason: { kind: 'error_rate', value: 0.4 }, metrics, openIncident: incident } }), FULL, { width, height, dpr: 1 });
+        const surface = new PixiSurface();
+        await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
+        surface.applyLayout(s.layout);
+        surface.applyModel(s.model);
+        const all: Array<{ text?: string; style?: { fontSize: number; fill: string; fontWeight: string }; visible?: boolean }> = [];
+        const walk = (n: { children: unknown[] } & (typeof all)[number]): void => {
+          if (typeof n.text === 'string') all.push(n);
+          (n.children as Array<{ children: unknown[] } & (typeof all)[number]>).forEach(walk);
+        };
+        walk(stageOf() as never);
+        const names = all.filter((t) => ['gate', 'orders', 'payments', 'ledger'].includes(t.text!));
+        expect(names).toHaveLength(4);
+        for (const t of names) {
+          expect(t.style!.fontWeight).toBe('500');
+          expect(t.style!.fill).toBe('#edeaf6');
+          expect(t.style!.fontSize).toBe(width < 640 ? 14 : 12);
+        }
+        expect(all.some((t) => t.text === '!')).toBe(false);
+        const words = all.filter((t) => t.text?.startsWith('· '));
+        if (width >= 640) {
+          expect(words).toHaveLength(4);
+          expect(words.every((t) => t.visible !== false && t.style!.fill === '#a39db8')).toBe(true);
+          expect(words.map((t) => t.text)).toContain('· haunted');
+        } else {
+          expect(words.every((t) => t.visible === false)).toBe(true);
+        }
+        surface.destroy();
+      }
+    });
+    it('draws the moon as the sprite (sized 56 px under 640 px, else 9 % of the width between 56 and 150), or one plain disc without the files', async () => {
+      for (const [sprites, width, height, wide] of [[true, 1440, 900, 129.6], [true, 390, 844, 56], [true, 3840, 2160, 150], [false, 1440, 900, 0]] as const) {
+        pixi.state.sprites = sprites;
+        pixi.state.webgl = true;
+        const s = scene(house(), FULL, { width, height, dpr: 1 });
+        const surface = new PixiSurface();
+        await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
+        surface.applyLayout(s.layout);
+        const moon = stageOf().children[3]!;
+        const [halo, art] = moon.children as [Node, Node];
+        expect(halo.alpha).toBeCloseTo(0.18);
+        if (sprites) {
+          expect(art.texture?.path).toBe('/scene/moon.webp');
+          expect(art.width).toBeCloseTo(wide, 6);
+          expect(art.alpha).toBeCloseTo(0.92);
+        } else {
+          // One plain disc, no dark disc on top.
+          expect(art.texture).toBeUndefined();
+          expect(moon.children).toHaveLength(2);
+          expect(art.ops).toBe(2);
+        }
+        surface.destroy();
+      }
+    });
+    it('clips the lamp glow of a sprite room to its floor and keeps a calm glow at 0.25 or less', async () => {
+      pixi.state.sprites = true;
+      pixi.state.webgl = true;
+      const s = scene(house(), FULL);
+      const surface = new PixiSurface();
+      await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
+      surface.applyLayout(s.layout);
+      surface.applyModel(s.model);
+      const a = createAnimator();
+      a.setLayout(s.layout);
+      a.setModel(s.model);
+      for (let t = 1; t <= 100; t++) surface.draw(a.step(16, t * 16));
+      const glows: Array<Node & { mask?: unknown }> = [];
+      const walk = (n: Node & { mask?: unknown }): void => {
+        if (n.blendMode === 'add' && n.mask) glows.push(n);
+        (n.children as Array<Node & { mask?: unknown }>).forEach(walk);
+      };
+      walk(stageOf() as never);
+      expect(glows).toHaveLength(4);
+      for (const g of glows) expect(g.alpha).toBeLessThanOrEqual(0.25);
+      surface.destroy();
+    });
+    it('draws the hunt ring on the floor under the Exorcist: lit ticks = min(steps, 8), redrawn only when the count changes, static under Reduced motion', async () => {
+      pixi.state.sprites = true;
+      pixi.state.webgl = true;
+      const running = huntOf({ status: 'running', startedAt: NOW - 20_000, stepCount: 11 });
+      const s = scene(house({ payments: { hauntLevel: 2, reason: { kind: 'error_rate', value: 0.4 }, metrics, openIncident: incident, hunt: running } }), REDUCED);
+      const surface = new PixiSurface();
+      await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
+      surface.applyLayout(s.layout);
+      surface.applyModel(s.model);
+      const a = createAnimator();
+      a.setLayout(s.layout);
+      a.setModel(s.model);
+      for (let t = 1; t <= 10; t++) surface.draw(a.step(16, t * 16));
+      // The ring is a Graphics of the rooms layer, shown only for the hunted room: the ring and 8 lit ticks (no dim one past the cap) are 9 strokes.
+      const rings: Node[] = [];
+      const walk = (n: Node): void => {
+        if (n.visible !== false && n.ops === 18 && n.children.length === 0 && (n as unknown as { destroyed?: boolean }).destroyed !== true) rings.push(n);
+        n.children.forEach(walk);
+      };
+      walk(stageOf());
+      expect(rings.length).toBeGreaterThan(0);
+      const before = rings.map((r) => [r.position.x, r.position.y, r.alpha]);
+      for (let t = 11; t <= 60; t++) surface.draw(a.step(16, t * 16));
+      expect(rings.map((r) => [r.position.x, r.position.y, r.alpha])).toEqual(before);
+      surface.destroy();
     });
   });
   it('reuses the incident mark texts on every model change', async () => {

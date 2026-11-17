@@ -6,6 +6,19 @@ import { COMPACT_BELOW, computeLayout, mountHeight, type LayoutRoom, type Pt, ty
 import { corridorLight, toSceneModel } from './model.js';
 import { isNavKey, nextRoom, tabOrder, type NavKey } from './selection.js';
 import { serviceStateArb } from '../test/arbs.js';
+import { huntBadgeMaxWidth, huntBadgeRect } from './shapes.js';
+
+/** The hunt badge of every room (at its widest text) is clear of every chip, from 364 px up (a 390 px phone). */
+function expectBadgesClear(layout: ReturnType<typeof computeLayout>): void {
+  if (layout.width < 364) return;
+  const font = layout.labelPx;
+  for (const r of layout.rooms) {
+    const badge = huntBadgeRect(r.hit, layout.width, huntBadgeMaxWidth(font), font, layout.rooms.map((o) => o.chipBox));
+    expect(badge.x).toBeGreaterThanOrEqual(0);
+    expect(badge.x + badge.w).toBeLessThanOrEqual(layout.width + 1e-6);
+    for (const other of layout.rooms) expect(rectGap(badge, other.chipBox), `${r.name} badge over the ${other.name} chip`).toBeGreaterThan(0);
+  }
+}
 
 const RUNS = { numRuns: 150 };
 const CELLS = Array.from({ length: 9 }, (_, i) => ({ x: i % 3, y: Math.floor(i / 3) }));
@@ -94,6 +107,7 @@ describe('Property 15: the chip stays under its room', () => {
           // The chip is centred under its room.
           expect(r.chipBox.x + r.chipBox.w / 2).toBeCloseTo(r.center.x, 3);
         }
+        expectBadgesClear(layout);
       }),
       RUNS,
     );
@@ -111,7 +125,7 @@ describe('Property 7: one chip per room, in the band under it, and no two chips 
         const eps = 1e-6;
         expect(layout.rooms).toHaveLength(rooms.length);
         // Under 640 px the chip text is 14 px or more; from 640 px the 11 px rule stays.
-        expect(layout.labelPx).toBeGreaterThanOrEqual(width < 640 ? 14 : 11);
+        expect(layout.labelPx).toBe(width < 640 ? 14 : 12);
         for (const r of layout.rooms) {
           const band = { x: r.center.x - 3.2 * layout.scale, w: 6.4 * layout.scale, y: r.hit.y + 0.8 * r.hit.h, h: 0 };
           // Inside the column of its room, and starting in the bottom 20 % of the room's screen rect.
@@ -128,6 +142,7 @@ describe('Property 7: one chip per room, in the band under it, and no two chips 
             expect(rectGap(layout.rooms[i]!.chipBox, layout.rooms[j]!.chipBox)).toBeGreaterThan(0);
           }
         }
+        expectBadgesClear(layout);
       }),
       RUNS,
     );

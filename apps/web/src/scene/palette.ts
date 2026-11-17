@@ -25,6 +25,10 @@ export const PALETTE = {
   moon: '#dfe8f5',
   floorFar: '#3a3052', // floor gradient, back edge
   wallInner: '#241e36', // darker inner wall panel
+  surface: '#16141f', // chip and hunt badge fill (equal to --surface)
+  line: '#3a3550', // chip stroke (equal to --line)
+  uiText: '#edeaf6', // chip name (equal to --text)
+  uiMuted: '#a39db8', // chip level word (equal to --text-muted)
 } as const;
 
 export type PaletteToken = keyof typeof PALETTE;
@@ -39,6 +43,15 @@ export const FONT_STACK = "system-ui, -apple-system, 'Segoe UI', sans-serif";
 
 /** Opacity of the pill behind labels and badges. */
 export const PILL_ALPHA = 0.85;
+
+/** Opacity of the chip and the hunt badge fill (`surface`), as the panel pill. */
+export const CHIP_ALPHA = 0.88;
+
+/**
+ * The colour of each haunt level (calm, uneasy, haunted, possessed, dark): the one map of the level dot of the chip. They equal the CSS
+ * tokens `--level-calm` to `--level-dark` of the level pills of the panel (a test checks it).
+ */
+export const LEVEL_COLOR: readonly [string, string, string, string, string] = ['#a39db8', '#9cc7e6', '#ff9eb0', '#ff5c7a', '#dcd7ee'];
 
 export interface ContrastPair {
   readonly name: string;
@@ -63,4 +76,8 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   { name: 'danger outline on night', fg: 'danger', bg: 'night', kind: 'shape' },
   { name: 'cold outline on dark room', fg: 'lightCold', bg: 'nightDeep', kind: 'shape' },
   { name: 'ecto mist on night', fg: 'ecto', bg: 'night', kind: 'shape' },
+  { name: 'chip name on the chip', fg: 'uiText', bg: 'surface', kind: 'text' },
+  { name: 'chip level word on the chip', fg: 'uiMuted', bg: 'surface', kind: 'text' },
+  { name: 'hunt badge text (ecto) on the badge', fg: 'ecto', bg: 'surface', kind: 'text' },
+  { name: 'incident dot (danger) on the chip', fg: 'danger', bg: 'surface', kind: 'shape' },
 ];

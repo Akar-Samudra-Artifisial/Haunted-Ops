@@ -20,6 +20,7 @@ import type { DemoMode } from './scene/params.js';
 import { statusMark } from './a11y/status-marks.js';
 import { selectionReducer } from './scene/selection.js';
 import { useDemoServices } from './scene/source.js';
+import { useSound } from './sound/useSound.js';
 
 export type ClientOptions = Omit<SseClientOptions, 'onServices' | 'onConnection' | 'onIngest'>;
 
@@ -102,6 +103,8 @@ export function App({ client, demo = null, scene = {}, replay = null }: AppProps
   const [quality, setQuality] = useState<Quality>('full');
   const [selected, dispatch] = useReducer(selectionReducer, null);
   const mode = useAccessibleMode();
+  // Sound cues: off by default, never on the replay page; the player is a lazy chunk loaded when the visitor turns sound on.
+  const sound = useSound(services, { enabled: replay === null });
   const accessible = mode.accessible;
   // No Scene model in Accessible mode: the Scene is not mounted.
   const model = useMemo(() => (accessible ? null : toSceneModel(services, now, { reducedMotion, quality })), [accessible, services, now, reducedMotion, quality]);
@@ -189,7 +192,7 @@ export function App({ client, demo = null, scene = {}, replay = null }: AppProps
   return (
     <div className="app">
       <SkipLink />
-      <Header status={status} demo={demo !== null} note={replay?.banner} accessible={{ on: accessible, onToggle: mode.toggle }} />
+      <Header status={status} demo={demo !== null} note={replay?.banner} accessible={{ on: accessible, onToggle: mode.toggle }} sound={replay === null ? { on: sound.on, unavailable: sound.unavailable, onToggle: sound.toggle } : undefined} />
       <main className="app-main">
         <div className="layout-main">
           {replay?.controls}

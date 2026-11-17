@@ -79,8 +79,9 @@ describe('spriteFloor', () => {
 });
 
 describe('the manifest', () => {
-  it('lists ten files under /scene/ and a room file for the four services only', () => {
-    expect(SPRITE_KEYS).toHaveLength(10);
+  it('lists eleven files under /scene/ (the moon is the eleventh) and a room file for the four services only', () => {
+    expect(SPRITE_KEYS).toHaveLength(11);
+    expect(SPRITE_MANIFEST.moon).toBe('/scene/moon.webp');
     for (const key of SPRITE_KEYS) expect(SPRITE_MANIFEST[key]).toMatch(/^\/scene\/[a-z-]+\.webp$/);
     expect(Object.keys(ROOM_SPRITE).sort()).toEqual(['gate', 'ledger', 'orders', 'payments']);
   });

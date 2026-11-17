@@ -3,20 +3,15 @@ import type { HauntLevel, HuntSummary, ProposalSummary, ServiceName, ServiceStat
 import { createQueue, enqueue, release, type QueueState } from '../a11y/announcement-queue.js';
 import { proposalView } from './proposal-text.js';
 import { LEVEL_TEXT } from '../format.js';
-import { isDark } from '../scene/model.js';
-import { TOOL_TEXT, huntView } from './hunt-text.js';
+import { TOOL_TEXT } from './hunt-text.js';
+import { darkDiffs, huntDiffs, levelDiffs, proposalDiffs } from './changes.js';
 
 /** Sentences for the services whose level changed. A service seen for the first time is silent. */
 export function levelChanges(
   previous: ReadonlyMap<ServiceName, HauntLevel>,
   services: readonly ServiceState[],
 ): string[] {
-  const out: string[] = [];
-  for (const s of services) {
-    const before = previous.get(s.name);
-    if (before !== undefined && before !== s.hauntLevel) out.push(`${s.name}: ${LEVEL_TEXT[s.hauntLevel]}`);
-  }
-  return out;
+  return levelDiffs(previous, services).map((c) => `${c.name}: ${LEVEL_TEXT[c.to]}`);
 }
 
 /**
@@ -25,13 +20,9 @@ export function levelChanges(
  */
 export function darkChanges(previous: ReadonlyMap<ServiceName, ServiceState>, services: readonly ServiceState[]): string[] {
   const out: string[] = [];
-  for (const s of services) {
-    const before = previous.get(s.name);
-    if (before === undefined) continue;
-    const was = isDark(before);
-    const now = isDark(s);
-    if (!was && now && s.hauntLevel !== 4) out.push(`${s.name} is dark.`);
-    else if (was && !now) out.push(`${s.name} is back.`);
+  for (const c of darkDiffs(previous, services)) {
+    if (c.dark && c.level !== 4) out.push(`${c.name} is dark.`);
+    else if (!c.dark) out.push(`${c.name} is back.`);
   }
   return out;
 }
@@ -50,19 +41,15 @@ export interface HuntSentences {
 export function huntSentences(previous: ReadonlyMap<ServiceName, HuntSummary | null>, services: readonly ServiceState[]): HuntSentences {
   const urgent: string[] = [];
   let step: string | null = null;
-  for (const s of services) {
-    if (!previous.has(s.name) || s.hunt === null) continue;
-    const before = previous.get(s.name) ?? null;
-    const same = before !== null && before.id === s.hunt.id;
-    const view = huntView(s.hunt);
-    const phaseBefore = same ? huntView(before).phase : 'none';
-    if (view.phase === 'running' && (phaseBefore === 'none' || phaseBefore === 'queued')) urgent.push(`Hunt started on ${s.name}.`);
-    else if (view.phase === 'sealed' && phaseBefore !== 'sealed' && view.culprit !== null) {
-      urgent.push(`Diagnosis for ${s.name}: deploy ${view.culprit.deploy}, commit ${view.culprit.shortSha}${view.causedBy === null ? '' : `, caused by ${view.causedBy}`}.`);
-    } else if ((view.phase === 'failed' || view.phase === 'cancelled') && phaseBefore !== view.phase) {
-      urgent.push(`Hunt on ${s.name} ${view.phase}${view.reasonText === null ? '' : `: ${view.reasonText}`}.`);
-    } else if (view.phase === 'running' && same && before.stepCount < s.hunt.stepCount && view.lastTool !== null) {
-      step = `Hunt on ${s.name}, step ${s.hunt.stepCount}: ${TOOL_TEXT[view.lastTool]}.`;
+  for (const c of huntDiffs(previous, services)) {
+    const { view } = c;
+    if (c.kind === 'started') urgent.push(`Hunt started on ${c.name}.`);
+    else if (c.kind === 'diagnosed' && view.culprit !== null) {
+      urgent.push(`Diagnosis for ${c.name}: deploy ${view.culprit.deploy}, commit ${view.culprit.shortSha}${view.causedBy === null ? '' : `, caused by ${view.causedBy}`}.`);
+    } else if (c.kind === 'ended') {
+      urgent.push(`Hunt on ${c.name} ${view.phase}${view.reasonText === null ? '' : `: ${view.reasonText}`}.`);
+    } else if (c.kind === 'step' && view.lastTool !== null) {
+      step = `Hunt on ${c.name}, step ${c.hunt.stepCount}: ${TOOL_TEXT[view.lastTool]}.`;
     }
   }
   return { urgent, step };
@@ -70,14 +57,7 @@ export function huntSentences(previous: ReadonlyMap<ServiceName, HuntSummary | n
 
 /** One short sentence per Proposal status change. A Service seen for the first time is silent. */
 export function proposalSentences(previous: ReadonlyMap<ServiceName, ProposalSummary | null>, services: readonly ServiceState[]): string[] {
-  const out: string[] = [];
-  for (const s of services) {
-    if (!previous.has(s.name) || s.proposal === null) continue;
-    const before = previous.get(s.name) ?? null;
-    if (before !== null && before.id === s.proposal.id && before.status === s.proposal.status) continue;
-    out.push(proposalView(s.proposal, s.name).sentence);
-  }
-  return out;
+  return proposalDiffs(previous, services).map((c) => proposalView(c.proposal, c.name).sentence);
 }
 
 export interface Announcements {

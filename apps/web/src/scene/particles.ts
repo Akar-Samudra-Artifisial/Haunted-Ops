@@ -33,7 +33,8 @@ export function splitFog(count: number): { bank: number; wisps: number } {
   const bank = Math.min(FOG_BANK_MAX, Math.ceil(n / 2));
   return { bank, wisps: Math.min(FOG_WISP_MAX, n - bank) };
 }
-export const MOTE_MAX = 6;
+/** Dust motes per room: at most 4 in a calm room, 2 in an uneasy one, none from haunted up. */
+export const MOTE_MAX = 4;
 /** Pulses on the corridors, counted in the total. */
 export const PULSE_MAX = 12;
 export const PULSES_PER_CORRIDOR = 3;
@@ -182,7 +183,24 @@ export function fogBankSpec(seed: number, i: number): WispSpec {
   };
 }
 
-/** Pure: a calm-room dust mote. */
+/** Diameter of a dust mote on screen, in px: never scaled with the zoom. */
+export const MOTE_PX = { lo: 2, hi: 4 } as const;
+/** Peak alpha of a mote, and the life of one (rise and fade), in seconds. */
+export const MOTE_ALPHA = { lo: 0.25, hi: 0.45 } as const;
+export const MOTE_LIFE_S = { lo: 6, hi: 10 } as const;
+/** How far a mote rises over its life, in iso units. */
+export const MOTE_RISE = 0.5;
+
+/**
+ * Pure: a speck of dust in lantern light. `size` is the diameter in px (2 to 4), `speed` the cycles per second (one cycle is the
+ * life of the mote: it rises by `MOTE_RISE` and fades in and out), `phase` where in the cycle it starts. The place on the floor keeps the
+ * margin of the wisps.
+ */
 export function moteSpec(seed: number, i: number): WispSpec {
-  return wisp(seed, i, 300, 0.12, 0.3, 0.03, 0.08);
+  const w = wisp(seed, i, 300, 0, 1, 0, 1);
+  const r = (k: number): number => unit(seed, i, 300 + k);
+  return { ...w, size: MOTE_PX.lo + (MOTE_PX.hi - MOTE_PX.lo) * r(3), speed: 1 / (MOTE_LIFE_S.lo + (MOTE_LIFE_S.hi - MOTE_LIFE_S.lo) * r(7)) };
 }
+
+/** Peak alpha of a mote from its spec (0.25 to 0.45): the phase picks it. */
+export const motePeak = (spec: WispSpec): number => MOTE_ALPHA.lo + (MOTE_ALPHA.hi - MOTE_ALPHA.lo) * (spec.phase / (Math.PI * 2));

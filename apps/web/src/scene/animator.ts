@@ -14,12 +14,14 @@ import {
   fogSpec,
   ghostSpec,
   moteSpec,
+  motePeak,
+  MOTE_RISE,
   splitFog,
   type WispSpec,
 } from './particles.js';
 import { unit } from './rng.js';
 import { CORRIDOR_STYLE } from './shapes.js';
-import { FIGURE_GLOW_MS, FIGURE_GLOW_REST, FOG_LAYERS, emptyHuntFrame, type FogLayerFrame, type Frame, type ParticleBuffer, type RoomFrame } from './surface.js';
+import { BADGE_GLOW_MS, BADGE_GLOW_REST, BADGE_GLOW_SWING, FIGURE_GLOW_MS, FIGURE_GLOW_REST, FOG_LAYERS, emptyHuntFrame, type FogLayerFrame, type Frame, type ParticleBuffer, type RoomFrame } from './surface.js';
 
 /** The seal closes in 0.8 s, the lantern fades out in 0.6 s, the sparks fall for 0.9 s. */
 export const SEAL_MS = 800;
@@ -413,6 +415,8 @@ export function createAnimator(): Animator {
     sway = 0,
     /** Level of the room when the slots take a sprite variant (ghosts), else -1. */
     kindLevel = -1,
+    /** Dust motes: a fixed pixel size, a slow rise with a fade in and out over the life of the mote. */
+    dust = false,
   ): void {
     const motion = v.motion.drift;
     const capacity = slots.length;
@@ -427,8 +431,24 @@ export function createAnimator(): Animator {
       const k = buf.count;
       if (k >= buf.capacity) continue;
       const s = spec[i] as WispSpec;
-      place(s, room, timeMs, motion);
       const scale = (layout as SceneLayout).scale;
+      if (dust) {
+        // One life: the mote rises by MOTE_RISE iso units and its alpha follows a half sine (fade in, fade out), 2 to 4 px wide at any zoom.
+        const cycle = (timeMs / 1000) * s.speed + s.phase / (Math.PI * 2);
+        const p = cycle - Math.floor(cycle);
+        const alpha = a * motePeak(s) * Math.sin(Math.PI * p);
+        if (alpha <= 0.004) continue;
+        place(s, room, timeMs, 0);
+        buf.x[k] = scratch.x;
+        buf.y[k] = scratch.y - MOTE_RISE * scale * p;
+        buf.size[k] = s.size;
+        buf.alpha[k] = alpha;
+        buf.kind[k] = 0;
+        buf.rotation[k] = 0;
+        buf.count = k + 1;
+        continue;
+      }
+      place(s, room, timeMs, motion);
       const swing = sway > 0 && motion !== 0 ? Math.sin(s.phase * 2 + (timeMs / 1000) * 0.9 * motion) : 0;
       buf.x[k] = scratch.x + sway * scale * swing;
       buf.y[k] = Math.min(scratch.y - lift * s.size * scale, yMax);
@@ -509,6 +529,7 @@ export function createAnimator(): Animator {
         if (f.pulse > 0) flag.moving = true;
         const t = timeMs;
         f.mistBreath = reduced ? 0 : 0.5 + 0.5 * Math.sin((t * Math.PI * 2) / MIST_BREATH_MS + v.seed);
+        st.frame.hunt.badgeGlow = reduced || low ? 1 : BADGE_GLOW_REST + BADGE_GLOW_SWING * Math.sin((t * Math.PI * 2) / BADGE_GLOW_MS);
         st.frame.hunt.figureGlow = reduced || low ? FIGURE_GLOW_REST : FIGURE_GLOW_REST - 0.05 + 0.1 * Math.sin((t * Math.PI * 2) / FIGURE_GLOW_MS);
         f.mistX = reduced ? 0 : 0.25 * Math.sin(t * 0.0004 + v.seed);
         f.mistY = reduced ? 0 : 0.15 * Math.cos(t * 0.0003 + v.seed);
@@ -557,7 +578,7 @@ export function createAnimator(): Animator {
         const fog = splitFog(v.fogCount);
         fill(frame.fogBank, st.bankA, fog.bank, FOG_ALPHA.bank(v.fogDensity) * hide, st.bankS, room, v, timeMs, dt, tau, 0, 1, Infinity);
         fill(frame.fog, st.fogA, fog.wisps, FOG_ALPHA.wisp(v.fogDensity) * hide, st.fogS, room, v, timeMs, dt, tau, 0.35, 1, Infinity);
-        fill(frame.motes, st.moteA, reduced ? 0 : v.moteCount, 0.55 * hide, st.moteS, room, v, timeMs, dt, tau, 0, 1, Infinity);
+        fill(frame.motes, st.moteA, reduced ? 0 : v.moteCount, hide, st.moteS, room, v, timeMs, dt, tau, 0, 1, Infinity, 0, -1, true);
       }
 
       // The camera: the sky shifts a little toward the focused room and sways; nothing moves with reduced motion or in low quality.

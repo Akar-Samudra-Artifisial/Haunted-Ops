@@ -8,7 +8,7 @@ Package manager: pnpm only. Runtime: Node 26. Language: TypeScript, strict mode.
 
 ## Stack
 
-- `apps/web`: Vite + React + PixiJS v8 + Web Audio.
+- `apps/web`: Vite + React + PixiJS v8 + Web Audio. Sound is a lazy chunk (`apps/web/src/sound/player.ts`, one `AudioContext`, eight cues in `apps/web/public/sfx/` made with Mirelo SFX 1.5 via Runware and curated by the team): it is imported and its files are fetched only when the visitor turns sound on, and sound is off by default (no spatial audio).
 - `apps/api`: NestJS + Prisma + PostgreSQL + SSE. No Redis, single instance.
 - `packages/exorcist-mcp`: MCP server over stdio. Tools: `query_metrics`, `search_errors`, `tail_logs`, `recent_deploys`, `diff_commit`, `submit_diagnosis`. There is no `propose_fix` tool: the fixer is a separate server-run agent (`exorcist-fixer`, `fs_read` and `fs_write` only), and the Exorcist stays read-only.
 - `.kiro/agents/exorcist.json`: the Exorcist agent, restricted to the MCP tools.

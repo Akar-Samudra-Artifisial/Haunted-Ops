@@ -48,7 +48,7 @@ Note: `spike/` (singular) is ignored. `spikes/` (plural) is committed. Spike cod
 8. `deploy-demo`
 9. `replay`
 10. `visual-refresh`
-11. `spatial-audio`
+11. `spatial-audio` (replaced by `visual-refresh` part 7: simple sound cues with a mute button, no spatial audio)
 12. `submission-kit`
 
 Written so far: `foundation`, `ingest-haunt-score`, `scene-engine`, `exorcist-agent`, `fix-proposal-flow` (spec and code; the live recording and gate G-MVP are run by the orchestrator), `accessible-mode`, `deploy-demo` (spec, files and local tests; the orchestrator provisions the server and runs the smoke test there) and `replay` (spec and code; the orchestrator builds and reviews the real replays) in this repo, `haunted-lab` in the lab repo. The lab-side `fix-deploy` spec is still to be written in the lab repo. Write one spec per prompt.

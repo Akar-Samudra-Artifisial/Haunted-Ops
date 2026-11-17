@@ -466,6 +466,9 @@ a {
 .legend-things li[data-thing='mist'] .legend-glyph {
   color: var(--ecto);
 }
+.legend-things li[data-thing='incident'] .legend-glyph {
+  color: var(--danger);
+}
 .legend-things li[data-thing='darkroom'] .legend-glyph {
   color: var(--text-muted);
 }
@@ -716,6 +719,15 @@ a {
   font-size: var(--step--1);
   cursor: pointer;
   transition: background-color 150ms ease, color 150ms ease;
+}
+.sound-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sound-switch:disabled {
+  cursor: default;
+  opacity: 0.7;
 }
 .a11y-switch:hover {
   background: var(--surface-2);

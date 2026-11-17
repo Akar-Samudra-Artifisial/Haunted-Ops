@@ -1,6 +1,6 @@
 # Requirements Document
 ## Introduction
-`visual-refresh` is the tenth product spec of Haunted Ops, after `foundation`, `haunted-lab`, `ingest-haunt-score`, `scene-engine`, `exorcist-agent`, `fix-proposal-flow`, `accessible-mode`, `deploy-demo` and `replay`. It is split in four prompts. This spec covers part 1, the page around the Scene: design tokens, layout, header, summary bar, side panel with the hunt timeline, legend, restyled table, restyled replay pages and the document head. Part 2 (the PixiJS scene: rooms, ghosts, fog, sky, and four fixes of the page found on screenshots) is requirements 12 to 17 below, written in a second prompt. Part 3 (polish found on new screenshots: one chip per room, ghosts as separate silhouettes, a hunt mist that can be seen, and the Incident column of the table) is requirements 18 to 22, written in a third prompt. Part 4 (illustrated sprites for rooms, ghosts, fog and the Exorcist, with the procedural art as the fallback) is requirements 23 to 30, written in a fourth prompt. Requirements 1 to 11 change `apps/web/src/scene/` only in the palette values named in requirement 1.
+`visual-refresh` is the tenth product spec of Haunted Ops, after `foundation`, `haunted-lab`, `ingest-haunt-score`, `scene-engine`, `exorcist-agent`, `fix-proposal-flow`, `accessible-mode`, `deploy-demo` and `replay`. It is split in four prompts. This spec covers part 1, the page around the Scene: design tokens, layout, header, summary bar, side panel with the hunt timeline, legend, restyled table, restyled replay pages and the document head. Part 2 (the PixiJS scene: rooms, ghosts, fog, sky, and four fixes of the page found on screenshots) is requirements 12 to 17 below, written in a second prompt. Part 3 (polish found on new screenshots: one chip per room, ghosts as separate silhouettes, a hunt mist that can be seen, and the Incident column of the table) is requirements 18 to 22, written in a third prompt. Part 4 (illustrated sprites for rooms, ghosts, fog and the Exorcist, with the procedural art as the fallback) is requirements 23 to 30, written in a fourth prompt. Part 5 (requirements 31 to 35) polishes the sprite scene, part 6 (requirements 36 to 39) fixes the tint, the mint glow and the Hunt marks on a phone, and part 7 (requirements 40 to 46) calms the room chips, replaces the Hunt dots by a mint badge, draws a real moon, gives the floor marks a meaning and adds sound cues with a mute button. Requirements 1 to 11 change `apps/web/src/scene/` only in the palette values named in requirement 1.
 Today the page is a plain column: the Scene, then a 9-column table, then the hunt detail. A first-time visitor cannot tell what is wrong, the hunt is below the fold, the table scrolls sideways on a phone (about 670 px wide at 390 px) and nothing explains ghosts, fog or dark rooms. The look is "a lantern in a dark house": dark calm surfaces, and only trouble glows.
 The spec adds no dependency, no server code, no API change and no network call. It spends no credits and starts no cloud resource.
 ## Glossary
@@ -30,6 +30,12 @@ The spec adds no dependency, no server code, no API change and no network call. 
 - **Fit**: the pure function of `sprites.ts` that places a room picture so its content box is as wide as the floor diamond and its bottom centre is the front corner of the floor.
 - **Sprite floor**: the four floor corners of a scaled room picture (left, back, right, front), from `spriteFloor(fit)`; it lies inside the outline hexagon of the picture and shares its front corner.
 - **Hunt mark style**: the pure choice of `huntMarkStyle` in `shapes.ts` between the progress dots and the narrow text pill "Hunt · n steps".
+- **Chip**, from part 7: a pill like the pills of the Panel: the level dot, the name, from 640 px up the level word, and for an open incident a red outline and a red dot (no `!`).
+- **Hunt badge**: the one mint pill of a room that says what its hunt is doing ("Hunting · 5 steps", "Diagnosed", "Fix proposed", "Fix merged"), with a magnifier. It replaces the Hunt dots and the "Hunt · n steps" pill of the Hunt mark style.
+- **Hunt ring**: the thin mint ellipse on the floor under the Exorcist with one tick per step done, up to `MAX_MARKS`, and the next tick dim. It replaces the seal ring.
+- **Dust**: the dust motes of a calm or uneasy room, 2 to 4 px across, which rise slowly and fade.
+- **Cue**: one of the eight sounds (`ghost-appear`, `possessed`, `room-dark`, `calm-restored`, `hunt-start`, `hunt-step`, `diagnosed`, `fix-merged`) in `apps/web/public/sfx/`, chosen by `soundCues` from the changes between two lists of Services.
+- **Sound chunk**: the lazy module `apps/web/src/sound/player.ts` (Web Audio), imported only when the visitor turns sound on.
 ## Requirements
 ### Requirement 1: Design tokens and contrast
 **User Story:** As a visitor, I want a dark, calm page where only trouble glows and every text can be read, so that the state of the house is clear at a glance.
@@ -335,3 +341,82 @@ The spec adds no dependency, no server code, no API change and no network call. 
 1. THE tests that locked the old glow alpha SHALL be updated to the new rule, none deleted. NEW tests SHALL cover `spriteFloor`, Property 12, the glow size and its 40 px floor under 40rem, the breathing range, period and its fixed value under Reduced motion and Low quality, and the narrow Hunt marks.
 2. THE scene chunk SHALL stay at most 180 KiB gzip, the entry at most 94 KiB and the replay chunk at most 6800 bytes; `hooks.ts` SHALL get no import; no asset, texture or dependency SHALL be added.
 3. `.kiro/steering/scene-rendering.md` SHALL get one line for the tint-on-sprite-floor rule and one for the narrow Hunt marks rule. `docs/KIRO_USAGE.md` SHALL get one line per finished task, `2026-11-17 | visual-refresh/N | …`, ending with a newline. While part 6 is built, ONLY the checks named in the design SHALL be run.
+
+### Requirement 40: The room chips match the side panel
+**User Story:** As a visitor, I want the room labels to look like the pills of the side panel, so that the page reads as one piece and the labels stop shouting.
+
+#### Acceptance Criteria
+
+1. THE chip of a room SHALL use the font stack of the CSS token `--font-ui` (one constant, `FONT_STACK`; a test SHALL check that it equals the token value), weight 500 and a fixed size in CSS px that the zoom does not scale: 12 px from 640 px up (`NARROW_BELOW`) and 14 px below it (`MIN_FONT_NARROW_PX`, the accessibility floor).
+2. THE chip SHALL be 1.9 of its font size high, with 8 px of horizontal padding, a radius of half its height, the fill `surface` (`#16141F`) at alpha 0.88 and a stroke of 1 px in `line` (`#3A3550`). THE pill drawn SHALL be built from the measured width of the text (PixiJS), with no padding added by `shapes.ts`, and `chipBox` of the layout SHALL stay an upper bound of it, so the overlap rules hold with measured text.
+3. THE chip SHALL show, left to right: a level dot of 0.5 of the font size in the colour of the level (one shared map in `palette.ts`, equal to the CSS tokens `--level-calm` to `--level-dark`), the service name in the `text` colour and, from 640 px up when it fits the column of the room, the level word in `textMuted` at the same size ("payments · haunted"). THE `○ ◑` glyph SHALL be gone from the Scene chip; the table and the Panel keep their marks.
+4. WHILE an incident is open, THE chip SHALL have no `!`; its stroke SHALL turn `danger` at 1.5 px and a `danger` dot of 0.4 of the font size SHALL sit at the right end inside the padding. THE Legend SHALL get the row "Red outline and dot on a room label: an incident is open".
+5. THE chips SHALL never overlap each other or the hunt badge of a room at 390, 768, 1024 and 1440 px (Properties 7 and 15 of the earlier parts stay true with the new sizes).
+
+### Requirement 41: A mint hunt badge replaces the dots
+**User Story:** As a visitor, I want one clear badge that says what the Exorcist is doing, in the Exorcist's colour.
+
+#### Acceptance Criteria
+
+1. THE Hunt dots SHALL be replaced, on every width, by one badge in the hunt slot built like the chip of requirement 40 (same font, height, padding, radius and fill), with a stroke of 1 px in `ecto` (`#9BF2C4`), a small procedural magnifier (a ring and a handle, `Graphics`, `ecto`) and its text in `ecto`.
+2. THE text SHALL be "Hunting · N steps" while the hunt runs ("1 step" in the singular), "Diagnosed" after the diagnosis, and "Fix proposed" or "Fix merged" when the proposal says so, the same words as the Summary bar; a queued hunt says "Hunt queued". IT SHALL show no total and never "x of y".
+3. WHILE a hunt runs, THE icon, not the text, SHALL breathe in a 2 s cycle between alpha 0.7 and 1; under Reduced motion and in Low quality it SHALL stay at 1.
+4. THE badge SHALL stay inside the hunt slot rules (`rectGap(huntRect, chipBox) > 0` stays true; the slot does not change). `MAX_MARKS` MAY stay in the model for parity; the dots SHALL no longer be drawn.
+
+### Requirement 42: The moon is a picture
+**User Story:** As a visitor, I want a real moon in the sky instead of a disc with a black disc over it.
+
+#### Acceptance Criteria
+
+1. THE sprite `apps/web/public/scene/moon.webp` (384 by 271, transparent, already in place) SHALL be the eleventh entry of `SPRITE_MANIFEST`, loaded by the same loader with the same timeout and fallback, and SHALL be counted by the sprite budget check.
+2. WITH the sprite, THE moon SHALL be drawn top right, behind the house, with the same parallax as before, at alpha 0.92 and a width of `clamp(0.09 × scene width, 56, 150)` px (56 px under 640 px), over the soft halo sprite at alpha 0.18.
+3. WITHOUT the sprite, THE moon SHALL be one plain disc in the `moon` colour with the halo; no dark disc SHALL be drawn over it.
+
+### Requirement 43: Floor marks that mean something
+**User Story:** As a visitor, I want the marks on the floor to be quiet or to carry a fact, and no blurred disc over the walls.
+
+#### Acceptance Criteria
+
+1. THE dust motes SHALL be fine dust in lantern light: 2 to 4 px across on screen (not scaled up with the zoom), alpha 0.25 to 0.45, a slow rise with a fade in and out, at most 4 in a calm room, 2 in an uneasy one and none from haunted up. UNDER Reduced motion they SHALL be removed, not frozen. THE Legend SHALL get the row "Dust floating in lantern light: a quiet, healthy room".
+2. WITH a sprite, THE lamp glow of a room SHALL be clipped to `spriteFloor(fit)` (the floor of the picture) and the glow of a calm room SHALL stay at alpha 0.25 or less; the procedural fallback keeps its shape.
+3. THE hunt seal on the floor SHALL be a thin `ecto` ring, an ellipse on the floor plane under the Exorcist, with one tick per step done (up to `MAX_MARKS`) and the next tick dim, shown while the figure is shown and static under Reduced motion. FOR any hunt, THE lit ticks SHALL equal `min(steps, MAX_MARKS)` and the badge text SHALL show `steps` (Property 14).
+
+### Requirement 44: Sound cues from the same changes as the announcer
+**User Story:** As a visitor, I want a short sound when something happens, never a noise storm.
+
+#### Acceptance Criteria
+
+1. THE detection of changes between two lists of Services (level, dark, hunt, proposal) SHALL be one shared module, `components/changes.ts`, read by `LiveAnnouncer` (sentences) and by the sound cues, so the two cannot disagree.
+2. THE pure function `soundCues(prev, next)` in `apps/web/src/sound/cues.ts` SHALL give: a room rising to haunted: `ghost-appear`; to possessed: `possessed`; a room becoming dark: `room-dark`; a room back to calm from haunted or worse, or from dark: `calm-restored`; a hunt starting: `hunt-start`; a new step: `hunt-step`; the diagnosis: `diagnosed`; a fix merged (or deployed): `fix-merged`. A Service seen for the first time, a first snapshot, a reconnect that sends the same state and the replay page SHALL give no cue.
+3. THE rate rules SHALL be pure and tested with a fake clock: at most one cue in 700 ms (of the cues left, the highest priority plays: `room-dark`, `possessed`, `ghost-appear`, `diagnosed`, `fix-merged`, `hunt-start`, `calm-restored`, `hunt-step`), `hunt-step` at most once in 3 s, and the same cue for the same room at most once in 5 s. FOR any sequence of snapshots and times, the cues that play SHALL obey the three limits and the first snapshot SHALL give none (Property 13). A cue that is not heard (sound off) SHALL not count against the limits.
+
+### Requirement 45: The sound button and the lazy player
+**User Story:** As a visitor, I want to turn sound on or off with one button, and as a judge I do not want to be surprised by audio.
+
+#### Acceptance Criteria
+
+1. THE player (`apps/web/src/sound/player.ts`) SHALL use Web Audio (`AudioContext`, `fetch` and `decodeAudioData`, buffers kept, one master gain of 0.6). IT SHALL be a lazy chunk loaded by a dynamic import only when the visitor turns sound on; nothing audio SHALL be fetched before that. `new Audio(` stays banned (`art.test.ts`); `AudioContext` is allowed in `src/sound/` only.
+2. IF the context cannot start or a file fails, THEN the button SHALL show sound as unavailable and the app SHALL go on.
+3. `Header.tsx` SHALL show, after the Accessible mode switch (the Skip link stays first and the switch stays the first control after it), a quiet secondary button with an inline SVG speaker icon from `icons.tsx` and the text "Sound off" or "Sound on", `aria-pressed`, operable by keyboard. IT SHALL work in Accessible mode and SHALL not appear on the replay page.
+4. SOUND SHALL be off by default. THE choice SHALL be stored in `localStorage` under `haunted-ops.sound.v1`; a stored "on" SHALL show "Sound on" but start only at the first click or key press of the page load (the autoplay rule).
+5. THE CSP `connect-src` of `deploy/server/Caddyfile` SHALL allow `fetch` of same-origin `/sfx/*.mp3`; `'self'` is added only if missing, and no `media-src` change is needed (no media element).
+
+### Requirement 46: Tests, budgets and records of part 7
+**User Story:** As the maintainer, I want the new rules tested, the old tests kept and the budgets respected.
+
+#### Acceptance Criteria
+
+1. THE tests that locked an old size, glyph or colour SHALL be updated to the new rule, none deleted: the chip size and pill tests (`layout.test.ts`, `layout.property.test.ts`, `art.test.ts`), the hunt marks tests (`layout.test.ts`, `pixi-surface.test.ts`), the sprite manifest tests (`sprites.test.ts`, `art.test.ts`), the reduced motion test of the model (`model.property.test.ts`) and the Legend rows (`legend.test.tsx`). NEW tests SHALL cover the cue mapping, the first snapshot, the rate rules with a fake clock, Property 13, the button (default off, `aria-pressed`, stored choice, focus order), the player not loaded before the click, a failing load, Properties 14 and 15, the dust, the badge words and its breath, the moon and `e2e/sound.spec.ts`.
+2. THE entry SHALL grow by the button and the hook only; it stays at most 94 KiB if it can, otherwise `BUDGETS.entry` is raised to 95 KiB at most and the measured number and the reason are written in the design. `check-scene-bundle.mjs` SHALL add the sound chunk at most 4 KiB gzip and the `public/sfx` files at most 32 KiB each and 200 KiB in all, printed like the sprite line. THE scene chunk SHALL stay at most 180 KiB (176.6 KiB before) and parts A to D SHALL add at most about 3 KiB; THE replay chunk SHALL stay at most 6800 bytes and `scene/hooks.ts` SHALL get no import; no texture other than the moon, no dependency and no change to the files of `public/scene` and `public/sfx` SHALL be added.
+3. THE README "Art" section SHALL get the sound credit (Mirelo SFX 1.5 via Runware, curated by the team) and one line on the sound button; `structure.md` SHALL mark `spatial-audio` as replaced by part 7, and `tech.md` and `a11y-perf.md` SHALL describe the lazy sound chunk and the default off. `docs/KIRO_USAGE.md` SHALL get one line per finished task, `2026-11-17 | visual-refresh/N | …`, ending with a newline. While part 7 is built, ONLY the checks named in the design SHALL be run.
+
+### Requirement 47: Sound wakes up on the click, and the floor ring shows its ticks
+**User Story:** As a visitor, I want sound to start when I turn it on, and as an on-call engineer I want to read the step count on the floor ring at a glance.
+
+#### Acceptance Criteria
+
+1. THE player SHALL call `ctx.resume()` synchronously right after `new AudioContext()`, inside the click and before any `fetch` (a refusal is swallowed; the later call stays). `play` SHALL start a cue only while `ctx.state` is `running` and otherwise skip it, never queue it. THE player SHALL expose `state()`.
+2. THE start listener of `useSound` SHALL use `pointerdown` and `click`, and `keydown` only for Enter and Space, never a plain key press. WHILE sound is on and the player exists but is not running, the next `pointerdown` or `click` SHALL call `player.resume()`; the listeners SHALL go once it runs, when sound is turned off and on unmount. THE toggle click that turns sound on SHALL also call `resume()` on a ready player. Default off, the lazy chunk, no fetch before the click, the rate rules and the ban of `new Audio(` do not change.
+3. EACH done step of the floor ring SHALL be a mint dash across the ring (at least 2 px wide on screen, at least 3 times as long as wide, alpha 1), the next one the same shape at alpha 0.3, and the ring line alpha 0.5 or less. THE `RING_TICKS` positions SHALL be spread evenly, the first at the front (bottom) of the ellipse, so 2 steps are 2 lit ticks there. THE lit count SHALL stay `min(steps, MAX_MARKS)`, the number of the badge (Property 14). THE ring is static under Reduced motion and uses Graphics only.
+4. THE whole ring, ticks included, SHALL lie inside the floor of its room (`spriteFloor(fit)` with sprites, the layout floor otherwise) with a margin: the centre is moved and the ring shrunk when it does not fit, so no part crosses a wall at 390, 768, 1024 and 1440 px. THE scene chunk SHALL stay at most 180 KiB, the sound chunk at most 4 KiB and the entry at most 95 KiB.
+5. THE tests SHALL cover: `resume` before the first `fetch`, `play` skipped while `suspended` and played after `resume`, a Tab key press that starts nothing and a `pointerdown` that does, the wake-up click and the removal of the listeners, the tick sizes at 390 and 1440, the lit count, and the ring bounds inside the floor of every room. Old assertions are updated to the new rule, none deleted.

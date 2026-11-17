@@ -1,6 +1,6 @@
 # Implementation Plan: visual-refresh
 ## Overview
-Make the page around the Scene modern and easy to read, in the look "a lantern in a dark house": design tokens, a two-column layout with a side Panel, a header with a short explanation, a Summary bar, the Hunt as a Timeline, a Legend, a table that becomes cards on a phone, restyled replay pages, and the document head. It is 11 top-level tasks in part 1 and tasks 12 to 17 in part 2 (the Scene and four fixes of the page), tasks 18 to 24 in part 3 and tasks 25 to 33 in part 4 (the illustrated sprites) and tasks 34 to 41 in part 5 (the polish of the sprite scene) and tasks 42 to 48 in part 6 (three polish fixes: tint, mint glow, Hunt marks on a phone). Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: visual-refresh, Property N`. Tasks 1 to 11 touch `apps/web/src/scene/` only in the `bg` and `focus` values of `palette.ts`; tasks 12 to 17 are the PixiJS scene. Nothing here touches the API, a server, GitHub or the real `kiro-cli`, and no test makes a network call.
+Make the page around the Scene modern and easy to read, in the look "a lantern in a dark house": design tokens, a two-column layout with a side Panel, a header with a short explanation, a Summary bar, the Hunt as a Timeline, a Legend, a table that becomes cards on a phone, restyled replay pages, and the document head. It is 11 top-level tasks in part 1 and tasks 12 to 17 in part 2 (the Scene and four fixes of the page), tasks 18 to 24 in part 3 and tasks 25 to 33 in part 4 (the illustrated sprites) and tasks 34 to 41 in part 5 (the polish of the sprite scene) and tasks 42 to 48 in part 6 (three polish fixes: tint, mint glow, Hunt marks on a phone) and tasks 49 to 61 in part 7 (calmer chips, a mint hunt badge, a real moon, floor marks that mean something, and sound cues with a mute button). Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: visual-refresh, Property N`. Tasks 1 to 11 touch `apps/web/src/scene/` only in the `bg` and `focus` values of `palette.ts`; tasks 12 to 17 are the PixiJS scene. Nothing here touches the API, a server, GitHub or the real `kiro-cli`, and no test makes a network call.
 ## Tasks
 - [x] 1. Design tokens and contrast
   - [x] 1.1 Replace the colours of `:root` in `apps/web/src/styles.css` with the new tokens and add the type, scale, spacing, radius and shadow tokens; every colour outside `:root` stays a custom property
@@ -260,6 +260,95 @@ Make the page around the Scene modern and easy to read, in the look "a lantern i
 - [x] 48. Records of part 6
   - [x] 48.1 One `2026-11-17 | visual-refresh/N | …` line per finished task in `docs/KIRO_USAGE.md` (the file ends with a newline)
     - _Requirements: 39.3_
+- [x] 49. The room chips match the side panel
+  - [x] 49.1 Add the tokens `surface`, `line`, `uiText`, `uiMuted` and the map `LEVEL_COLOR` to `palette.ts`, the fixed chip sizes, `chipWidthPx` and `SceneLayout.levelWord` to `layout.ts` (12 px from 640 px up, 14 px below, 1.9 high, 8 px padding), and a test that `FONT_STACK` and the colours equal the CSS tokens
+    - _Requirements: 40.1, 40.2, 40.3_
+  - [x] 49.2 Rebuild `chipLayout` and `pillRect` in `shapes.ts` (level dot, name, level word, danger dot; the pill is exactly the padding and the measured parts) and draw the chip in `pixi-surface.ts` with a measured width, weight 500 and no `!`
+    - _Requirements: 40.2, 40.3, 40.4_
+  - [x] 49.3 Add the Legend rows "Dust floating in lantern light" and "Red outline and dot on a room label" with their icons
+    - _Requirements: 40.4, 43.1_
+  - [x] 49.4 Update the chip tests (`layout.test.ts`, `art.test.ts`, `layout.property.test.ts`, `pixi-surface.test.ts`, `legend.test.tsx`) to the new rule: 12 and 14 px, no overlap, no `!`, the level word from 640 px up
+    - _Requirements: 40.1, 40.5, 46.1_
+- [x] 50. A mint hunt badge replaces the dots
+  - [x] 50.1 Add `huntBadgeOf` and `HuntVisual.steps` to `model.ts` (the words of the Summary bar, "Hunting · n steps" while running)
+    - _Requirements: 41.2_
+  - [x] 50.2 Add `huntBadgeRect` and the badge sizes to `shapes.ts` (the place clears every chip; the slot does not change), draw the pill, the magnifier and the text in `pixi-surface.ts`, and add `HuntFrame.badgeGlow` (2 s breath, 0.7 to 1, still under Reduced motion and in Low quality) to the animator
+    - _Requirements: 41.1, 41.3, 41.4_
+  - [x] 50.3 Update `hunt-scene.test.ts`, `layout.test.ts` and `pixi-surface.test.ts` to the badge and add the tests for the words, the sizes at 390 and 1440 px, the breath and "never n of 8"
+    - _Requirements: 41.2, 41.3, 41.4, 46.1_
+  - [x]* 50.4 Property test: the hunt badge and the chips never overlap, with the widest text, at any gallery size from 364 px (Property 15)
+    - _Requirements: 40.5, 41.4_
+- [x] 51. The moon is a picture
+  - [x] 51.1 Add `moon` to `SPRITE_MANIFEST` and `SpriteSet` in `sprites.ts` (same loader, timeout and fallback); the budget check reads it from the manifest
+    - _Requirements: 42.1_
+  - [x] 51.2 Draw the sprite top right (alpha 0.92, width `clamp(0.09 × width, 56, 150)`, 56 px under 640 px, same parallax) over the halo at alpha 0.18, and one plain disc without it
+    - _Requirements: 42.2, 42.3_
+  - [x] 51.3 Update the manifest tests (`sprites.test.ts`, `art.test.ts`) to eleven files and add the moon tests in `pixi-surface.test.ts`
+    - _Requirements: 42.1, 42.2, 42.3, 46.1_
+- [x] 52. Floor marks that mean something
+  - [x] 52.1 Make the dust fine: `MOTE_MAX` 4, 2 in an uneasy room, none from haunted up and none under Reduced motion in `model.ts`, a 2 to 4 px mote with alpha 0.25 to 0.45, a rise and a fade in `particles.ts` and the animator
+    - _Requirements: 43.1_
+  - [x] 52.2 Clip the lamp glow of a sprite room to `spriteFloor(fit)` and keep a calm glow at 0.25 or less
+    - _Requirements: 43.2_
+  - [x] 52.3 Redraw the seal as the mint hunt ring with one tick per step (`huntRingArt` in `shapes.ts`, drawn when the count changes, static)
+    - _Requirements: 43.3_
+  - [x]* 52.4 Property test: the lit ticks of the ring equal `min(steps, MAX_MARKS)` and the badge shows the steps (Property 14)
+    - _Requirements: 43.3_
+  - [x] 52.5 Tests for the dust counts and sizes, the removal under Reduced motion, the glow mask and cap and the ring
+    - _Requirements: 43.1, 43.2, 43.3, 46.1_
+- [x] 53. One diff for the announcer and the sound
+  - [x] 53.1 Extract `components/changes.ts` (level, dark, hunt and proposal changes) and make the sentences of `LiveAnnouncer` read it
+    - _Requirements: 44.1_
+- [x] 54. The cues and their limits
+  - [x] 54.1 Add `sound/cues.ts`: `soundCues(prev, next)`, the priority list and the pure limiter `nextCue` (700 ms, 3 s for `hunt-step`, 5 s for the same cue and room)
+    - _Requirements: 44.2, 44.3_
+  - [x]* 54.2 Property test: for any sequence of snapshots and times the cues obey the three limits and the first snapshot gives none (Property 13)
+    - _Requirements: 44.3_
+  - [x] 54.3 Unit tests: each mapping rule, no cue for a first snapshot or the same state, the priority, and the three limits with a fake clock
+    - _Requirements: 44.2, 44.3, 46.1_
+- [x] 55. The player and the hook
+  - [x] 55.1 Add `sound/player.ts` (Web Audio, one master gain 0.6, `fetch` and `decodeAudioData`, buffers kept; a lazy chunk) and `sound/storage.ts` (`haunted-ops.sound.v1`)
+    - _Requirements: 45.1, 45.4_
+  - [x] 55.2 Add `sound/useSound.ts`: off by default, a dynamic import on the click, a stored "on" starts at the first click, no cue on the replay page, a failing load sets "unavailable"
+    - _Requirements: 45.1, 45.2, 45.4_
+  - [x] 55.3 Tests: the button, the stored choice, the player not loaded before the click, a failing load, the player with a fake `AudioContext`
+    - _Requirements: 45.1, 45.2, 45.3, 45.4, 46.1_
+- [x] 56. The button and the end-to-end check
+  - [x] 56.1 Add `SoundButton.tsx`, the speaker icons in `icons.tsx` and the button in `Header.tsx` after the Accessible mode switch, wired in `App.tsx` (not on the replay page)
+    - _Requirements: 45.3_
+  - [x] 56.2 Add `e2e/sound.spec.ts`: on `/?demo=1` no request to `/sfx/` before the click; after it the button reads "Sound on" and the files are requested
+    - _Requirements: 45.1, 45.3, 46.1_
+- [x] 57. CSP and budgets
+  - [x] 57.1 Check the CSP of `deploy/server/Caddyfile` for `fetch` of `/sfx/*.mp3` and record the result in the design
+    - _Requirements: 45.5_
+  - [x] 57.2 Add the sound chunk (4 KiB) and the sound files (32 KiB each, 200 KiB in all) to `check-scene-bundle.mjs`, with tests, and set the entry budget from the measured number
+    - _Requirements: 46.2_
+- [x] 58. README and steering
+  - [x] 58.1 Add the sound credit and the button line to the README "Art" section, mark `spatial-audio` as replaced in `structure.md`, describe the lazy sound chunk and the default off in `tech.md` and `a11y-perf.md`, and the new rules in `scene-rendering.md`
+    - _Requirements: 46.3_
+- [x] 59. Budget of part 7
+  - [x] 59.1 Build, run `node scripts/check-scene-bundle.mjs` once and write the numbers in the design ("Measured (build of part 7)")
+    - _Requirements: 46.2_
+- [x] 60. Checks of part 7
+  - [x] 60.1 Run `pnpm typecheck`, `pnpm lint`, the changed test files, `e2e/scene.spec.ts`, `e2e/layout.spec.ts` and `e2e/sound.spec.ts` once, the build with the bundle check once and the spec validator
+    - _Requirements: 46.1, 46.2_
+- [x] 61. Records of part 7
+  - [x] 61.1 One `2026-11-17 | visual-refresh/N | …` line per finished task in `docs/KIRO_USAGE.md` (the file ends with a newline)
+    - _Requirements: 46.3_
+- [x] 62. Sound wakes up on the click
+  - [x] 62.1 In `player.ts` call `ctx.resume()` right after `new AudioContext()` before any `fetch`, make `play` skip a cue unless the context is `running`, and expose `state()`
+    - _Requirements: 47.1_
+  - [x] 62.2 In `useSound.ts` start on `pointerdown`, `click` and Enter or Space (not a plain key), resume a ready but not running player on the next `pointerdown` or `click`, remove the listeners when it runs, on off and on unmount, and resume on the toggle click
+    - _Requirements: 47.2_
+- [x] 63. The floor ring shows its ticks
+  - [x] 63.1 Draw each step as a dash across the ring (2 px or more wide, 3 times as long as wide), the ring line at alpha 0.4, the first position at the front, and fit the ring and its ticks inside the floor of the room (`fitHuntRing`)
+    - _Requirements: 47.3, 47.4_
+- [x] 64. Tests of the fix
+  - [x] 64.1 Tests: `resume` before the first `fetch`, a suspended player plays nothing, a Tab key press starts nothing, the wake-up click and the listeners, the tick sizes at 390 and 1440, the lit count (Property 14 kept) and the ring bounds inside the floor of every room at 390, 768, 1024 and 1440
+    - _Requirements: 47.5_
+- [x] 65. Checks and records of the fix
+  - [x] 65.1 Run `pnpm typecheck`, `pnpm lint`, `src/sound` and `refresh7.test.ts`, `e2e/sound.spec.ts` and `e2e/scene.spec.ts`, the build with the bundle check and the spec validator once; one `2026-11-17 | visual-refresh/N | …` line per task in `docs/KIRO_USAGE.md`
+    - _Requirements: 47.4, 47.5_
 ## Notes
 - Scope: tasks 1 to 11 are part 1 of the refresh; `apps/web/src/scene/` changes there only in `palette.ts` (`bg`, and `focus` if it changed). Tasks 12 to 17 are part 2: the PixiJS scene (rooms, ghosts, fog, sky) and four fixes of the page. There is no zoom in the Scene; the camera of the parallax and of the roof is the focused room.
 - Entry chunk before this spec: 90.4 of 92 KiB gzip (`check-scene-bundle.mjs`; the 92 KiB comes from `accessible-mode/design.md`). The budget may rise to 94 KiB at most, only on a measured need. Replay chunk: 5665 bytes, budget 6800 bytes.
@@ -270,7 +359,8 @@ Make the page around the Scene modern and easy to read, in the look "a lantern i
 - Part 4 (tasks 25 to 33): the illustrated sprites, written in a fourth prompt. The ten files of `apps/web/public/scene/` are made by the team and are not changed. Checks while building: `pnpm typecheck`, `pnpm lint`, the created or changed test files, `e2e/scene.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator.
 - Part 5 (tasks 34 to 41): the polish of the sprite scene (room size, leftovers, calm darker, the Exorcist), written in a fifth prompt. Checks while building: `pnpm typecheck`, `pnpm lint`, the changed test files, `e2e/scene.spec.ts` and `e2e/layout.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator.
 - Part 6 (tasks 42 to 48): the tint on the sprite floor, the visible mint glow and the Hunt marks on a phone, written in a sixth prompt. Checks while building: `pnpm typecheck`, `pnpm lint`, the changed test files, `e2e/scene.spec.ts` and `e2e/layout.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator.
-- Out of scope: spatial audio, any API change, any new dependency, a font file, CSS-in-JS.
+- Part 7 (tasks 49 to 61): the chips like the panel pills, the hunt badge, the moon sprite, the dust, the lamp glow clip and the hunt ring, and the sound cues with the header button, written in a seventh prompt. Checks while building: `pnpm typecheck`, `pnpm lint`, the created or changed test files, `e2e/scene.spec.ts`, `e2e/layout.spec.ts` and `e2e/sound.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator. Not run: the full suite, the whole Playwright run.
+- Out of scope: spatial audio (replaced by the simple cues of part 7), any API change, any new dependency, a font file, CSS-in-JS.
 ## Task Dependency Graph
 ```mermaid
 graph TD
@@ -334,6 +424,27 @@ graph TD
   T45 --> T46
   T46 --> T47[47 Checks of part 6]
   T47 --> T48[48 Records of part 6]
+  T48 --> T49[49 Chips like the panel]
+  T48 --> T51[51 The moon]
+  T48 --> T53[53 One diff for announcer and sound]
+  T49 --> T50[50 The mint hunt badge]
+  T50 --> T52[52 Floor marks]
+  T53 --> T54[54 The cues and their limits]
+  T54 --> T55[55 The player and the hook]
+  T55 --> T56[56 The button and the e2e check]
+  T56 --> T57[57 CSP and budgets]
+  T49 --> T58[58 README and steering]
+  T51 --> T58
+  T52 --> T58
+  T57 --> T58
+  T58 --> T59[59 Budget of part 7]
+  T59 --> T60[60 Checks of part 7]
+  T60 --> T61[61 Records of part 7]
+  T61 --> T62[62 Sound wakes up on the click]
+  T61 --> T63[63 The floor ring shows its ticks]
+  T62 --> T64[64 Tests of the fix]
+  T63 --> T64
+  T64 --> T65[65 Checks and records of the fix]
 ```
 ```json
 {
@@ -381,7 +492,19 @@ graph TD
     { "id": 40, "tasks": ["42.3", "45.1"] },
     { "id": 41, "tasks": ["46.1"] },
     { "id": 42, "tasks": ["47.1"] },
-    { "id": 43, "tasks": ["48.1"] }
+    { "id": 43, "tasks": ["48.1"] },
+    { "id": 44, "tasks": ["49.1", "51.1", "52.1", "53.1"] },
+    { "id": 45, "tasks": ["49.2", "50.1", "51.2", "52.2", "54.1", "55.1"] },
+    { "id": 46, "tasks": ["49.3", "50.2", "51.3", "52.3", "54.2", "54.3", "55.2"] },
+    { "id": 47, "tasks": ["49.4", "50.3", "50.4", "52.4", "52.5", "55.3", "56.1"] },
+    { "id": 48, "tasks": ["56.2", "57.1", "57.2"] },
+    { "id": 49, "tasks": ["58.1"] },
+    { "id": 50, "tasks": ["59.1"] },
+    { "id": 51, "tasks": ["60.1"] },
+    { "id": 52, "tasks": ["61.1"] },
+    { "id": 53, "tasks": ["62.1", "63.1"] },
+    { "id": 54, "tasks": ["62.2", "64.1"] },
+    { "id": 55, "tasks": ["65.1"] }
   ]
 }
 ```

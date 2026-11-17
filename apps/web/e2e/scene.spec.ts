@@ -128,6 +128,7 @@ test.describe('the illustrated sprites (visual-refresh part 4)', () => {
     'exorcist-walk',
     'exorcist-scan',
     'fog-wisp',
+    'moon',
   ];
   test('requests the room, ghost, fog and Exorcist files (200, image/webp) and logs no console error', async ({ page }) => {
     const seen = new Map<string, { status: number; type: string }>();

@@ -174,3 +174,20 @@ One line per finished task: date | spec/task | what Kiro did.
 2026-11-17 | visual-refresh/46 | budget measured: entry 93.0 of 94 KiB, scene chunk 176.6 of 180, scene file 93.1 of 119, replay 6640 bytes of 6800, assets 285.5 of 400 KiB, hooks.ts untouched
 2026-11-17 | visual-refresh/47 | typecheck, lint, the changed test files, e2e/scene.spec.ts and e2e/layout.spec.ts, the build with the bundle check and the spec validator pass; no full suite
 2026-11-17 | visual-refresh/48 | records of part 6: usage lines
+2026-11-17 | visual-refresh/49 | room chips like the panel pills: 12 px (14 px under 640 px), 1.9 high, level dot, name, level word, red outline and dot for an open incident; LEVEL_COLOR and chip tokens equal the CSS; Legend rows
+2026-11-17 | visual-refresh/50 | mint hunt badge (Hunting · n steps, Diagnosed, Fix proposed, Fix merged) with a magnifier that breathes for 2 s, placed clear of every chip; the Hunt dots are gone; Property 15 with the badge
+2026-11-17 | visual-refresh/51 | the moon is the sprite moon.webp (eleventh file of the manifest, 56 to 150 px, alpha 0.92, halo 0.18); one plain disc without it
+2026-11-17 | visual-refresh/52 | floor marks: fine dust (2 to 4 px, 4 calm, 2 uneasy, none under Reduced motion), lamp glow clipped to the sprite floor and 0.25 at most when calm, mint hunt ring with one tick per step; Property 14
+2026-11-17 | visual-refresh/53 | components/changes.ts: one diff of level, dark, hunt and proposal changes for the announcer and the sound
+2026-11-17 | visual-refresh/54 | sound/cues.ts: soundCues and the pure limiter nextCue (700 ms, hunt-step 3 s, same cue and room 5 s); Property 13
+2026-11-17 | visual-refresh/55 | sound/player.ts (Web Audio, lazy chunk, master gain 0.6), sound/storage.ts and useSound: off by default, loaded on the click, stored on starts at the first click, a failing load shows unavailable
+2026-11-17 | visual-refresh/56 | SoundButton with speaker icons in the header after the Accessible mode switch (not on the replay page) and e2e/sound.spec.ts
+2026-11-17 | visual-refresh/57 | CSP connect-src 'self' already allows /sfx/*.mp3 (no change); check-scene-bundle.mjs checks the sound chunk (4 KiB) and the sound files (32 KiB each, 200 KiB in all); entry budget raised from 94 to 95 KiB
+2026-11-17 | visual-refresh/58 | README sound credit and button line, structure.md marks spatial-audio as replaced, tech.md, a11y-perf.md and scene-rendering.md describe the lazy sound chunk and the new scene rules
+2026-11-17 | visual-refresh/59 | budget measured: entry 94.8 of 95 KiB, scene chunk 177.3 of 180, sound chunk 0.6 of 4, replay 6707 bytes of 6800, sprites 306.2 of 400 KiB, sound files 114.2 of 200 KiB, hooks.ts untouched
+2026-11-17 | visual-refresh/60 | typecheck, lint, the changed test files, e2e/scene.spec.ts, e2e/layout.spec.ts and e2e/sound.spec.ts, the build with the bundle check and the spec validator pass; no full suite
+2026-11-17 | visual-refresh/61 | records of part 7: usage lines
+2026-11-17 | visual-refresh/62 | sound wakes on the click: createPlayer calls ctx.resume() before any fetch, play skips cues unless the context is running, state() exposed; useSound starts on pointerdown, click, Enter or Space (not Tab) and resumes a suspended player on the next pointerdown or click, listeners removed once it runs, on off and on unmount
+2026-11-17 | visual-refresh/63 | floor ring: each step a dash across the ring (2 px or more wide, 3 times as long), ring line alpha 0.4, first tick at the front, ring and ticks fitted inside the room floor (fitHuntRing, spriteFloor with sprites)
+2026-11-17 | visual-refresh/64 | tests: resume before fetch, suspended player silent, Tab starts nothing, wake-up click and listeners, tick sizes at 390 and 1440, lit count, ring inside the floor at 390, 768, 1024 and 1440
+2026-11-17 | visual-refresh/65 | checks of the fix run once (typecheck, lint, src/sound, refresh7, e2e sound and scene, build with bundle check, spec validator); numbers in the notes of the task

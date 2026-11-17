@@ -13,6 +13,8 @@ const PATHS = {
   darkroom: 'M4 4h16v16H4z M9 9h6v6H9z',
   lantern: 'M9 3h6 M8 6h8v11H8z M10 21h4 M12 9v5',
   mist: 'M7 18a4 4 0 0 1 1-7.9A5 5 0 0 1 17.5 11 3.5 3.5 0 0 1 17 18z',
+  dust: 'M6 8h.01 M12 5h.01 M17 9h.01 M9 13h.01 M15 15h.01 M7 18h.01 M18 19h.01',
+  incident: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
   // Replay controls
   play: 'M8 5l11 7-11 7z',
   pause: 'M8 5v14 M16 5v14',
@@ -20,6 +22,9 @@ const PATHS = {
   next: 'M18 5v14 M5 5l9 7-9 7z',
   speed: 'M4 18a8 8 0 1 1 16 0 M12 18l4-6',
   back: 'M4 11l8-7 8 7 M6 10v10h12V10',
+  // Sound button: a speaker with waves (on) and a speaker with a cross (off)
+  speaker: 'M4 9v6h4l5 4V5L8 9H4z M16.5 9a4 4 0 0 1 0 6 M19 6.5a8 8 0 0 1 0 11',
+  'speaker-off': 'M4 9v6h4l5 4V5L8 9H4z M17 9l5 6 M22 9l-5 6',
   // The neutral glyph for a name with no icon
   dot: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
 } as const;
