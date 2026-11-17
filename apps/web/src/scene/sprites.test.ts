@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { insideConvex } from '../test/geometry.js';
 import { FULL, house, scene } from '../test/scene-fakes.js';
 import { GHOST_KIND_MAX, GHOST_MAX, ghostKind } from './particles.js';
 
 const assets = vi.hoisted(() => ({ load: vi.fn(), unload: vi.fn() }));
 vi.mock('pixi.js', () => ({ Assets: assets }));
-const { LOAD_TIMEOUT_MS, ROOM_BOX, ROOM_SPRITE, ROOM_SPRITE_SCALE, SPRITE_KEYS, SPRITE_MANIFEST, loadSprites, roomSpriteFit, spriteBrightness, spriteSilhouette } = await import('./sprites.js');
+const { LOAD_TIMEOUT_MS, ROOM_BOX, ROOM_SPRITE, ROOM_SPRITE_SCALE, SPRITE_KEYS, SPRITE_MANIFEST, loadSprites, roomSpriteFit, spriteBrightness, spriteFloor, spriteSilhouette } = await import('./sprites.js');
 
 const picture = { width: 256, height: 256 };
 afterEach(() => {
@@ -53,6 +54,25 @@ describe('roomSpriteFit', () => {
           const inside = corner.x >= bottom.x - half && corner.x <= bottom.x + half && corner.y >= top && corner.y <= bottom.y;
           expect(inside, `${front.name} over ${back.name} at ${width}`).toBe(false);
         }
+      }
+    }
+  });
+});
+
+describe('spriteFloor', () => {
+  it('has four corners inside the outline, shares its front corner and is no wider', () => {
+    for (const width of [1440, 390]) {
+      const { layout } = scene(house(), FULL, { width, height: 800, dpr: 1 });
+      for (const room of layout.rooms) {
+        const fit = roomSpriteFit(room.floor);
+        const floor = spriteFloor(fit);
+        const hex = spriteSilhouette(fit);
+        expect(floor).toHaveLength(4);
+        // left, back, right, front
+        expect(floor[3]!.x).toBeCloseTo(hex[5]!.x, 6);
+        expect(floor[3]!.y).toBeCloseTo(hex[5]!.y, 6);
+        expect(floor[2]!.x - floor[0]!.x).toBeLessThanOrEqual(hex[4]!.x - hex[0]!.x + 1e-6);
+        for (const p of floor) expect(insideConvex(hex, p)).toBeGreaterThanOrEqual(-1e-6);
       }
     }
   });

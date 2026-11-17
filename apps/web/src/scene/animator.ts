@@ -19,7 +19,7 @@ import {
 } from './particles.js';
 import { unit } from './rng.js';
 import { CORRIDOR_STYLE } from './shapes.js';
-import { FOG_LAYERS, emptyHuntFrame, type FogLayerFrame, type Frame, type ParticleBuffer, type RoomFrame } from './surface.js';
+import { FIGURE_GLOW_MS, FIGURE_GLOW_REST, FOG_LAYERS, emptyHuntFrame, type FogLayerFrame, type Frame, type ParticleBuffer, type RoomFrame } from './surface.js';
 
 /** The seal closes in 0.8 s, the lantern fades out in 0.6 s, the sparks fall for 0.9 s. */
 export const SEAL_MS = 800;
@@ -509,6 +509,7 @@ export function createAnimator(): Animator {
         if (f.pulse > 0) flag.moving = true;
         const t = timeMs;
         f.mistBreath = reduced ? 0 : 0.5 + 0.5 * Math.sin((t * Math.PI * 2) / MIST_BREATH_MS + v.seed);
+        st.frame.hunt.figureGlow = reduced || low ? FIGURE_GLOW_REST : FIGURE_GLOW_REST - 0.05 + 0.1 * Math.sin((t * Math.PI * 2) / FIGURE_GLOW_MS);
         f.mistX = reduced ? 0 : 0.25 * Math.sin(t * 0.0004 + v.seed);
         f.mistY = reduced ? 0 : 0.15 * Math.cos(t * 0.0003 + v.seed);
         for (let k = 0; k < FOG_LAYERS; k++) {

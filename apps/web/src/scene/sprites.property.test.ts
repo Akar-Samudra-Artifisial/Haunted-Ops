@@ -2,13 +2,14 @@ import fc from 'fast-check';
 import { describe, expect, it, vi } from 'vitest';
 import { SERVICE_NAMES, type HauntLevel, type ServiceState } from '@haunted-ops/shared';
 import { ROOMS, serviceStateArb } from '../test/arbs.js';
-import { FULL, scene } from '../test/scene-fakes.js';
+import { insideConvex } from '../test/geometry.js';
+import { FULL, house, scene } from '../test/scene-fakes.js';
 import { DARK_DIM, MAX_ROOMS, createAnimator } from './animator.js';
 import { toSceneModel } from './model.js';
 import { GHOST_KIND_MAX, GHOST_MAX, PARTICLE_CAP, ghostKind } from './particles.js';
 
 vi.mock('pixi.js', () => ({ Assets: { load: vi.fn(), unload: vi.fn() } }));
-const { ROOM_SPRITE, spriteBrightness } = await import('./sprites.js');
+const { ROOM_SPRITE, roomSpriteFit, spriteBrightness, spriteFloor, spriteSilhouette } = await import('./sprites.js');
 
 const RUNS = { numRuns: 100 };
 const NOW = Date.parse('2026-11-13T15:30:00.000Z');
@@ -68,5 +69,22 @@ describe('Property 10: the ghost pools never pass the caps', () => {
       per.forEach((c, k) => expect(c).toBeLessThanOrEqual(GHOST_KIND_MAX[k]!));
       expect(per.reduce((n, c) => n + c, 0)).toBe(GHOST_MAX);
     }
+  });
+});
+
+// Feature: visual-refresh, Property 12
+describe('Property 12: the trouble tint of a sprite room stays inside its outline', () => {
+  it('puts every point of the tint polygon inside the sprite silhouette, for any viewport', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 200, max: 2400 }), fc.integer({ min: 300, max: 1600 }), (width, height) => {
+        const { layout } = scene(house(), FULL, { width, height, dpr: 1 });
+        for (const room of layout.rooms) {
+          const fit = roomSpriteFit(room.floor);
+          const hex = spriteSilhouette(fit);
+          for (const p of spriteFloor(fit)) expect(insideConvex(hex, p)).toBeGreaterThanOrEqual(-1e-6);
+        }
+      }),
+      RUNS,
+    );
   });
 });

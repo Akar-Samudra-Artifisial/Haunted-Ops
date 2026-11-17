@@ -125,6 +125,24 @@ describe('Animator transitions', () => {
     expect(Array.from(later.fog.y.slice(0, later.fog.count))).toEqual(wisps);
   });
 
+  it('breathes the figure glow between 0.7 and 0.9 over 3 s, and fixes it at 0.85 under reduced motion and in low quality', () => {
+    const glowAt = (options: typeof FULL, ms: number): number => {
+      const { a } = animator([makeService('payments', { hauntLevel: 2, metrics: metrics(0.4, 2500, 1) })], options);
+      return a.step(16, ms).rooms[0]!.hunt.figureGlow;
+    };
+    const seen: number[] = [];
+    for (let t = 0; t < 3000; t += 100) seen.push(glowAt(FULL, t));
+    expect(Math.min(...seen)).toBeGreaterThanOrEqual(0.7 - 1e-9);
+    expect(Math.max(...seen)).toBeLessThanOrEqual(0.9 + 1e-9);
+    expect(Math.max(...seen) - Math.min(...seen)).toBeGreaterThan(0.15);
+    // One cycle per 3 s.
+    expect(glowAt(FULL, 1234)).toBeCloseTo(glowAt(FULL, 1234 + 3000), 9);
+    for (const t of [0, 750, 1500, 2250]) {
+      expect(glowAt(REDUCED, t)).toBe(0.85);
+      expect(glowAt({ reducedMotion: false, quality: 'low' }, t)).toBe(0.85);
+    }
+  });
+
   it.each([
     [360, 300],
     [1280, 504],

@@ -41,12 +41,18 @@ export interface HuntFrame {
   /** The falling sparks of a fizzle: 0 not shown, up to 1 gone. */
   sparks: number;
   result: 'none' | 'sealed' | 'failed';
+  /** Alpha of the mint glow behind the figure: 0.85 at rest, a 3 s breath between 0.7 and 0.9 (fixed under Reduced motion and in Low quality). */
+  figureGlow: number;
   /** The fix of the Hunt. */
   proposal: ProposalFrame;
 }
 
+/** Alpha of the figure glow at rest, and the period of its breath (it moves between 0.7 and 0.9). */
+export const FIGURE_GLOW_REST = 0.85;
+export const FIGURE_GLOW_MS = 3000;
+
 export function emptyHuntFrame(): HuntFrame {
-  return { figure: 0, walk: 0, lantern: 0, marks: 0, seal: 0, fizzle: 0, sparks: 0, result: 'none', proposal: emptyProposalFrame() };
+  return { figure: 0, walk: 0, lantern: 0, marks: 0, seal: 0, fizzle: 0, sparks: 0, result: 'none', figureGlow: FIGURE_GLOW_REST, proposal: emptyProposalFrame() };
 }
 
 /** The fix scroll and the cleansing sweep of one room. */

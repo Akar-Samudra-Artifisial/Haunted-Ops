@@ -8,9 +8,10 @@ import type { Pt, RoomLayout, SceneLayout } from './layout.js';
 import type { RoomVisual, SceneModel } from './model.js';
 import { FONT_STACK, PALETTE, PILL_ALPHA, hexToNumber } from './palette.js';
 import { FOG_BANK_MAX, FOG_WISP_MAX, GHOST_KINDS, GHOST_KIND_MAX, GHOST_MAX, MOTE_MAX } from './particles.js';
-import { CORRIDOR_STYLE, buildHouseArt, buildRoomArt, chipLayout, clockHands, starField, type RoomArt, type RoomIcon } from './shapes.js';
+import { CORRIDOR_STYLE, buildHouseArt, buildRoomArt, chipLayout, clockHands, huntMarkStyle, starField, type RoomArt, type RoomIcon } from './shapes.js';
 import { FOG_LAYERS, SceneInitError, type Frame, type HuntFrame, type ParticleBuffer, type RoomFrame, type Surface, type SurfaceInit } from './surface.js';
-import { loadSprites, roomSpriteFit, spriteBrightness, spriteSilhouette, unloadSprites, type SpriteSet } from './sprites.js';
+import { FIGURE_GLOW_REST } from './surface.js';
+import { loadSprites, ROOM_SPRITE_SCALE, roomSpriteFit, spriteBrightness, spriteFloor, spriteSilhouette, unloadSprites, type SpriteSet } from './sprites.js';
 import { TEXTURE_NAMES, drawTexture, type TextureName } from './textures.js';
 
 const num = hexToNumber;
@@ -118,6 +119,8 @@ const SEAL_STEPS = 48;
 const SPRITE_LANTERN = { x: 0.23, y: 0.42 } as const;
 /** A fizzle throws at most this many spark dots (Graphics, not particles). */
 const SPARK_COUNT = 6;
+/** The least height of the figure glow on screen under 40rem, in px. */
+const FIGURE_GLOW_MIN_PX_NARROW = 40;
 
 /** The objects of one room's hunt, made once. */
 interface HuntArt {
@@ -140,7 +143,10 @@ interface HuntArt {
   lanternX: number;
   lanternY: number;
   /** Lantern of the sprite figure, in figure heights from its feet (x is for a figure facing left). */
-  slot: { x: number; y: number; w: number; h: number; midY: number; r: number; markX: (i: number) => number };
+  slot: { x: number; y: number; w: number; h: number; midY: number; r: number; markX: (i: number) => number; resultX: number; resultY: number };
+  /** The figure glow, and the "Hunt · n steps" text of a narrow slot too small for the dots (null: dots). */
+  figureGlow: Sprite;
+  huntText: Text | null;
   ringPts: number[];
   /** What is drawn now, so a frame redraws a Graphics only when it changed. */
   sealN: number;
@@ -410,8 +416,9 @@ export class PixiSurface implements Surface {
     const glow = new Sprite(this.textures.get('glow') as Texture);
     glow.anchor.set(0.5);
     glow.position.set(art.lampTop.x, art.lampTop.y);
-    glow.width = art.glowSize;
-    glow.height = art.glowSize;
+    // The glow of a sprite room stays inside the picture, which is drawn ROOM_SPRITE_SCALE times the floor.
+    glow.width = art.glowSize * (fit ? ROOM_SPRITE_SCALE : 1);
+    glow.height = glow.width;
     glow.blendMode = 'add';
     glow.tint = num(PALETTE.glowWarm);
 
@@ -425,8 +432,8 @@ export class PixiSurface implements Surface {
     outlineEdge.poly(sil, true).stroke({ color: num(PALETTE.lightCold), width: Math.max(1, layout.scale * 0.035), join: 'round' });
     outlineEdge.alpha = 0;
     const tint = new Graphics();
-    // On a sprite room the danger tint stays on the floor diamond.
-    tint.poly(fit ? flat(room.floor) : sil, true).fill({ color: num(PALETTE.danger) });
+    // On a sprite room the danger tint stays on the floor of the picture.
+    tint.poly(fit ? flat(spriteFloor(fit)) : sil, true).fill({ color: num(PALETTE.danger) });
     tint.alpha = 0;
     const [floorTop, floorRight, floorBottom, floorLeft] = room.floor;
     const half = { w: (floorRight.x - floorLeft.x) / 4, h: (floorBottom.y - floorTop.y) / 4 };
@@ -478,16 +485,26 @@ export class PixiSurface implements Surface {
     const container = new Container();
     const slot = room.huntRect;
     const midY = slot.y + slot.h / 2;
-    const r = Math.max(1.5, Math.min(slot.h * 0.28, slot.w / 20));
-    const step = (slot.w * 0.85) / MAX_MARKS;
+    const style = huntMarkStyle(slot, layout.width, MAX_MARKS, room.hit);
+    const r = style.kind === 'dots' ? style.r : 0;
+    const step = style.kind === 'dots' ? style.step : 0;
     const markX = (i: number): number => slot.x + step * (i + 0.5);
 
+    // A narrow slot too small for the dots shows a text pill instead (same pill style as the room chip).
+    const pill = style.kind === 'text' ? style.pill : slot;
     const marksBack = new Graphics();
-    marksBack.roundRect(slot.x, slot.y, slot.w, slot.h, slot.h / 2).fill({ color: num(PALETTE.pill), alpha: PILL_ALPHA });
+    marksBack.roundRect(pill.x, pill.y, pill.w, pill.h, pill.h / 2).fill({ color: num(PALETTE.pill), alpha: PILL_ALPHA });
     marksBack.visible = false;
+    let huntText: Text | null = null;
+    if (style.kind === 'text') {
+      huntText = new Text({ text: '', style: { fontFamily: FONT_STACK, fontSize: style.fontPx, fill: PALETTE.text, fontWeight: '600' } });
+      huntText.anchor.set(0, 0.5);
+      huntText.visible = false;
+      huntText.position.set(pill.x + 0.45 * style.fontPx, pill.y + pill.h / 2);
+    }
     const marksOff = new Graphics();
     marksOff.visible = false;
-    for (let i = 0; i < MAX_MARKS; i++) marksOff.circle(markX(i), midY, r).stroke({ color: num(PALETTE.trim), alpha: 0.55, width: Math.max(1, r * 0.35) });
+    if (style.kind === 'dots') for (let i = 0; i < MAX_MARKS; i++) marksOff.circle(markX(i), midY, r).stroke({ color: num(PALETTE.trim), alpha: 0.55, width: Math.max(1, r * 0.35) });
     const marksOn = new Graphics();
     const result = new Graphics();
 
@@ -538,15 +555,16 @@ export class PixiSurface implements Surface {
       spark.visible = false;
       sparks.push(spark);
     }
-    // A soft mint glow behind the figure: static (no animation, so Reduced motion and Low quality keep it).
+    // A soft mint glow behind the figure; it breathes (see `HuntFrame.figureGlow`), fixed under Reduced motion and in Low quality.
     const figureGlow = new Sprite(this.textures.get('glow') as Texture);
     figureGlow.anchor.set(0.5);
     figureGlow.position.set(0, -h * 0.5);
-    figureGlow.width = h * 1.1;
-    figureGlow.height = h * 1.3;
+    figureGlow.width = h * 1.6;
+    // At least 40 px tall on a narrow viewport.
+    figureGlow.height = Math.max(h * 1.8, layout.width < NARROW_BELOW ? FIGURE_GLOW_MIN_PX_NARROW : 0);
     figureGlow.blendMode = 'add';
     figureGlow.tint = num(PALETTE.ecto);
-    figureGlow.alpha = 0.5;
+    figureGlow.alpha = FIGURE_GLOW_REST;
     figure.addChild(figureGlow, body, lanternGlow, lantern, ...sparks);
     figure.visible = false;
     figure.position.set(room.doors.px.x, room.doors.px.y);
@@ -583,6 +601,7 @@ export class PixiSurface implements Surface {
 
     // The figure is not in this container: it has its own layer above the ghosts.
     container.addChild(marksBack, marksOff, marksOn, result, scroll);
+    if (huntText) container.addChild(huntText);
     return {
       container,
       marksBack,
@@ -600,7 +619,9 @@ export class PixiSurface implements Surface {
       sparks,
       lanternX,
       lanternY,
-      slot: { x: slot.x, y: slot.y, w: slot.w, h: slot.h, midY, r, markX },
+      slot: { x: slot.x, y: slot.y, w: slot.w, h: slot.h, midY, r, markX, resultX: style.kind === 'text' ? pill.x + pill.w - 0.45 * style.fontPx - Math.max(2, slot.h * 0.34) : slot.x + slot.w * 0.93, resultY: pill.y + pill.h / 2 },
+      figureGlow,
+      huntText,
       ringPts,
       sealN: 0,
       drawnMarks: -1,
@@ -628,6 +649,7 @@ export class PixiSurface implements Surface {
     // The marks and their rings show only while the room has a hunt.
     view.huntArt.marksBack.visible = v.hunt !== null;
     view.huntArt.marksOff.visible = v.hunt !== null;
+    if (view.huntArt.huntText) view.huntArt.huntText.visible = v.hunt !== null;
 
     view.clock.clear();
     for (const hand of clockHands(v.clock, view.art.clock.center, view.art.clock.radius)) {
@@ -717,16 +739,17 @@ export class PixiSurface implements Surface {
     if (a.drawnMarks !== h.marks) {
       a.drawnMarks = h.marks;
       a.marksOn.clear();
-      for (let i = 0; i < h.marks; i++) a.marksOn.circle(slot.markX(i), slot.midY, slot.r).fill({ color: num(PALETTE.lampWarm) });
+      if (a.huntText) a.huntText.text = `Hunt · ${h.marks}${h.marks >= MAX_MARKS ? '+' : ''} ${h.marks === 1 ? 'step' : 'steps'}`;
+      else for (let i = 0; i < h.marks; i++) a.marksOn.circle(slot.markX(i), slot.midY, slot.r).fill({ color: num(PALETTE.lampWarm) });
     }
     if (a.drawnResult !== h.result) {
       a.drawnResult = h.result;
       a.result.clear();
-      const cx = slot.x + slot.w * 0.93;
+      const cx = slot.resultX;
       const rr = Math.max(2, slot.h * 0.34);
       const width = Math.max(1.5, rr * 0.35);
-      if (h.result === 'sealed') a.result.circle(cx, slot.midY, rr).stroke({ color: num(PALETTE.lampWarm), width });
-      else if (h.result === 'failed') a.result.arc(cx, slot.midY, rr, 0.6, Math.PI * 2 - 0.6).stroke({ color: num(PALETTE.alarm), width });
+      if (h.result === 'sealed') a.result.circle(cx, slot.resultY, rr).stroke({ color: num(PALETTE.lampWarm), width });
+      else if (h.result === 'failed') a.result.arc(cx, slot.resultY, rr, 0.6, Math.PI * 2 - 0.6).stroke({ color: num(PALETTE.alarm), width });
     }
     const n = Math.ceil(h.seal * SEAL_STEPS);
     if (a.sealN !== n) {
@@ -770,6 +793,7 @@ export class PixiSurface implements Surface {
         a.lanternGlow.position.set(a.lanternX, a.lanternY);
       }
     }
+    a.figureGlow.alpha = h.figureGlow;
     a.lantern.alpha = h.lantern;
     a.lanternGlow.alpha = 0.75 * h.lantern;
     for (let i = 0; i < a.sparks.length; i++) {

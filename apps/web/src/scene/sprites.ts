@@ -84,6 +84,17 @@ export function spriteSilhouette(fit: SpriteFit): Pt[] {
 }
 
 /**
+ * The four floor corners of the scaled sprite (left, back, right, front): the floor diamond of the picture, half as high as it
+ * is wide, on the same box as `spriteSilhouette`, so it lies inside it and shares its front corner. The trouble tint is drawn on it.
+ */
+export function spriteFloor(fit: SpriteFit): Pt[] {
+  const at = (u: number, v: number): Pt => ({ x: fit.x + u * fit.width, y: fit.y + v * fit.height });
+  const cx = (ROOM_BOX.x0 + ROOM_BOX.x1) / 2;
+  const leftY = ROOM_BOX.y1 - (ROOM_BOX.x1 - ROOM_BOX.x0) / 4;
+  return [at(ROOM_BOX.x0, leftY), at(cx, ROOM_BOX.y1 - (ROOM_BOX.x1 - ROOM_BOX.x0) / 2), at(ROOM_BOX.x1, leftY), at(cx, ROOM_BOX.y1)];
+}
+
+/**
  * How bright the room picture is, 0 to 1 (the sprite is tinted with this grey): 0.05 plus 1.3 times the displayed light,
  * at most 1, so a calm room (0.25) is 0.375, a haunted one (0.7) 0.96 and a possessed one 1; times what the dark overlay
  * leaves (`dim` is 0 lit, up to 0.92 dark). Pure: non-decreasing in `light`, non-increasing in `dim`.

@@ -5,6 +5,7 @@ import { huntOf } from '../test/hunt-arbs.js';
 import { MAX_ROOMS, createAnimator } from './animator.js';
 import { GHOST_KIND_MAX, GHOST_MAX, PARTICLE_CAP } from './particles.js';
 import { FIGURE_H_SPRITE } from './layout.js';
+import { huntMarkStyle } from './shapes.js';
 import { ROOM_SPRITE, SPRITE_KEYS, roomSpriteFit } from './sprites.js';
 import { SceneInitError } from './surface.js';
 import type * as TexturesModule from './textures.js';
@@ -501,9 +502,10 @@ describe('PixiSurface', () => {
       };
       const glows = glowOf(stageOf());
       expect(glows.length).toBeGreaterThan(0);
-      // The first glow is the mint one behind the figure (static, alpha 0.5); the last is the lantern's.
+      // The first glow is the mint one behind the figure (alpha 0.85 at rest, 1.6 by 1.8 figure heights); the last is the lantern's.
       expect(glows[0]!.tint).toBe(0x9bf2c4);
-      expect(glows[0]!.alpha).toBe(0.5);
+      expect(glows[0]!.alpha).toBeGreaterThanOrEqual(0.7);
+      expect(glows[0]!.alpha).toBeLessThanOrEqual(0.9);
       expect(Math.sign(glows[glows.length - 1]!.position.x)).toBe(dir);
       // The picture is FIGURE_H_SPRITE high on screen (28 px at least under 40rem).
       // (the stand-in picture is 256 high)
@@ -564,6 +566,51 @@ describe('PixiSurface', () => {
       walk(stageOf());
       expect(out).toHaveLength(1);
       expect(out[0]!.scale.y * 256).toBeGreaterThanOrEqual(28 - 1e-6);
+      // The mint glow is at least 40 px tall on screen under 40rem, and 1.6 by 1.8 figure heights otherwise.
+      const glows: Node[] = [];
+      const findGlow = (n: Node): void => {
+        if (n.blendMode === 'add' && n.tint === 0x9bf2c4) glows.push(n);
+        n.children.forEach(findGlow);
+      };
+      findGlow(stageOf());
+      expect(glows.length).toBeGreaterThan(0);
+      const h = out[0]!.scale.y * 256;
+      expect(glows[0]!.height).toBeGreaterThanOrEqual(40 - 1e-6);
+      expect(glows[0]!.height).toBeGreaterThanOrEqual(1.8 * h - 1e-6);
+      expect(glows[0]!.width).toBeCloseTo(1.6 * h, 6);
+      surface.destroy();
+    });
+    it('shows "Hunt · n steps" in a pill of 14 px or more at 390 px when the eight dots do not fit, never "n of 8"', async () => {
+      pixi.state.sprites = true;
+      pixi.state.webgl = true;
+      const running = huntOf({ status: 'running', startedAt: NOW - 20_000, stepCount: 3 });
+      const s = scene(house({ payments: { hauntLevel: 3, reason: { kind: 'error_rate', value: 0.4 }, metrics, openIncident: incident, hunt: running } }), FULL, { width: 390, height: 844, dpr: 1 });
+      const surface = new PixiSurface();
+      await surface.init({ host: document.createElement('div'), width: s.layout.width, height: s.layout.height, dpr: 1, quality: 'full' });
+      surface.applyLayout(s.layout);
+      surface.applyModel(s.model);
+      const a = createAnimator();
+      a.setLayout(s.layout);
+      a.setModel(s.model);
+      for (let t = 1; t <= 200; t++) surface.draw(a.step(16, t * 16));
+      const texts: Array<{ text?: string; style?: { fontSize: number }; visible?: boolean; children: unknown[] }> = [];
+      const walk = (n: (typeof texts)[number]): void => {
+        if (n.visible === false) return;
+        if (typeof n.text === 'string' && n.text.startsWith('Hunt')) texts.push(n);
+        (n.children as typeof texts).forEach(walk);
+      };
+      walk(stageOf() as unknown as (typeof texts)[number]);
+      const payments = s.layout.rooms.find((r) => r.name === 'payments')!;
+      const style = huntMarkStyle(payments.huntRect, 390, 8, payments.hit);
+      if (style.kind === 'text') {
+        expect(texts).toHaveLength(1);
+        expect(texts[0]!.text).toBe('Hunt · 3 steps');
+        expect(texts[0]!.style!.fontSize).toBeGreaterThanOrEqual(14);
+      } else {
+        expect(texts).toHaveLength(0);
+        expect(style.r).toBeGreaterThanOrEqual(4);
+      }
+      expect(JSON.stringify(texts.map((t) => t.text))).not.toMatch(/ of /);
       surface.destroy();
     });
     it('the marks, their rings and the dark pill behind them show only in a room with a hunt', async () => {

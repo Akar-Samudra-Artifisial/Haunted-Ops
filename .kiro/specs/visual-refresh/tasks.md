@@ -1,6 +1,6 @@
 # Implementation Plan: visual-refresh
 ## Overview
-Make the page around the Scene modern and easy to read, in the look "a lantern in a dark house": design tokens, a two-column layout with a side Panel, a header with a short explanation, a Summary bar, the Hunt as a Timeline, a Legend, a table that becomes cards on a phone, restyled replay pages, and the document head. It is 11 top-level tasks in part 1 and tasks 12 to 17 in part 2 (the Scene and four fixes of the page), tasks 18 to 24 in part 3 and tasks 25 to 33 in part 4 (the illustrated sprites) and tasks 34 to 41 in part 5 (the polish of the sprite scene). Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: visual-refresh, Property N`. Tasks 1 to 11 touch `apps/web/src/scene/` only in the `bg` and `focus` values of `palette.ts`; tasks 12 to 17 are the PixiJS scene. Nothing here touches the API, a server, GitHub or the real `kiro-cli`, and no test makes a network call.
+Make the page around the Scene modern and easy to read, in the look "a lantern in a dark house": design tokens, a two-column layout with a side Panel, a header with a short explanation, a Summary bar, the Hunt as a Timeline, a Legend, a table that becomes cards on a phone, restyled replay pages, and the document head. It is 11 top-level tasks in part 1 and tasks 12 to 17 in part 2 (the Scene and four fixes of the page), tasks 18 to 24 in part 3 and tasks 25 to 33 in part 4 (the illustrated sprites) and tasks 34 to 41 in part 5 (the polish of the sprite scene) and tasks 42 to 48 in part 6 (three polish fixes: tint, mint glow, Hunt marks on a phone). Property tests are their own sub-tasks, marked `*`, and carry the comment `// Feature: visual-refresh, Property N`. Tasks 1 to 11 touch `apps/web/src/scene/` only in the `bg` and `focus` values of `palette.ts`; tasks 12 to 17 are the PixiJS scene. Nothing here touches the API, a server, GitHub or the real `kiro-cli`, and no test makes a network call.
 ## Tasks
 - [x] 1. Design tokens and contrast
   - [x] 1.1 Replace the colours of `:root` in `apps/web/src/styles.css` with the new tokens and add the type, scale, spacing, radius and shadow tokens; every colour outside `:root` stays a custom property
@@ -231,6 +231,35 @@ Make the page around the Scene modern and easy to read, in the look "a lantern i
 - [x] 41. Records of part 5
   - [x] 41.1 One `2026-11-17 | visual-refresh/N | …` line per finished task in `docs/KIRO_USAGE.md` (the file ends with a newline)
     - _Requirements: 35.3_
+- [x] 42. The trouble tint on the sprite floor
+  - [x] 42.1 Add the pure `spriteFloor(fit)` in `sprites.ts` (left, back, right, front) and its unit tests
+    - _Requirements: 36.1_
+  - [x] 42.2 Draw the tint of a sprite room on `spriteFloor(fit)` and scale its lamp glow by `ROOM_SPRITE_SCALE`; the fallback keeps its shape
+    - _Requirements: 36.2, 36.3_
+  - [x]* 42.3 Property test: every tint point lies inside the sprite silhouette (Property 12)
+    - _Requirements: 36.1, 36.2_
+- [x] 43. The Exorcist's mint glow
+  - [x] 43.1 Add `HuntFrame.figureGlow`, `FIGURE_GLOW_REST` and `FIGURE_GLOW_MS`; the animator breathes it between 0.7 and 0.9 over 3 s and fixes it at 0.85 under Reduced motion and in Low quality
+    - _Requirements: 37.2_
+  - [x] 43.2 Draw the glow `h·1.6` by `h·1.8`, at least 40 px tall under 40rem, alpha from the frame; update the glow alpha test and add the size, 40 px and breathing tests
+    - _Requirements: 37.1, 37.3, 39.1_
+- [x] 44. The Hunt marks on a phone
+  - [x] 44.1 Add the pure `huntMarkStyle` in `shapes.ts` (scene chunk only; dots of 4 px with a 2 px gap, else the "Hunt · n steps" pill at 14 px) and draw it in `pixi-surface.ts`, slot unchanged, desktop dots unchanged; record the choice in the design
+    - _Requirements: 38.1, 38.2, 38.3_
+  - [x] 44.2 Tests: the narrow dots or pill at 320, 364, 390 and 639 px, no overlap with the chip, desktop dots, the pill text at 390 px
+    - _Requirements: 38.1, 38.2, 39.1_
+- [x] 45. Steering
+  - [x] 45.1 One line each in `.kiro/steering/scene-rendering.md` for the tint-on-sprite-floor rule and the narrow Hunt marks rule
+    - _Requirements: 39.3_
+- [x] 46. Budget of part 6
+  - [x] 46.1 Build, run `node scripts/check-scene-bundle.mjs` once and write the numbers in the design ("Measured (build of part 6)")
+    - _Requirements: 39.2_
+- [x] 47. Checks of part 6
+  - [x] 47.1 Run `pnpm typecheck`, `pnpm lint`, the changed test files, `e2e/scene.spec.ts` and `e2e/layout.spec.ts` once, the build with the bundle check once and the spec validator
+    - _Requirements: 39.1, 39.2, 39.3_
+- [x] 48. Records of part 6
+  - [x] 48.1 One `2026-11-17 | visual-refresh/N | …` line per finished task in `docs/KIRO_USAGE.md` (the file ends with a newline)
+    - _Requirements: 39.3_
 ## Notes
 - Scope: tasks 1 to 11 are part 1 of the refresh; `apps/web/src/scene/` changes there only in `palette.ts` (`bg`, and `focus` if it changed). Tasks 12 to 17 are part 2: the PixiJS scene (rooms, ghosts, fog, sky) and four fixes of the page. There is no zoom in the Scene; the camera of the parallax and of the roof is the focused room.
 - Entry chunk before this spec: 90.4 of 92 KiB gzip (`check-scene-bundle.mjs`; the 92 KiB comes from `accessible-mode/design.md`). The budget may rise to 94 KiB at most, only on a measured need. Replay chunk: 5665 bytes, budget 6800 bytes.
@@ -240,6 +269,7 @@ Make the page around the Scene modern and easy to read, in the look "a lantern i
 - Part 3 (tasks 18 to 24): the chip, the ghosts, the hunt mist and the Incident column, written in a third prompt. The mist test is written first and fails on alpha 0.5 before the drawing is fixed. Checks while building: `pnpm typecheck`, `pnpm lint`, the created or changed test files, `e2e/layout.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator.
 - Part 4 (tasks 25 to 33): the illustrated sprites, written in a fourth prompt. The ten files of `apps/web/public/scene/` are made by the team and are not changed. Checks while building: `pnpm typecheck`, `pnpm lint`, the created or changed test files, `e2e/scene.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator.
 - Part 5 (tasks 34 to 41): the polish of the sprite scene (room size, leftovers, calm darker, the Exorcist), written in a fifth prompt. Checks while building: `pnpm typecheck`, `pnpm lint`, the changed test files, `e2e/scene.spec.ts` and `e2e/layout.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator.
+- Part 6 (tasks 42 to 48): the tint on the sprite floor, the visible mint glow and the Hunt marks on a phone, written in a sixth prompt. Checks while building: `pnpm typecheck`, `pnpm lint`, the changed test files, `e2e/scene.spec.ts` and `e2e/layout.spec.ts` once, the build with `check-scene-bundle.mjs` once, the spec validator.
 - Out of scope: spatial audio, any API change, any new dependency, a font file, CSS-in-JS.
 ## Task Dependency Graph
 ```mermaid
@@ -295,6 +325,15 @@ graph TD
   T38 --> T39[39 Budget]
   T39 --> T40[40 Checks of part 5]
   T40 --> T41[41 Records of part 5]
+  T41 --> T42[42 Tint on the sprite floor]
+  T41 --> T43[43 Mint glow]
+  T41 --> T44[44 Hunt marks on a phone]
+  T42 --> T45[45 Steering]
+  T44 --> T45
+  T43 --> T46[46 Budget of part 6]
+  T45 --> T46
+  T46 --> T47[47 Checks of part 6]
+  T47 --> T48[48 Records of part 6]
 ```
 ```json
 {
@@ -336,7 +375,13 @@ graph TD
     { "id": 34, "tasks": ["36.2", "37.2", "38.1"] },
     { "id": 35, "tasks": ["39.1"] },
     { "id": 36, "tasks": ["40.1"] },
-    { "id": 37, "tasks": ["41.1"] }
+    { "id": 37, "tasks": ["41.1"] },
+    { "id": 38, "tasks": ["42.1", "43.1", "44.1"] },
+    { "id": 39, "tasks": ["42.2", "43.2", "44.2"] },
+    { "id": 40, "tasks": ["42.3", "45.1"] },
+    { "id": 41, "tasks": ["46.1"] },
+    { "id": 42, "tasks": ["47.1"] },
+    { "id": 43, "tasks": ["48.1"] }
   ]
 }
 ```

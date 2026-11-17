@@ -1,6 +1,38 @@
 import { PALETTE } from './palette.js';
-import { WALL_HEIGHT, type HouseLayout, type Pt, type RoomLayout } from './layout.js';
+import { CHIP_H, CHIP_PAD_X, MIN_FONT_NARROW_PX, NARROW_BELOW, WALL_HEIGHT, type HouseLayout, type Pt, type Rect, type RoomLayout } from './layout.js';
 import { unit } from './rng.js';
+
+/** Under 40rem the Hunt dots are at least this big (radius) with at least this gap between them, in px; else a text pill replaces them. */
+export const HUNT_DOT_MIN_R = 4;
+export const HUNT_DOT_MIN_GAP = 2;
+/** The longest text of the narrow Hunt pill ("Hunt · 8+ steps"), in characters, and its width per character in font sizes (measured about 0.43 at 14 px). */
+const HUNT_TEXT_CHARS = 15;
+const HUNT_CHAR_W = 0.46;
+
+export type HuntMarkStyle = { kind: 'dots'; r: number; step: number } | { kind: 'text'; fontPx: number; pill: Rect };
+
+/**
+ * How the marks of a Hunt slot are drawn. Desktop: dots of the slot's own size. Under `NARROW_BELOW`: dots of radius 4 px or more
+ * with a gap of 2 px or more when `count` of them fit in 85 % of the slot, else the pill with the text "Hunt · n steps" at
+ * `MIN_FONT_NARROW_PX`. The pill is wider than the slot, so it sits at the top of the room's screen rect `room` (the top of the
+ * back wall, above the body of the figure): centred on a room of the middle column, on the outer half of a side room, kept
+ * inside the canvas; the slot itself does not change. Pure. (Here and not in `layout.ts`, which the entry chunk shares.)
+ */
+export function huntMarkStyle(slot: Rect, width: number, count: number, room: Rect): HuntMarkStyle {
+  const step = (slot.w * 0.85) / count;
+  const r = Math.max(1.5, Math.min(slot.h * 0.28, slot.w / 20));
+  if (width >= NARROW_BELOW) return { kind: 'dots', r, step };
+  if (step - 2 * HUNT_DOT_MIN_R >= HUNT_DOT_MIN_GAP) return { kind: 'dots', r: Math.min(Math.max(r, HUNT_DOT_MIN_R), (step - HUNT_DOT_MIN_GAP) / 2), step };
+  const fontPx = MIN_FONT_NARROW_PX;
+  const h = CHIP_H * fontPx;
+  const w = (HUNT_TEXT_CHARS * HUNT_CHAR_W + 2 * CHIP_PAD_X) * fontPx;
+  // A side room puts the pill on its outer half (inner edge at the room centre), away from the middle column and the figure.
+  const cx = room.x + room.w / 2;
+  const side = cx - width / 2;
+  const at = Math.abs(side) < room.w / 4 ? cx - w / 2 : side < 0 ? cx - w : cx;
+  const x = Math.max(0, Math.min(at, width - w));
+  return { kind: 'text', fontPx, pill: { x, y: room.y, w, h } };
+}
 
 /** Pure builders of the static art: polygons and lines in CSS pixels. No PixiJS, no DOM. */
 export interface Poly {

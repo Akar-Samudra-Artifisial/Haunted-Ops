@@ -167,3 +167,10 @@ One line per finished task: date | spec/task | what Kiro did.
 2026-11-17 | visual-refresh/39 | budget measured: entry 93.0 of 94 KiB, scene chunk 176.1 of 180, scene file 92.6 of 119, replay 6581 bytes, assets 285.5 of 400 KiB, hooks.ts untouched
 2026-11-17 | visual-refresh/40 | typecheck, lint, the changed test files, e2e/scene.spec.ts and e2e/layout.spec.ts once, the build with the bundle check and the spec validator pass; no full suite
 2026-11-17 | visual-refresh/41 | records of part 5: usage lines
+2026-11-17 | visual-refresh/42 | tint of a sprite room drawn on spriteFloor(fit) inside the outline, lamp glow scaled by ROOM_SPRITE_SCALE; unit tests and Property 12
+2026-11-17 | visual-refresh/43 | mint glow of the Exorcist 1.6 by 1.8 figure heights, at least 40 px tall under 40rem, alpha 0.85 with a 3 s breath of 0.7 to 0.9, fixed under Reduced motion and Low quality; tests
+2026-11-17 | visual-refresh/44 | huntMarkStyle in shapes.ts: phones show the "Hunt · n steps" pill at 14 px at the top of the room (dots do not fit at 4 px), desktop keeps the dots; tests at 320, 364, 390 and 639 px
+2026-11-17 | visual-refresh/45 | steering lines for the tint on the sprite floor and the narrow Hunt marks
+2026-11-17 | visual-refresh/46 | budget measured: entry 93.0 of 94 KiB, scene chunk 176.6 of 180, scene file 93.1 of 119, replay 6640 bytes of 6800, assets 285.5 of 400 KiB, hooks.ts untouched
+2026-11-17 | visual-refresh/47 | typecheck, lint, the changed test files, e2e/scene.spec.ts and e2e/layout.spec.ts, the build with the bundle check and the spec validator pass; no full suite
+2026-11-17 | visual-refresh/48 | records of part 6: usage lines

@@ -28,6 +28,8 @@ The spec adds no dependency, no server code, no API change and no network call. 
 - **Sprite**: one of the ten WebP pictures of the team in `apps/web/public/scene/` (four rooms, three ghosts, two poses of the Exorcist, one fog wisp), loaded by `sprites.ts`.
 - **Sprite set**: the textures `loadSprites` returns when every file loaded; `null` means the procedural art is drawn.
 - **Fit**: the pure function of `sprites.ts` that places a room picture so its content box is as wide as the floor diamond and its bottom centre is the front corner of the floor.
+- **Sprite floor**: the four floor corners of a scaled room picture (left, back, right, front), from `spriteFloor(fit)`; it lies inside the outline hexagon of the picture and shares its front corner.
+- **Hunt mark style**: the pure choice of `huntMarkStyle` in `shapes.ts` between the progress dots and the narrow text pill "Hunt · n steps".
 ## Requirements
 ### Requirement 1: Design tokens and contrast
 **User Story:** As a visitor, I want a dark, calm page where only trouble glows and every text can be read, so that the state of the house is clear at a glance.
@@ -309,3 +311,27 @@ The spec adds no dependency, no server code, no API change and no network call. 
 1. THE tests that locked an old number or order SHALL be updated to the new rule, none deleted: the fit and outline tests (`sprites.test.ts`), the brightness unit test and Property 9 (`sprites.test.ts`, `sprites.property.test.ts`), and the layer order, the ghost pool slice and the lantern glow of `pixi-surface.test.ts`. NEW tests SHALL cover the geometry of the demo layout (Requirement 31.2), the marks and pill shown only with a hunt, the figure height (also under 40rem) and Property 11.
 2. THE scene chunk SHALL stay at most 180 KiB gzip (175.9 KiB before part 5), and the other budgets SHALL not change. The part adds no dependency, no texture file and no change to `apps/web/public/scene/`.
 3. `docs/KIRO_USAGE.md` SHALL get one line per finished task, in the form `2026-11-17 | visual-refresh/N | …`, ending with a newline. While part 5 is built, ONLY the checks named in the design SHALL be run.
+### Requirement 36: The trouble tint stays on the sprite floor
+**User Story:** As a visitor, I want the red tint of a room in trouble to stay inside the room outline, so that it does not spill onto the dark around the house.
+#### Acceptance Criteria
+1. `sprites.ts` SHALL export a pure `spriteFloor(fit)` that returns the four floor corners of the scaled picture (left, back, right, front), from the same fit numbers and content box as `spriteSilhouette(fit)`; it SHALL lie inside that outline, share its front corner and be no wider.
+2. WITH a sprite, THE danger tint SHALL be drawn on `spriteFloor(fit)` (Property 12); without sprites it SHALL keep the procedural shape.
+3. WITH a sprite, THE lamp glow SHALL be `ROOM_SPRITE_SCALE` times its procedural size, so it does not reach past the picture; without sprites it SHALL not change.
+### Requirement 37: The Exorcist's mint glow is visible
+**User Story:** As a visitor on a laptop or a phone, I want to see the Exorcist's own light, so that I find it at once.
+#### Acceptance Criteria
+1. THE glow behind the figure SHALL be `h·1.6` wide and `h·1.8` high (`h` the figure height), centred on the body, additive, in the `ecto` colour, under the figure in the `figures` layer (Property 11 unchanged), at alpha 0.85 at rest.
+2. WHILE neither Reduced motion nor Low quality is on, THE glow alpha SHALL breathe between 0.7 and 0.9 along a smooth sine of one cycle per 3 s; WHILE either is on, it SHALL stay at 0.85.
+3. UNDER `NARROW_BELOW`, THE glow SHALL be at least 40 px tall on screen.
+### Requirement 38: The Hunt progress is readable on a phone
+**User Story:** As an on-call engineer on a phone, I want to read how far the Hunt is.
+#### Acceptance Criteria
+1. UNDER `NARROW_BELOW`, THE Hunt marks SHALL be dots of radius 4 px or more with a gap of 2 px or more between dots WHEN eight of them fit in the slot; OTHERWISE THE Scene SHALL show the text "Hunt · n steps" in the pill style of the chip, at `MIN_FONT_NARROW_PX` (14 px) or more. THE Scene SHALL never show "n of 8".
+2. THE slot geometry (`huntRect`) SHALL not change, and the hunt mark area SHALL not overlap the room chip and SHALL stay inside the canvas, above the body of the working figure. Desktop SHALL keep the current dots.
+3. THE table SHALL not change: no new fact is shown (the step count is already in the Hunt column).
+### Requirement 39: Tests, budget and records of part 6
+**User Story:** As the maintainer, I want the three fixes tested, the old tests kept and the budget respected.
+#### Acceptance Criteria
+1. THE tests that locked the old glow alpha SHALL be updated to the new rule, none deleted. NEW tests SHALL cover `spriteFloor`, Property 12, the glow size and its 40 px floor under 40rem, the breathing range, period and its fixed value under Reduced motion and Low quality, and the narrow Hunt marks.
+2. THE scene chunk SHALL stay at most 180 KiB gzip, the entry at most 94 KiB and the replay chunk at most 6800 bytes; `hooks.ts` SHALL get no import; no asset, texture or dependency SHALL be added.
+3. `.kiro/steering/scene-rendering.md` SHALL get one line for the tint-on-sprite-floor rule and one for the narrow Hunt marks rule. `docs/KIRO_USAGE.md` SHALL get one line per finished task, `2026-11-17 | visual-refresh/N | …`, ending with a newline. While part 6 is built, ONLY the checks named in the design SHALL be run.
