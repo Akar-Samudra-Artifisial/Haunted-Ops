@@ -25,4 +25,30 @@ Live demo: <https://3-209-32-188.sslip.io/> (read-only; a scheduled incident and
 
 Replays of past incidents (sanitized, reviewed by a person): <https://3-209-32-188.sslip.io/replays>.
 
-Status: work in progress.
+## Run it locally
+
+Source code: <https://github.com/Akar-Samudra-Artifisial/Haunted-Ops> (MIT). The haunted services the house watches live in a second public repo, <https://github.com/Akar-Samudra-Artifisial/Haunted-Lab>.
+
+Prerequisites: Node 26 (`.nvmrc`), pnpm 11.7.0, PostgreSQL 17 (only for the full stack).
+
+Quick look, no database or API needed (scripted incident, hunt and fix):
+
+```sh
+git clone https://github.com/Akar-Samudra-Artifisial/Haunted-Ops.git
+cd Haunted-Ops
+pnpm install
+pnpm --filter @haunted-ops/shared build
+pnpm --filter @haunted-ops/web dev        # open http://localhost:5173/?demo=1
+```
+
+Full stack (API, PostgreSQL, live haunt score, real Kiro hunts against Haunted Lab):
+
+```sh
+# copy the API block of .env.example to apps/api/.env and the web block to apps/web/.env (see docs/DEV.md)
+pnpm --filter @haunted-ops/api db:migrate
+pnpm --filter @haunted-ops/api db:seed
+pnpm build && pnpm --filter @haunted-ops/api start   # API on http://localhost:3000
+pnpm --filter @haunted-ops/web dev                   # web on http://localhost:5173
+```
+
+Every variable, the lab setup, the Exorcist agent and the tests are in [docs/DEV.md](docs/DEV.md). How Kiro was used (specs, steering, hooks, agents, MCP) is in [docs/KIRO_USAGE.md](docs/KIRO_USAGE.md) and `.kiro/`. Tests: `pnpm test`.
